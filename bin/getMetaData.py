@@ -187,7 +187,7 @@ def fetchData(UIDList,start = 0, batchSize= 200, outpath="MetaData") :
     df.to_csv(outpath+"/allMetaData.tsv" ,sep="\t", mode = 'a', index=False,header=keepHeader)
     saveAsFiles(df, outpath)
 
-    return( )
+    return
 
 # not used
 def saveAsHDF5(df,outpath = "MetaData",add2existing=True  ):
@@ -239,7 +239,7 @@ def saveAsFiles(df, outpath = "MetaData") :
     for i in range(len(by_usrp)) : 
         # does the file exist? 
         srp = by_usrp[i].Project.unique()[0]
-        if os.path.exists(outpath+"/"+srp+"/MetaData.tsv") : 
+        if os.path.exists(outpath+"/Projects/"+srp+"_MetaData.tsv") : 
             # create directory
             #path exists - remove header then append
             keepHeader = False
@@ -247,8 +247,8 @@ def saveAsFiles(df, outpath = "MetaData") :
             keepHeader=True
             os.makedirs(outpath+"/"+srp)
 
-        by_usrp[i].to_csv(outpath+"/"+srp+"/MetaData.tsv" , sep="\t" , mode= "a" ,index=False, header=keepHeader)
-    return ()    
+        by_usrp[i].to_csv(outpath+"/Projects/"+srp+"_MetaData.tsv" , sep="\t" , mode= "a" ,index=False, header=keepHeader)
+       
 
 def main(species = "mouse",getAll=False, getRecent = True,lastNdays=5, metaDir = "MetaData" ):
 
