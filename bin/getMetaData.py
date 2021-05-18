@@ -307,9 +307,10 @@ def main(species = "mouse",getAll=False, getRecent = True,lastNdays=5, metaDir =
 
 
     # trying again with the ones that we missed, decreasing the batch size with each iteration
-    print('... Going back to the ones that we missed.')
+    
 
     if os.path.exists(metaDir +"/UIDs_Not_fetched.csv"):
+        print('... Going back to the ones that we missed.')
         UIDs = pd.read_csv(metaDir +"/UIDs_Not_fetched.csv" ,header=None)[0].values
         lold = len(UIDs)
         while lold > 0 : 
@@ -325,7 +326,14 @@ def main(species = "mouse",getAll=False, getRecent = True,lastNdays=5, metaDir =
             
     tf = time.time()
 
-    print(tf-ti)
+    if getAll : 
+        st1 = "Fetching all scRNA data for " +species+" from SRA took "
+    elif getRecent :
+        st1 = "Fetching recent scRNA data for " +species+" in the last"+str(lastNdays)+" from SRA took "
+
+    
+    t= str(round((tf-ti)/60,2))
+    print( st1+ t + " minutes")
 
 
 
