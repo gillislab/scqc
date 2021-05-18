@@ -245,7 +245,10 @@ def saveAsFiles(df, outpath = "MetaData") :
             keepHeader = False
         else :  # path doesn't exist, keep header and make the directory
             keepHeader=True
-            os.makedirs(outpath+"/Projects")
+            try: 
+                os.makedirs(outpath+"/Projects")
+            except: 
+                pass
 
         by_usrp[i].to_csv(outpath+"/Projects/"+srp+"_MetaData.tsv" , sep="\t" , mode= "a" ,index=False, header=keepHeader)
        
