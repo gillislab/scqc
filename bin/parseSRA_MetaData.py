@@ -5,17 +5,17 @@ import os
 
 import h5py
 import pandas as pd
+import glob
 # from numpy.lib.npyio import save
 
-# import pickle
+# load the full df. 
 
 
-h5path ="MetaData/SRA_MetaData_mouse_all_Current.hdf5"
-saveIt = True
-
-# import sys
-
-# sys.argv
+### config ###
+metaDirec = "MetaData"
+species = "mouse"
+getAll = False
+getRecent = True
 
 # part 2: predict the technology used from the LCP/ 
 # only needs to be done once. 
@@ -23,46 +23,6 @@ saveIt = True
 
 
 
-
-def hdf5_to_df(h5path, saveIt = True) : 
-    # with h5py.File(h5path,'r') as f : 
-
-    tsvpath= h5path.replace("hdf5","tsv")
-
-    if os.path.isfile(tsvpath) :    # already done - load it
-        df = pd.read_csv(tsvpath,sep="\t")
-        print("This hdf5 file has already been converted to a dataframe. Loading it instead.")
-    else : 
-        with  h5py.File(h5path,'r')  as f :
-            projs = f.keys()
-            n = len(projs)
-            it = 1
-            allRows = []
-            for proj in projs : 
-                exps = f[proj].keys()
-                # print(proj)
-                for exp in exps : 
-                    srx = "/".join([proj,exp])
-
-                    fields = f[srx].keys() 
-
-                    row = [proj, exp ]
-                    for field in fields  : 
-                        row.append(f[srx][field][()])
-
-                    allRows.append(row)
-
-                if it % 100 == 0 : 
-                    print("... " + str(round(it/n*100,2)) +"% done." )
-                it = it +1 
-
-            df = pd.DataFrame(allRows, columns = ["Project","Experiment" ] + list(fields))
-
-            if saveIt :
-                df.to_csv(tsvpath,sep= "\t", index=False)
-
-    return (df)
-# conversion is pretty slow. lol            
 
 def predictTechFromLCP(df) :
     # loop through dictionary, search for keywords in 
@@ -108,16 +68,12 @@ def predictTechFromLCP(df) :
     tmpDF["isSome10x"]  = tmpDF.loc[:,"is10x"]
 
 
+    # tmpDF["isMultiple"] = tmpDF.iloc[:,4:-1].sum(axis=1)  > 1 
     tmpDF["isSS"]    = tmpDF.loc[:,"SS"] & ~(tmpDF.loc[:,"is10x"].astype('bool'))
-    tmpDF["isMultiple"] = tmpDF.iloc[:,4:-1].sum(axis=1) +tmpDF.iloc[:,0]  > 1 
 
-    tmpDF["is10xv3"] = tmpDF.loc[:,"v3"]
-    tmpDF["is10xv2"] = tmpDF.loc[:,"v2"]
-    tmpDF["is10xv1"] = tmpDF.loc[:,"v1"]
 
-    tmpDF["Method"] = "Other"
-
-    for tech in ["isSome10x","is10xv1","is10xv2","is10xv3","isSS" ] :
+    tmpDF["Method"] = "Unknown"
+    for tech in tmpDF.columns.values[5:-1] :
         tmpDF.loc[tmpDF.loc[:,tech],"Method"]  = tech
 
     
@@ -130,37 +86,90 @@ def predictTechFromLCP(df) :
     return(df, unknownTechs)    
 
 
+def saveAsFiles(df, outpath = "MetaData",species = "mouse") : 
+    # make the project directory.
+    # split the dataframe by project
+    by_usrp = [y for x, y in df.groupby('Project', as_index=False)]
 
-df = hdf5_to_df(h5path,saveIt )
-# did we already do this?
-try :
-    df.Method
-    print("Already has a method field")    
-except : 
+    for i in range(len(by_usrp)) : 
+        # does the file exist? 
+        srp = by_usrp[i].Project.unique()[0]
+        fout = outpath+"/Projects/"+species+"/"+srp+"_MetaData_TP.tsv"
+
+        try: 
+            os.makedirs(outpath+"/Projects/"+species)
+        except: 
+            pass
+
+        by_usrp[i].to_csv(fout , sep="\t" , mode= "a" ,index=False, header= not os.path.exists(fout) )
+    
+
+def main( metaDirec ,species, getAll = False, getRecent=True ) : 
+
+    # <species>_allMetaData can probably be replaced with '<species>_recentMetaData' for data pulled in the last x days. 
+
+
+    # get the most recent one.
+    if getAll : 
+        dfpath = metaDirec +"/Projects/"+species+"_allMetaData.tsv"
+        
+    elif getRecent :
+        dfpaths = glob.glob(metaDirec +"/Projects/"+species+"_*"  )
+        dates = [path.split("_")[-1] for path in dfpaths]
+        dates = [date.split(".")[0] for date in dates]
+        
+        # which is the most recent file?
+        ind = dates.index(max(dates))
+        dfpath = dfpaths[ind]
+    
+
+    # assert( os.path.exists(metaDirec +"/Projects/"+species+"_allMetaData.tsv")) 
+    assert( os.path.exists(dfpath)) 
+
+    # this may take some time to read. consider batch reads. use skiprows + nrows
+    df = pd.read_csv(dfpath,sep="\t")
+    df = df.loc[df.Status == 'UIDFetched' ,:]
+
+    
     df , unknownLCP = predictTechFromLCP(df)
+    df.Status = "TechPredicted"
+    df.to_csv(dfpath,sep="\t",mode ="w",index=False)
+
+    unknownLCP.to_csv(metaDirec+"/unknownLCPs.tsv",sep="\t" ,mode="a", index=False ,header=False )
+
+    # need to save to project metadata... (individual files)
+
+
+    saveAsFiles(df, outpath=metaDirec, species = species)
+
+main(metaDirec, species, getAll=False, getRecent=True)
 
 
 
 
-if saveIt : 
-    # save the df.
-    tsvpath= h5path.replace("hdf5","tsv")
-    df.to_csv(tsvpath,sep= "\t", index=False) 
 
-    try: 
-        unknownLCPFile = tsvpath.replace(".tsv","_unknownTech.tsv")
-        unknownLCP.to_csv(unknownLCPFile,sep= "\t", index=False) 
-    except: 
-        pass
 
-    # save the method in the hdf5 file
 
-    with h5py.File(h5path,"a")  as f : 
-        for i in range(df.shape[0]) : 
-            ky = "/".join(df.loc[i,["Project","Experiment"] ].values)+"/"
-            try: 
-                f[ky].create_dataset("Method", data= df.loc[i,"Method"] )
-                print('creating ds for '+ ky)
-            except OSError as err: 
-                # print(str(err) + " '" + ky +"'")
-                pass
+
+# if saveIt : 
+#     # save the df.
+#     tsvpath= h5path.replace("hdf5","tsv")
+#     df.to_csv(tsvpath,sep= "\t", index=False) 
+
+#     try: 
+#         unknownLCPFile = tsvpath.replace(".tsv","_unknownTech.tsv")
+#         unknownLCP.to_csv(unknownLCPFile,sep= "\t", index=False) 
+#     except: 
+#         pass
+
+#     # save the method in the hdf5 file
+
+#     with h5py.File(h5path,"a")  as f : 
+#         for i in range(df.shape[0]) : 
+#             ky = "/".join(df.loc[i,["Project","Experiment"] ].values)+"/"
+#             try: 
+#                 f[ky].create_dataset("Method", data= df.loc[i,"Method"] )
+#                 print('creating ds for '+ ky)
+#             except OSError as err: 
+#                 # print(str(err) + " '" + ky +"'")
+#                 pass

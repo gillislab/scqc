@@ -77,7 +77,7 @@ def getUIDlist ( species = "mouse", getAll = True, getRecent = False, lastNdays 
 
     return ( np.unique(np.asarray(UIDs)) )
 
-def fetchData(UIDList,start = 0, batchSize= 200, outpath="MetaData") :
+def fetchData(UIDList,start = 0, batchSize= 200, outpath="MetaData",getAll =False, getRecent= True,lastNdays = 5) :
     # outfile is ignored if saveIt is False
     # batch it
     n = len(UIDList) 
@@ -88,6 +88,10 @@ def fetchData(UIDList,start = 0, batchSize= 200, outpath="MetaData") :
     # experiments = {}
     it = 1
     allRows =[]
+    if getAll : 
+        fname=outpath+"/Projects/"+species +"_allMetaData.tsv"
+    elif getRecent :
+        fname=outpath+"/Projects/"+species +"_Last_"+str(lastNdays) + "days_MetaData_"+str(dt.date.today()) +".tsv"
 
     while  start <= n :
 
@@ -101,7 +105,7 @@ def fetchData(UIDList,start = 0, batchSize= 200, outpath="MetaData") :
             r = r.data.decode()
             root = ET.fromstring(r)
             # write to csv
-            pd.DataFrame( UIDList[start:endpoint ]).to_csv(outpath+"/UIDs_fetched.csv",mode="a", header=False, index=False)
+            pd.DataFrame( UIDList[start:endpoint ]).to_csv(outpath+"/"+species + "_UIDs_fetched.csv",mode="a", header=False, index=False)
             flag = 0
         except:
             print('... ... ...Broken pipe at ' + str(start) + " : ", str(endpoint))
@@ -158,18 +162,11 @@ def fetchData(UIDList,start = 0, batchSize= 200, outpath="MetaData") :
             # try : 
             df = pd.DataFrame(allRows , columns = ["Project","Experiment","Submission", "Runs","Date","Taxon_ID", "Organism","LCP","Title","Abstract"  ])
             df = df.fillna(value = "")  # fill None with empty strings. 
-
-
-            if os.path.exists(outpath+"/allMetaData.tsv") : 
-                #path exists - remove header then append
-                keepHeader = False
-            else :  # path doesn't exist, keep header
-                keepHeader=True
-            
-            df.to_csv(outpath+"/allMetaData.tsv" ,sep="\t", mode = 'a', index=False,header=keepHeader)
+            df["Status"] = "UIDfecthed"
+            df.to_csv(fname ,sep="\t", mode = 'a', index=False,header=not os.path.exists(fname))
 
             print( "... ..."+ str(round(it/Nbatch*100,2))  +"% done" )
-            saveAsFiles(df,outpath)
+            saveAsFiles(df,outpath,species)
             # saveAsHDF5(df ,outpath)
             allRows =[]
 
@@ -183,15 +180,16 @@ def fetchData(UIDList,start = 0, batchSize= 200, outpath="MetaData") :
 
     df = pd.DataFrame(allRows , columns = ["Project","Experiment","Submission", "Runs","Date","Taxon_ID", "Organism","LCP","Title","Abstract"  ])
     df = df.fillna(value = "")  # fill None with empty strings. 
+    df["Status"] = "UIDfecthed"
 
-    if os.path.exists(outpath+"/allMetaData.tsv") : 
-        #path exists - remove header then append
-        keepHeader = False
-    else :  # path doesn't exist, keep header
-        keepHeader=True
+    # if os.path.exists(outpath+"/Projects/"+species +"_allMetaData.tsv") : 
+    #     #path exists - remove header then append
+    #     keepHeader = False
+    # else :  # path doesn't exist, keep header
+    #     keepHeader=True
     
-    df.to_csv(outpath+"/allMetaData.tsv" ,sep="\t", mode = 'a', index=False,header=keepHeader)
-    saveAsFiles(df, outpath)
+    df.to_csv(fname ,sep="\t", mode = 'a', index=False,header=not os.path.exists(fname))
+    saveAsFiles(df, outpath,species)
 
     return
 
@@ -237,26 +235,22 @@ def saveAsHDF5(df,outpath = "MetaData",add2existing=True  ):
                 except :
                     print("skipping " +proj + "/"+exp  +'/. already exists')
 
-def saveAsFiles(df, outpath = "MetaData") : 
-    df['Method'] = "Unknown"
-    df["Status"] = "UIDfecthed"
+def saveAsFiles(df, outpath = "MetaData",species = "mouse") : 
+    # make the project directory.
     # split the dataframe by project
     by_usrp = [y for x, y in df.groupby('Project', as_index=False)]
+
     for i in range(len(by_usrp)) : 
         # does the file exist? 
         srp = by_usrp[i].Project.unique()[0]
-        if os.path.exists(outpath+"/Projects/"+srp+"_MetaData.tsv") : 
-            # create directory
-            #path exists - remove header then append
-            keepHeader = False
-        else :  # path doesn't exist, keep header and make the directory
-            keepHeader=True
-            try: 
-                os.makedirs(outpath+"/Projects")
-            except: 
-                pass
+        outfile = outpath+"/Projects/"+species+"/"+srp+"_MetaData_UF.tsv"
 
-        by_usrp[i].to_csv(outpath+"/Projects/"+srp+"_MetaData.tsv" , sep="\t" , mode= "a" ,index=False, header=keepHeader)
+        try: 
+            os.makedirs(outpath+"/Projects/"+species)
+        except: 
+            pass
+
+        by_usrp[i].to_csv(outfile , sep="\t" , mode= "a" ,index=False, header=not os.path.exists(outfile))
        
 
 def main(species = "mouse",getAll=False, getRecent = True,lastNdays=5, metaDir = "MetaData" ):
@@ -267,7 +261,7 @@ def main(species = "mouse",getAll=False, getRecent = True,lastNdays=5, metaDir =
     assert(type(metaDir) == str)
 
     try :
-        os.makedirs(metaDir)
+        os.makedirs(metaDir +"/Projects")
     except OSError : 
         pass
 
@@ -296,9 +290,9 @@ def main(species = "mouse",getAll=False, getRecent = True,lastNdays=5, metaDir =
         UIDList =  np.append(UIDsnotFetched ,UIDList)
 
     # which UIDs did we already fetch? - lets not do those again    
-    if os.path.exists(metaDir +"/UIDs_fetched.csv" ) :
+    if os.path.exists(metaDir +"/"+species + "_UIDs_fetched.csv" ) :
         # Get the UIDs in UIDList but not in the fetched file
-        UIDsDone = pd.read_csv(metaDir +"/UIDs_fetched.csv" ,header=None)[0].values
+        UIDsDone = pd.read_csv(metaDir +"/"+species + "_UIDs_fetched.csv" ,header=None)[0].values
         # which UIDList are not in UIDsDone?
         UIDList = np.setdiff1d(UIDList,UIDsDone)
 
@@ -309,22 +303,23 @@ def main(species = "mouse",getAll=False, getRecent = True,lastNdays=5, metaDir =
     
     
     print('... Converting these to SRA accession IDs and getting MetaData')
-    fetchData(UIDList,start = 0, batchSize=batchSize, outpath=metaDir )
+    
+    fetchData(UIDList,start = 0, batchSize=batchSize, outpath=metaDir ,getAll =getAll, getRecent= getRecent,lastNdays =lastNdays) 
 
 
     # trying again with the ones that we missed, decreasing the batch size with each iteration
     
 
-    if os.path.exists(metaDir +"/UIDs_Not_fetched.csv"):
+    if os.path.exists(metaDir +"/"+species+ "UIDs_Not_fetched.csv"):
         print('... Going back to the ones that we missed.')
-        UIDs = pd.read_csv(metaDir +"/UIDs_Not_fetched.csv" ,header=None)[0].values
+        UIDs = pd.read_csv(metaDir +"/"+species+ "UIDs_Not_fetched.csv" ,header=None)[0].values
         lold = len(UIDs)
         while lold > 0 : 
             if batchSize <= 1 :
                 break
             batchSize = round(batchSize / 2)
-            fetchData(UIDs,start = 0, batchSize=batchSize, outpath=metaDir )
-            UIDs = pd.read_csv(metaDir +"/UIDs_Not_fetched.csv" ,header=None)[0].values
+            fetchData(UIDs,start = 0, batchSize=batchSize, outpath=metaDir,getAll =getAll, getRecent= getRecent,lastNdays =lastNdays )
+            UIDs = pd.read_csv(metaDir +"/"+species+ "UIDs_Not_fetched.csv" ,header=None)[0].values
             lnew = len(UIDs)
 
             if lnew == lold :  # All UIDs are the same as before.. unable to get more
@@ -333,9 +328,9 @@ def main(species = "mouse",getAll=False, getRecent = True,lastNdays=5, metaDir =
     tf = time.time()
 
     if getAll : 
-        st1 = "Fetching all scRNA data for " +species+" from SRA took "
+        st1 = "Fetching all scRNA seq data for " +species+" from SRA took "
     elif getRecent :
-        st1 = "Fetching recent scRNA data for " +species+" in the last"+str(lastNdays)+" from SRA took "
+        st1 = "Fetching recent scRNA seq data for " +species+" in the last "+str(lastNdays)+" days from SRA took "
 
     
     t= str(round((tf-ti)/60,2))
