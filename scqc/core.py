@@ -10,16 +10,27 @@ import time
 
 from configparser import ConfigParser
 
-    
         
 class Download(object):
-
+    '''
+    idlist=~/git/scqc/test/idlist.txt
+    max_downloads=5
+    num_streams=1
+    donelist=~/git/scqc/test/download-donelist.txt
+    
+    '''
     def __init__(self, config):
         self.log = logging.getLogger('download')
         self.log.info('downloader init...')
         self.config = config
         self.shutdown = False
         self.sleep = int(self.config.get('download','sleep')) 
+        self.idlist = os.path.expanduser(self.config.get('download','idlist'))
+        self.max_downloads = int(self.config.get('download','max_downloads'))
+        self.num_streams = int(self.config.get('download','num_streams'))
+        self.donelist = os.path.expanduser(self.config.get('download','donelist'))
+
+
         
     def run(self):
         self.log.info('downloader run...')
@@ -38,6 +49,34 @@ class Download(object):
     
     def stop(self):
         self.log.info('stopping...')        
+
+class Analysis(object):
+
+    def __init__(self, config):
+        self.log = logging.getLogger('analysis')
+        self.log.info('analysis init...')
+        self.config = config
+        self.shutdown = False
+        self.sleep = int(self.config.get('analysis','sleep')) 
+        
+    def run(self):
+        self.log.info('analysis run...')
+        try:
+            while not self.shutdown:
+                self.log.debug(f'analysis cycle. {self.sleep} seconds...')
+                time.sleep(self.sleep)
+        
+        except KeyboardInterrupt:
+            print('\nCtrl-C. stopping.')
+            
+        except Exception as ex:
+            self.log.warning("exception raised during main loop.")
+            self.stop()
+            raise ex        
+    
+    def stop(self):
+        self.log.info('stopping...')        
+
 
 
 class CLI(object):

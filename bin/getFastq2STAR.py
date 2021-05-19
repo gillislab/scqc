@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # get FASTQ files
 # import pickle
 import contextlib
