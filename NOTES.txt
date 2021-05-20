@@ -1,0 +1,49 @@
+
+
+
+
+DATA
+
+sc google sheet ids: 
+	644 GSE
+	68 E-MTAB
+	26 PRJ
+	19 SCP
+	12 SRP
+	
+
+NCBI Entrez Query
+	esearch
+	efetch
+
+no more than 3 per second. large jobs weekends, weekdays 9pm-5am
+
+SRA file format?
+prefetch and fasterq-dump still supported?
+
+
+
+
+COMPONENTS
+Daemons:
+
+query? 
+	queries for new, removes finished. ?
+
+download
+	takes list of ids, find metadata, download runs
+
+analysis
+	run starsolo on runs
+
+statistics
+	calculate and store statistics
+	
+?aggregate
+
+
+
+
+tmp
+cache
+metadata

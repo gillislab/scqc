@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # get all UIDs for mouse RNA seq experiments
 import datetime as dt
 import json
@@ -9,6 +11,7 @@ import h5py
 import numpy as np
 import pandas as pd
 import urllib3
+import time
 
 # part 1 - get the SRA meta data. Either for all datasets or for last few days.
 
@@ -35,8 +38,11 @@ def getUIDlist ( species = "mouse", getAll = True, getRecent = False, lastNdays 
 
     if  getAll :
         url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra&term=%22rna+seq%22[Strategy]+%22"+spec2sci[species]+ "%22[Organism]+%22single+cell%22[Text Word]&retstart="+str(retstart)+"&retmax="+str(retmax)+"&retmode=json" 
+
     elif getRecent :
         url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra&term=%22rna+seq%22[Strategy]+%22"+spec2sci[species]+"%22[Organism]+%22single+cell%22[Text Word]&retstart="+str(retstart)+"&retmax="+str(retmax)+"&datetype=pdat&reldate="+str(lastNdays)+"&retmode=json"
+
+    print(url)
     
     r = http.request("GET", url)
     esearch_res = json.loads(r.data.decode('utf-8'))
@@ -54,7 +60,7 @@ def getUIDlist ( species = "mouse", getAll = True, getRecent = False, lastNdays 
         elif getRecent :
             url_new = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra&term=%22rna+seq%22[Strategy]+%22"+spec2sci[species]+"%22[Organism]+%22single+cell%22[Text Word]&retstart="+str(retstart_new)+"&retmax="+str(retmax)+"&datetype=pdat&reldate="+str(lastNdays)+"&retmode=json"
 
-
+        time.sleep(2)
         rtmp = http.request("GET", url_new)
         esearch_res_tmp = json.loads(rtmp.data.decode('utf-8'))
         # nUIDs_tmp   = int(esearch_res['esearchresult']['count'] )
