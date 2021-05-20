@@ -1,0 +1,20 @@
+conda create -n scqc python=3.8
+conda activate scqc
+
+conda install requests pandas ipython
+
+cd  $CONDA_PREFIX
+
+# linux/centos
+wget https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/2.11.0/sratoolkit.2.11.0-centos_linux64.tar.gz
+tar -xvzf sratoolkit.2.11.0-centos_linux64.tar.gz
+cd bin
+ln -s ../sratoolkit.2.11.0-centos_linux64/bin/* ./
+
+# macos
+# wget https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/2.11.0/sratoolkit.2.11.0-mac64.tar.gz
+# tar -xvzf sratoolkit.2.11.0-mac64.tar.gz
+# cd bin
+#ln -s ../sratoolkit.2.11.0-mac64/bin/* ./
+
+cd -
