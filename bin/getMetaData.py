@@ -40,7 +40,7 @@ def getUIDlist ( species = "mouse", getAll = True, getRecent = False, lastNdays 
         url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra&term=%22rna+seq%22[Strategy]+%22"+spec2sci[species]+ "%22[Organism]+%22single+cell%22[Text Word]&retstart="+str(retstart)+"&retmax="+str(retmax)+"&retmode=json" 
 
     elif getRecent :
-        url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra&term=%22rna+seq%22[Strategy]+%22"+spec2sci[species]+"%22[Organism]+%22single+cell%22[Text Word]&retstart="+str(retstart)+"&retmax="+str(retmax)+"&datetype=pdat&reldate="+str(lastNdays)+"&retmode=json"
+        url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra&term=%22rna+seq%22[Strategy]+%22mouse%22[Organism]+%22single+cell%22[Text Word]&retstart="+str(retstart)+"&retmax="+str(retmax)+"&datetype=pdat&reldate="+str(lastNdays)+"&retmode=json"
 
     print(url)
     
@@ -162,7 +162,7 @@ def fetchData(UIDList,start = 0, batchSize= 200, outpath="MetaData",getAll =Fals
             # try : 
             df = pd.DataFrame(allRows , columns = ["Project","Experiment","Submission", "Runs","Date","Taxon_ID", "Organism","LCP","Title","Abstract"  ])
             df = df.fillna(value = "")  # fill None with empty strings. 
-            df["Status"] = "UIDfecthed"
+            df["Status"] = "UIDfetched"
             df.to_csv(fname ,sep="\t", mode = 'a', index=False,header=not os.path.exists(fname))
 
             print( "... ..."+ str(round(it/Nbatch*100,2))  +"% done" )
@@ -180,7 +180,7 @@ def fetchData(UIDList,start = 0, batchSize= 200, outpath="MetaData",getAll =Fals
 
     df = pd.DataFrame(allRows , columns = ["Project","Experiment","Submission", "Runs","Date","Taxon_ID", "Organism","LCP","Title","Abstract"  ])
     df = df.fillna(value = "")  # fill None with empty strings. 
-    df["Status"] = "UIDfecthed"
+    df["Status"] = "UIDfetched"
 
     # if os.path.exists(outpath+"/Projects/"+species +"_allMetaData.tsv") : 
     #     #path exists - remove header then append

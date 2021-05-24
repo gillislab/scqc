@@ -1,7 +1,3 @@
-
-
-
-
 DATA
 
 sc google sheet ids: 
@@ -11,7 +7,6 @@ sc google sheet ids:
 	19 SCP
 	12 SRP
 	
-
 NCBI Entrez Query
 	esearch
 	efetch
@@ -22,28 +17,31 @@ SRA file format?
 prefetch and fasterq-dump still supported?
 
 
+DESIGN
 
-
-COMPONENTS
 Daemons:
-
-query? 
+-- query 
 	queries for new, removes finished. ?
 
-download
+-- download
 	takes list of ids, find metadata, download runs
 
-analysis
+-- analysis
 	run starsolo on runs
 
-statistics
-	calculate and store statistics
+-- statistics
+	calculate and store statistics on individual runs/experiments/projects
 	
-?aggregate
+-- aggregate
+	calculate and store aggregate statistics for *all* datasets. 
+
+
+Directories:
+tmp:  		immediately delete after usage. system local. 
+cache:  	deletable whenever   system local or network filesystem (depending on size, IO).  
+metadata:	retained metadata. can be re-downloaded
+statistics: calculated values. cannot be recreated without re-running pipeline. 
 
 
 
 
-tmp
-cache
-metadata
