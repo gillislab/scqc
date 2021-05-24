@@ -3,37 +3,52 @@
 #
 
 import argparse
+import fcntl
 import io
 import logging
 import os
+import tempfile
 import time
+import traceback
 
 from configparser import ConfigParser
+from queue import Queue
 
-class Query(object):
-    '''
-    inlist=None
-    max_downloads=5
-    num_streams=1
-    donelist=~/git/scqc/test/download-donelist.txt
+from scqc import sra
+
+
+class Stage(object):
     
-    '''
-    def __init__(self, config):
-        self.log = logging.getLogger('query')
-        self.log.info('query init...')
+    def __init__(self, config, name):
+        self.name = name
+        self.log = logging.getLogger(self.name)
+        self.log.info(f'{self.name} init...')
         self.config = config
-        self.inlist = self.config.get('query','inlist')
-        if self.inlist == "None":
-            self.inlist = None
+        self.todofile = self.config.get(f'{self.name}','todofile')
+        if self.todofile.lower().strip() == "none":
+            self.todofile = None
+        else:
+            self.todofile = os.path.expanduser(self.todofile)         
+        self.donefile = self.config.get(f'{self.name}','donefile')
+        if self.donefile.lower().strip() == "none":
+            self.donefile = None
+        else:
+            self.donefile = os.path.expanduser(self.donefile)    
         self.shutdown = False
-        self.sleep = int(self.config.get('query','sleep')) 
-        
+        self.sleep = int(self.config.get(f'{self.name}','sleep'))
+        self.outlist = [] 
+
+
     def run(self):
-        self.log.info('query run...')
+        self.log.info(f'{self.name} run...')
         try:
             while not self.shutdown:
-                self.log.debug(f'query cycle. {self.sleep} seconds...')
-                self.execute()
+                self.log.debug(f'download cycle. {self.sleep} seconds...')
+                self.todolist = self.readtodo()
+                self.donelist = self.execute(self.todolist)               
+                self.log.debug(f"got donelist of length {len(self.donelist)}. writing...")
+                self.writedone(self.donelist)
+                self.log.debug(f"done writing donelist: {self.donefile}. sleeping {self.sleep} ...")
                 time.sleep(self.sleep)
         
         except KeyboardInterrupt:
@@ -41,27 +56,163 @@ class Query(object):
             
         except Exception as ex:
             self.log.warning("exception raised during main loop.")
-            self.stop()
+            self.log.error(traceback.format_exc(None))
+            raise ex       
+
+    def readtodo(self):
+        if self.todofile is not None:
+            self.log.info(f'reading todofile: {self.todofile}')
+            todolist = []
+            try:
+                with open(self.todofile, 'r') as f:
+                   todolist = [line.strip() for line in  f]
+                self.log.debug(f'got todolist with {len(todolist)} items.')
+                return todolist 
+            except:
+                pass
+        else:
+            self.log.info('no todofile. return None.')
+            return None
+
+    def writedone(self, donelist):
+        if self.donefile is not None:
+            self.log.info('writing donefile...')
+            rootpath = os.path.dirname(self.donefile)
+            basename = os.path.basename(self.donefile)
+            try:
+                (tfd, tfname) = tempfile.mkstemp(suffix=None, 
+                                              prefix=f"{basename}.", 
+                                              dir=f"{rootpath}/", 
+                                              text=True)
+                self.log.debug(f"made temp {tfname}")
+                with os.fdopen(tfd, 'w') as f:
+                    nlines = 0
+                    for item in donelist:
+                        f.write(f"{item}\n")
+                        nlines += 1
+                os.rename(tfname, self.donefile)
+                self.log.info(f"wrote {nlines} to {self.donefile}")
+            except Exception as ex:
+                self.log.error(traceback.format_exc(None))
+                
+            finally:
+                pass
+
+        else:
+            self.log.info('no donefile defined.')
+
+
+
+class Query(object):
+    '''
+    todofile=None
+    max_downloads=5
+    num_streams=1
+    donefile=~/git/scqc/test/download-donelist.txt
+    
+    '''
+    def __init__(self, config):
+        self.log = logging.getLogger('query')
+        self.log.info('query init...')
+        self.config = config
+        self.todofile = self.config.get('query','todofile')
+        if self.todofile.lower().strip() == "none":
+            self.todofile = None
+        else:
+            self.todofile = os.path.expanduser(self.todofile)         
+        
+        self.donefile = self.config.get('query','donefile')
+        if self.donefile.lower().strip() == "none":
+            self.donefile = None
+        else:
+            self.donefile = os.path.expanduser(self.donefile)    
+        self.shutdown = False
+        self.sleep = int(self.config.get('query','sleep'))
+        self.outlist = [] 
+        
+    def run(self):
+        self.log.info('query run...')
+        try:
+            while not self.shutdown:
+                self.log.debug(f'query cycle. {self.sleep} seconds...')
+                self.todolist = self.readtodo()
+                self.donelist = self.execute(self.todolist)               
+                self.log.debug(f"got donelist of length {len(self.donelist)}. writing...")
+                self.writedone(self.donelist)
+                self.log.debug(f"done writing donelist: {self.donefile}. sleeping {self.sleep} ...")
+                time.sleep(self.sleep)
+        
+        except KeyboardInterrupt:
+            print('\nCtrl-C. stopping.')
+            
+        except Exception as ex:
+            self.log.warning("exception raised during main loop.")
+            self.log.error(traceback.format_exc(None))
             raise ex        
     
-    def execute(self):
+    def execute(self, todolist):
         '''
         Perform one run. 
         
         '''
         self.log.debug('executing...')
+        self.log.info('ignoring todolist for query.')       
+        sq = sra.Query(self.config)
+        outlist = sq.execute()
+        return outlist
         
-    
-    
-    
+          
     def stop(self):
         self.log.info('stopping...')        
 
+    def readtodo(self):
+        if self.todofile is not None:
+            self.log.info(f'reading todofile: {self.todofile}')
+            todolist = []
+            try:
+                with open(self.todofile, 'r') as f:
+                   todolist = [line.strip() for line in  f]
+                self.log.debug(f'got todolist with {len(todolist)} items.')
+                return todolist 
+            except:
+                pass
+        else:
+            self.log.info('no todofile. return None.')
+            return None
 
-        
+
+    def writedone(self, donelist):
+        if self.donefile is not None:
+            self.log.info('writing donefile...')
+            rootpath = os.path.dirname(self.donefile)
+            basename = os.path.basename(self.donefile)
+            try:
+                (tfd, tfname) = tempfile.mkstemp(suffix=None, 
+                                              prefix=f"{basename}.", 
+                                              dir=f"{rootpath}/", 
+                                              text=True)
+                self.log.debug(f"made temp {tfname}")
+                with os.fdopen(tfd, 'w') as f:
+                    nlines = 0
+                    for item in donelist:
+                        f.write(f"{item}\n")
+                        nlines += 1
+                os.rename(tfname, self.donefile)
+                self.log.info(f"wrote {nlines} to {self.donefile}")
+            except Exception as ex:
+                self.log.error(traceback.format_exc(None))
+                
+            finally:
+                pass
+                #tfd.close()
+                #os.remove(tfname, dir_fd=None)
+        else:
+            self.log.info('no donefile defined.')
+
+    
 class Download(object):
     '''
-    inlist=~/git/scqc/test/query-donelist.txt
+    todofile=~/git/scqc/test/query-donelist.txt
     max_downloads=5
     num_streams=1
     donelist=~/git/scqc/test/download-donelist.txt
@@ -69,14 +220,25 @@ class Download(object):
     '''
     def __init__(self, config):
         self.log = logging.getLogger('download')
-        self.log.info('downloader init...')
+        self.log.info('download init...')
         self.config = config
+        self.todofile = self.config.get('download','todofile')
+        if self.todofile.lower().strip() == "none":
+            self.todofile = None
+        else:
+            self.todofile = os.path.expanduser(self.todofile)         
+        
+        self.donefile = self.config.get('download','donefile')
+        if self.donefile.lower().strip() == "none":
+            self.donefile = None
+        else:
+            self.donefile = os.path.expanduser(self.donefile)   
+         
         self.shutdown = False
-        self.sleep = int(self.config.get('download','sleep')) 
-        self.idlist = os.path.expanduser(self.config.get('download','inlist'))
+        self.sleep = int(self.config.get('download','sleep'))
+        self.outlist = [] 
         self.max_downloads = int(self.config.get('download','max_downloads'))
         self.num_streams = int(self.config.get('download','num_streams'))
-        self.donelist = os.path.expanduser(self.config.get('download','donelist'))
 
 
         
@@ -85,6 +247,11 @@ class Download(object):
         try:
             while not self.shutdown:
                 self.log.debug(f'download cycle. {self.sleep} seconds...')
+                self.todolist = self.readtodo()
+                self.donelist = self.execute(self.todolist)               
+                self.log.debug(f"got donelist of length {len(self.donelist)}. writing...")
+                self.writedone(self.donelist)
+                self.log.debug(f"done writing donelist: {self.donefile}. sleeping {self.sleep} ...")
                 time.sleep(self.sleep)
         
         except KeyboardInterrupt:
@@ -92,12 +259,89 @@ class Download(object):
             
         except Exception as ex:
             self.log.warning("exception raised during main loop.")
-            self.stop()
+            self.log.error(traceback.format_exc(None))
             raise ex        
+
+    def execute(self, todolist):
+        '''
+        Perform one run. 
+        
+        '''
+        self.log.debug('executing...')
+        
+        
+        
+        
+        outlist = []
+        dq = Queue()
+        for runid in todolist:
+            pf = sra.Prefetch(self.config, runid, outlist)
+            dq.put(pf)
+        logging.debug(f'created queue of {dq.qsize()} items')
+        md = int(self.config.get('sra','max_downloads'))
+        for n in range(md):
+            sra.Worker(dq).start()
+        logging.debug('waiting to join threads...')
+        dq.join()
+        logging.debug('all workers done...')
+        return outlist
+
+
     
     def stop(self):
         self.log.info('stopping...')        
 
+    def getdone(self):
+        '''
+            Get definitive list of already-completed ids. 
+        '''
+        
+        
+        
+
+    def readtodo(self):
+        if self.todofile is not None:
+            self.log.info(f'reading todofile: {self.todofile}')
+            todolist = []
+            try:
+                with open(self.todofile, 'r') as f:
+                   todolist = [line.strip() for line in  f]
+                self.log.debug(f'got todolist with {len(todolist)} items.')
+                return todolist 
+            except:
+                pass
+        else:
+            self.log.info('no todofile. return None.')
+            return None
+
+
+    def writedone(self, donelist):
+        if self.donefile is not None:
+            self.log.info('writing donefile...')
+            rootpath = os.path.dirname(self.donefile)
+            basename = os.path.basename(self.donefile)
+            try:
+                (tfd, tfname) = tempfile.mkstemp(suffix=None, 
+                                              prefix=f"{basename}.", 
+                                              dir=f"{rootpath}/", 
+                                              text=True)
+                self.log.debug(f"made temp {tfname}")
+                with os.fdopen(tfd, 'w') as f:
+                    nlines = 0
+                    for item in donelist:
+                        f.write(f"{item}\n")
+                        nlines += 1
+                os.rename(tfname, self.donefile)
+                self.log.info(f"wrote {nlines} to {self.donefile}")
+            except Exception as ex:
+                self.log.error(traceback.format_exc(None))
+                
+            finally:
+                pass
+                #tfd.close()
+                #os.remove(tfname, dir_fd=None)
+        else:
+            self.log.info('no donefile defined.')
 
 
 class Analysis(object):

@@ -35,13 +35,30 @@ Daemons:
 -- aggregate
 	calculate and store aggregate statistics for *all* datasets. 
 
-
 Directories:
-tmp:  		immediately delete after usage. system local. 
+temp:  		immediately delete after usage. system local. 
 cache:  	deletable whenever   system local or network filesystem (depending on size, IO).  
 metadata:	retained metadata. can be re-downloaded
 statistics: calculated values. cannot be recreated without re-running pipeline. 
 
 
+NOTES
+
+Not doing file locking on input/output files because 1) there is no good file locking
+mechanism that works on NFS and 2) items (temporarily, until next run) missing from a file 
+doesn't really cause a problem. Each stage will always compare an inlist to what it can 
+see is already done. Data missing just delays action. 
+
+
+TESTING
+time to download 5 run .sra files. 
+
+
+
+
+
+
+
+ 
 
 

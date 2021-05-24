@@ -24,6 +24,18 @@ from queue import Queue, Empty
 import xml.etree.ElementTree as et
 import pandas as pd
 
+
+# Translate between Python and SRAToolkit log levels for wrapped commands. 
+#  fatal|sys|int|err|warn|info|debug
+LOGLEVELS = {
+                10: 'debug',
+                20: 'info',
+                30: 'warn',
+                40: 'err',
+                50: 'fatal',
+                }
+
+
 def get_default_config():
     cp = ConfigParser()
     cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
@@ -36,7 +48,6 @@ def get_configstr(cp):
         return ss.read()
 
 
-
 class Worker(Thread):
     def __init__(self, q):
         self.q = q
@@ -46,7 +57,6 @@ class Worker(Thread):
         # Race condition, just try!
         while True:
             try:
-                #job = self.queue.get_nowait()
                 job = self.q.get_nowait()
                 job.execute()
                 self.q.task_done()
@@ -88,7 +98,9 @@ class Query(object):
         
         df = pd.DataFrame(allrows , columns = ["project","experiment","submission", "runs","date","taxon_id", "organism","lcp","title","abstract" ])
         df = df.fillna(value = "")  # fill None with empty strings. 
-        df["Status"] = "UIDfetched"
+        df["status"] = "UIDfetched"
+        
+        df = self._impute_tech(df)
         
         filepath = f"{self.metadir}/all_metadata.tsv"
         logging.info(f"saving metadata df to {filepath}")
@@ -98,16 +110,18 @@ class Query(object):
                   index=False, 
                   header=not os.path.exists(filepath))
 
+        sl = list(df.runs)
+        sralist = list(itertools.chain.from_iterable(sl))
+        return sralist
+        
     
     def _parse_experiment_pkg(self, xmlstr):
         root = et.fromstring(xmlstr)
-        logging.debug(f"root={root}")
+        self.log.debug(f"root={root}")
         rows = []
         for exp in root.iter("EXPERIMENT_PACKAGE"):
             for lcp in exp[0].iter("LIBRARY_CONSTRUCTION_PROTOCOL") :
                 lcp = lcp.text
-    
-            
             SRXs = exp[0].get('accession')
             SRAs = exp[1].get('accession')
             SRPs = exp[3].get('accession')
@@ -128,10 +142,14 @@ class Query(object):
                 for mem in run.iter("Member") : 
                     taxon.append(mem.attrib['tax_id'])
                     orgsm.append(mem.attrib['organism'])       
-            row = [SRPs, SRXs, SRAs, SRRs, date, taxon,orgsm, lcp, title,abstract]
+            row = [SRPs, SRXs, SRAs, SRRs, date, taxon, orgsm, lcp, title,abstract]
+            self.log.debug(f'got SRRs: {SRRs}')
             rows.append(row)
-            return rows
+        return rows
 
+    def _impute_tech(self, df):
+        return df
+    
 
 
 class Prefetch(object):
@@ -160,7 +178,7 @@ class Prefetch(object):
                                          [default]
       -C|--verify <yes|no>             Verify after download - one of: no, yes
                                          [default]
-    -c|--check-all                   Double-check all refseqs
+      -c|--check-all                   Double-check all refseqs
       -o|--output-file <file>          Write file to <file> when downloading
                                          single file
       -O|--output-directory <directory>
@@ -183,17 +201,28 @@ class Prefetch(object):
 
 
     '''
-    def __init__(self, config, srrid):
+    def __init__(self, config, runid, outlist):
         self.log = logging.getLogger('sra')
-        self.id = srrid
-        self.log.debug(f'downloading id {srrid}')
-
+        self.config = config
+        self.runid = runid
+        self.outlist = outlist
+        self.sracache = os.path.expanduser(self.config.get('sra','cachedir'))
+        self.log.debug(f'prefetch id {runid}')
 
     def execute(self):
-        self.log.debug(f'I would be downloding id {self.id}')
-        time.sleep(5)
-    
-
+        self.log.debug(f'prefetch id {self.runid}')
+        loglev = LOGLEVELS[ self.log.getEffectiveLevel()]
+        cmd = [     'prefetch', 
+                    '-O' , f'{self.sracache}/', 
+                    '--log-level', f'{loglev}', 
+                    f'{self.runid}' ]
+        cmdstr = " ".join(cmd)
+        logging.debug(f"prefetch command: {cmd} running...")        
+        cp = subprocess.run(cmd)
+        logging.debug(f"Ran cmd='{cmd}' returncode={cp.returncode} {type(cp.returncode)} " )
+        if str(cp.returncode) == "0":
+            self.outlist.append(self.runid)
+        
 
 class FasterqDump(object):
     '''
@@ -201,7 +230,7 @@ class FasterqDump(object):
         
         Usage: fasterq-dump [ options ] [ accessions(s)... ]
         Parameters:
-            accessions(s)                    list of accessions to process
+            accessions(s)                list of accessions to process
         Options:
         -o|--outfile <path>              full path of outputfile (overrides usage
                                          of current directory and given accession)
@@ -234,11 +263,9 @@ class FasterqDump(object):
 
 
     def execute(self):
-        self.log.debug(f'I would be downloading id {self.id}')
-        time.sleep(5)
-    
- 
+        self.log.debug(f'downloading id {self.id}')
 
+ 
 def get_run_metadata(sraproject):
     '''
     
@@ -308,7 +335,7 @@ if __name__ == "__main__":
                         nargs='+',
                         required=False,
                         default=None, 
-                        help='Download args with prefectch. e.g. SRR14584407') 
+                        help='Download args with prefetch. e.g. SRR14584407') 
 
     
     parser.add_argument('-m','--metadata',
@@ -340,6 +367,19 @@ if __name__ == "__main__":
         dq = Queue()
         for srr in args.fasterq:
             fq = FasterqDump(cp, srr)
+            dq.put(fq)
+        logging.debug(f'created queue of {dq.qsize()} items')
+        md = int(cp.get('sra','max_downloads'))
+        for n in range(md):
+            Worker(dq).start()
+        logging.debug('waiting to join threads...')
+        dq.join()
+        logging.debug('all workers done...')
+
+    if args.prefetch is not None:
+        dq = Queue()
+        for srr in args.prefetch:
+            fq = Prefetch(cp, srr)
             dq.put(fq)
         logging.debug(f'created queue of {dq.qsize()} items')
         md = int(cp.get('sra','max_downloads'))
