@@ -52,6 +52,7 @@ see is already done. Data missing just delays action.
 
 TESTING
 time to download 5 run .sra files. 
+~35 minutes for 24GB (3 + 4 + 6 + 6 + 5 )
 
 
 
