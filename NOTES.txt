@@ -56,6 +56,14 @@ time to download 5 run .sra files.
 
 
 
+FLOW/ CONVENTIONS
+-- 'query' produce IDs and XML gives RUNIDs and other exp info.
+	-- impute technology   
+-- 'download' uses runids to download of .sra files
+	-- extract fastq from .sra files. 
+-- 'analysis' runs STAR. 
+	-- other sequence-related statistics?
+	-- 
 
 
 

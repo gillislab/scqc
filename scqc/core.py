@@ -15,6 +15,7 @@ from configparser import ConfigParser
 from queue import Queue
 
 from scqc import sra
+from scqc.utils import *
 
 class Stage(object):
     '''
@@ -51,16 +52,24 @@ class Stage(object):
         try:
             while not self.shutdown:
                 self.log.debug(f'{self.name} cycle will be {self.sleep} seconds...')
-                self.todolist = self.readlist(self.todofile)
-                self.donelist = self.readlist(self.donefile)
+                self.todolist = readlist(self.todofile)
+                self.donelist = readlist(self.donefile)
                 if self.todolist is not None:
-                    self.dolist = self.listdiff(self.todolist, self.donelist) 
+                    self.dolist = listdiff(self.todolist, self.donelist) 
                 else:
                     self.dolist = []
                 self.finished = self.execute(self.dolist)
                 self.log.debug(f"got donelist of length {len(self.finished)}. writing...")
-                self.writedone(self.finished)
-                self.log.debug(f"done writing donelist: {self.donefile}. sleeping {self.sleep} ...")
+                
+                if self.donefile is not None and len(self.finished) > 0:
+                    logging.info('reading current done.')
+                    donelist = readlist(self.donefile)            
+                    logging.info('adding just finished.')
+                    alldone = listmerge(self.finished, donelist)      
+                    writelist( self.donefile, alldone)
+                    self.log.debug(f"done writing donelist: {self.donefile}. sleeping {self.sleep} ...")
+                else:
+                    logging.info('donefile is None or no new processing. No output.')
                 time.sleep(self.sleep)
         
         except KeyboardInterrupt:
@@ -71,72 +80,7 @@ class Stage(object):
             self.log.error(traceback.format_exc(None))
             raise ex       
 
-    def readlist(self, filepath):
-        if filepath is not None:
-            self.log.info(f'reading file: {filepath}')
-            flist = []
-            try:
-                with open(filepath, 'r') as f:
-                   flist = [line.strip() for line in  f]
-                self.log.debug(f'got list with {len(flist)} items.')
-                return flist 
-            except:
-                return []
-        else:
-            self.log.info('no file. return [].')
-            return []
 
-    def writedone(self, finishedlist):
-        if self.donefile is not None:
-            self.log.info('reading current done.')
-            donelist = self.readlist(self.donefile)            
-            self.log.info('adding finished.')
-            alldone = self.listmerge(finishedlist, donelist)            
-            self.log.info('writing donefile...')
-            rootpath = os.path.dirname(self.donefile)
-            basename = os.path.basename(self.donefile)
-            try:
-                (tfd, tfname) = tempfile.mkstemp(suffix=None, 
-                                              prefix=f"{basename}.", 
-                                              dir=f"{rootpath}/", 
-                                              text=True)
-                self.log.debug(f"made temp {tfname}")
-                with os.fdopen(tfd, 'w') as f:
-                    nlines = 0
-                    for item in alldone:
-                        f.write(f"{item}\n")
-                        nlines += 1    
-                os.rename(tfname, self.donefile)
-                self.log.info(f"wrote {nlines} to {self.donefile}")
-            except Exception as ex:
-                self.log.error(traceback.format_exc(None))
-                
-            finally:
-                pass
-
-        else:
-            self.log.info('no donefile defined.')
-
-
-    def listdiff(self, list1, list2):
-        self.log.debug(f"got list1: {list1} list2: {list2}")
-        s1 = set(list1)
-        s2 = set(list2)
-        sd = s1 - s2
-        dl = list(sd)
-        dl.sort()
-        self.log.debug(f"diff has length {len(dl)}")
-        return dl
-
-    def listmerge(self, list1, list2):
-        self.log.debug(f"got list1: {list1} list2: {list2}")
-        s1 = set(list1)
-        s2 = set(list2)
-        sd = s1 | s2
-        dl = list(sd)
-        dl.sort()
-        self.log.debug(f"merged has length {len(dl)}")
-        return dl
           
     def stop(self):
         self.log.info('stopping...')        
@@ -185,66 +129,37 @@ class Download(Stage):
         return outlist
    
 
-class Analysis(object):
-    
-    def __init__(self, config):
-        self.log = logging.getLogger('analysis')
-        self.log.info('analysis init...')
-        self.config = config
-        self.shutdown = False
-        self.sleep = int(self.config.get('analysis','sleep')) 
-        
-    def run(self):
-        self.log.info('analysis run...')
-        try:
-            while not self.shutdown:
-                self.log.debug(f'analysis cycle. {self.sleep} seconds...')
-                time.sleep(self.sleep)
-        
-        except KeyboardInterrupt:
-            print('\nCtrl-C. stopping.')
-            
-        except Exception as ex:
-            self.log.warning("exception raised during main loop.")
-            self.stop()
-            raise ex        
-    
-    def stop(self):
-        self.log.info('stopping...')        
-
-
-class Statistics(object):
+class Analysis(Stage):
 
     def __init__(self, config):
-        self.log = logging.getLogger('statistics')
-        self.log.info('statistics init...')
-        self.config = config
-        self.shutdown = False
-        self.sleep = int(self.config.get('statistics','sleep')) 
+        super(Download, self).__init__(config, 'analysis')
+        self.log.debug('super() ran. object initialized.')
         
-    def run(self):
-        self.log.info('statistics run...')
-        try:
-            while not self.shutdown:
-                self.log.debug(f'statistics cycle. {self.sleep} seconds...')
-                time.sleep(self.sleep)
+    def execute(self):
+        pass
+
+class Statistics(Stage):
+
+    def __init__(self, config):
+        super(Download, self).__init__(config, 'analysis')
+        self.log.debug('super() ran. object initialized.')
         
-        except KeyboardInterrupt:
-            print('\nCtrl-C. stopping.')
-            
-        except Exception as ex:
-            self.log.warning("exception raised during main loop.")
-            self.stop()
-            raise ex        
-    
-    def stop(self):
-        self.log.info('stopping...')        
+    def execute(self):
+        pass
+
+
+
 
 
 
 class CLI(object):
           
     def parseopts(self):   
+        
+        
+        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
+        logging.basicConfig(format=FORMAT)
+        
         parser = argparse.ArgumentParser()
           
         parser.add_argument('-d', '--debug', 

@@ -24,6 +24,8 @@ from queue import Queue, Empty
 import xml.etree.ElementTree as et
 import pandas as pd
 
+from scqc.utils import *
+
 
 # Translate between Python and SRAToolkit log levels for wrapped commands. 
 #  fatal|sys|int|err|warn|info|debug
@@ -46,7 +48,6 @@ def get_configstr(cp):
         cp.write(ss)
         ss.seek(0) # rewind
         return ss.read()
-
 
 class Worker(Thread):
     def __init__(self, q):
@@ -74,6 +75,8 @@ class Query(object):
         self.sra_efetch = self.config.get('sra','sra_efetch')
         self.search_term=self.config.get('sra','search_term')
         self.query_max=self.config.get('sra','query_max')
+        self.uidfile=os.path.expanduser(self.config.get('sra','uidfile'))
+
 
     def execute(self):
         self.log.info('querying SRA...')
@@ -84,35 +87,52 @@ class Query(object):
         logging.debug(f"er: {er}")
         idlist = er['esearchresult']['idlist']
         logging.debug(f"got idlist: {idlist}")
-
-        allrows = []
-        for id in idlist:
-            url=f"{self.sra_efetch}&id={id}"
-            self.log.debug(f"fetch url={url}")
-            r = requests.post(url)
-            rd = r.content.decode()
-            #logging.debug(f"data for id={id}: {rd}")
-            rows = self._parse_experiment_pkg(rd)
-            allrows = itertools.chain(allrows, rows)
-            time.sleep(1)
-        
-        df = pd.DataFrame(allrows , columns = ["project","experiment","submission", "runs","date","taxon_id", "organism","lcp","title","abstract" ])
-        df = df.fillna(value = "")  # fill None with empty strings. 
-        df["status"] = "UIDfetched"
-        
-        df = self._impute_tech(df)
-        
-        filepath = f"{self.metadir}/all_metadata.tsv"
-        logging.info(f"saving metadata df to {filepath}")
-        df.to_csv( filepath,
-                  sep="\t", 
-                  mode = 'a', 
-                  index=False, 
-                  header=not os.path.exists(filepath))
-
-        sl = list(df.runs)
-        sralist = list(itertools.chain.from_iterable(sl))
-        return sralist
+        # filter ids by already done. 
+        donelist = readlist(self.uidfile)
+        idlist = listdiff(idlist, donelist)        
+      
+        if len(idlist) > 0:
+            allrows = []
+            doneids = []
+            for id in idlist:
+                try:
+                    url=f"{self.sra_efetch}&id={id}"
+                    self.log.debug(f"fetch url={url}")
+                    r = requests.post(url)
+                    rd = r.content.decode()
+                    #logging.debug(f"data for id={id}: {rd}")
+                    rows = self._parse_experiment_pkg(rd)
+                    allrows = itertools.chain(allrows, rows)
+                    doneids.append(id)
+                except Exception as ex:
+                    self.log.error(f'problem with NCBI uid {id}')
+                    logging.error(traceback.format_exc(None))
+                    time.sleep(1)
+            
+            newdone = listmerge(donelist, doneids)
+            self.log.info(f'updating uid done list...')
+            writelist(self.uidfile, newdone)
+            
+            df = pd.DataFrame(allrows , columns = ["project","experiment","submission", "runs","date","taxon_id", "organism","lcp","title","abstract" ])
+            df = df.fillna(value = "")  # fill None with empty strings. 
+            df["status"] = "uidfetched"
+            
+            df = self._impute_tech(df)
+            
+            filepath = f"{self.metadir}/all_metadata.tsv"
+            logging.info(f"saving metadata df to {filepath}")
+            df.to_csv( filepath,
+                      sep="\t", 
+                      mode = 'a', 
+                      index=False, 
+                      header=not os.path.exists(filepath))
+    
+            sl = list(df.runs)
+            sralist = list(itertools.chain.from_iterable(sl))
+            return sralist
+        else:
+            self.log.info('no new uids to process...')
+            return []
         
     
     def _parse_experiment_pkg(self, xmlstr):
@@ -148,8 +168,60 @@ class Query(object):
         return rows
 
     def _impute_tech(self, df):
-        return df
+        '''
+        Take in df. 
+            Get unique library construciton protocol (lcp) values. 
+            For each value, loop over all keyword terms, identifying tech. 
+            Fill in method  column for all runs in temp DF. Merge DF.
+        Return filled in DF.  
+        
+        '''
+        keywords = {
+            "is10x"    : "10x Genomics|chromium|10X protocol|Chrominum|10X 3' gene|10X Single|10x 3'",
+            "v3"       : "v3 chemistry|v3 reagent|V3 protocol|CG000206|Single Cell 3' Reagent Kit v3|10X V3|1000078",
+            "v2"       : "v2 chemistry|v2 reagent|V2 protocol|P/N 120230|Single Cell 3' v2|Reagent Kits v2|10X V2",
+            "v1"       : "Kit v1|PN-120233|10X V1",
+            "ss"       : "Smart-Seq|SmartSeq|Picelli|SMART Seq",
+            "smarter"  : "SMARTer",
+            "dropseq"  : "Cell 161, 1202-1214|Macosko|dropseq|drop-seq",
+            "celseq"   : "CEL-Seq2|Muraro|Cell Syst 3, 385|Celseq2|Celseq1|Celseq|Cel-seq",
+            "sortseq"  : "Sort-seq|Sortseq|Sort seq",
+            "seqwell"  : "Seq-Well|seqwell",
+            "biorad"   : "Bio-Rad|ddSeq",
+            "indrops"  : "inDrop|Klein|Zilionis",
+            "marsseq2" : "MARS-seq|MARSseq|Jaitin et al|jaitin",
+            "tang"     : "Tang",
+            # "TruSeq":"TruSeq",
+            "splitseq" : "SPLiT-seq",
+            "microwellseq":"Microwell-seq"
+        }
     
+        ulcp = pd.DataFrame({"lcp" : df.lcp.unique() })
+        
+        # search for the keywords
+        for i in range(len(keywords)) :
+            key= list(keywords)[i]
+            kw = keywords[key] 
+            ulcp[key] = ulcp.lcp.str.lower().str.contains(kw, case=False, regex=True)
+        self.log.debug(f'keyword hits: {ulcp.values}' )
+        
+        tmpdf = ulcp.loc[:,list(keywords.keys())]
+        tmpdf = tmpdf.fillna(False)   
+        #unknownTechs = ulcp.loc[tmpdf.sum(axis=1) ==0,"LCP"]
+        tmpdf["issome10x"]  = tmpdf.loc[:,"is10x"]
+        # tmpdf["isMultiple"] = tmpdf.iloc[:,4:-1].sum(axis=1)  > 1 
+        tmpdf["isss"]    = tmpdf.loc[:,"ss"] & ~(tmpdf.loc[:,"is10x"].astype('bool'))
+        tmpdf["method"] = "Unknown"
+
+        for tech in tmpdf.columns.values[5:-1] :
+            tmpdf.loc[tmpdf.loc[:,tech],"method"]  = tech
+
+        ulcp['method'] = tmpdf.method
+        ulcp = ulcp.loc[:,["lcp","method"]]
+        df = df.merge(ulcp , on = "lcp")    
+        return df    
+
+        
 
 
 class Prefetch(object):
@@ -298,6 +370,9 @@ def get_run_metadata(sraproject):
 
 
 if __name__ == "__main__":
+
+    gitpath=os.path.expanduser("~/git/scqc")
+    sys.path.append(gitpath)
 
 
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
