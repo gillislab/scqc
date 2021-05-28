@@ -16,6 +16,94 @@ no more than 3 per second. large jobs weekends, weekdays 9pm-5am
 SRA file format?
 prefetch and fasterq-dump still supported?
 
+Possible bioproject db search:
+
+SRA QUERY
+https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra
+&term=(((%22rna%20seq%22%5BStrategy%5D)%20AND%20%22mus%20musculus%22%5BOrganism%5D)%20AND%20%22single%20cell%22%5BText%20Word%5D
+&retmax=20
+<Count>436137</Count>
+
+E.g. 
+<Id>14621461</Id>
+<Id>14621460</Id>
+<Id>14619734</Id>
+
+
+BIOPROJECT QUERY
+https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=bioproject
+&term=(((%22transcriptome%20or%20gene%20expression%22%5BProject%20Data%20Type%5D))%20AND%20%22mus%20musculus%22%5BOrganism%5D)
+&retmax=20
+
+<Count>33786</Count>
+E.g.
+<Id>732991</Id>
+https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=bioproject&id=732991
+<RecordSet>
+	<DocumentSummary uid="732991">
+	<Project>
+	<ProjectID>
+		<ArchiveID accession="PRJNA732991" archive="NCBI" id="732991"/>
+		<CenterID center="GEO" id="0">GSE175562</CenterID>
+		</ProjectID>
+		<ProjectDescr>
+etc...
+
+
+<Id>732921</Id>
+<Id>732919</Id>
+
+
+GDS QUERY
+https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=gds
+&term=(%22mus%20musculus%22%5BOrganism%5D)%20AND%20%22expression%20profiling%20by%20high%20throughput%20sequencing%22%5BDataSet%20Type%5D&retmax=20
+
+
+<Count>18704</Count>
+E.g.
+<Id>200175498</Id>
+
+https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=gds&id=200175498
+
+1. Single Cell RNA-Seq of the embryonic day 14.5 genital tubercle
+(Submitter supplied) Characterize the cellular diversity of the embryonic genital tubercle before sexual dimorphic morphogenesis in male and female mice.
+Organism:	Mus musculus
+Type:		Expression profiling by high throughput sequencing
+Platform: GPL19057 2 Samples
+FTP download: GEO (MTX, TSV) ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE175nnn/GSE175498/
+Series		Accession: GSE175498	ID: 200175498
+
+<Id>200175496</Id>
+<Id>200174168</Id>
+
+
+GEOPROFILES QUERY
+
+https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=geoprofiles&term=(%22mus%20musculus%22%5BOrganism%5D)&retmax=20
+<Count>50177624</Count>
+E.g.
+<Id>132767181</Id>
+
+https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=geoprofiles&id=132767181
+<IdList>
+  <Id>132767181</Id>
+</IdList>
+
+
+
+
+<Id>132767180</Id>
+<Id>132767179</Id>
+
+
+
+
+
+
+
+
+
+
 
 DESIGN
 
@@ -59,7 +147,7 @@ time to download 5 run .sra files.
 FLOW/ CONVENTIONS
 -- 'query' produce IDs and XML gives RUNIDs and other exp info.
 	-- impute technology   
--- 'download' uses runids to download of .sra files
+-- 'download' uses runids to download .sra files
 	-- extract fastq from .sra files. 
 -- 'analysis' runs STAR. 
 	-- other sequence-related statistics?
