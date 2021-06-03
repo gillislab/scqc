@@ -6,16 +6,18 @@
 
 import argparse
 import io
-import itertools
+import itertools 
 import json
 import logging
 import os
-from queue import Queue
+import gzip
+from pathlib import Path
+# from queue import Queue
 
 import requests
 import subprocess
 import sys
-import time 
+import time
 
 from configparser import ConfigParser
 from threading import Thread
@@ -38,11 +40,13 @@ LOGLEVELS = {
                 }
 
 
+# john lee is satisfied with this class 6/3/2021
 def get_default_config():
     cp = ConfigParser()
     cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
     return cp
 
+# john lee is satisfied with this class 6/3/2021
 def get_configstr(cp):
     with io.StringIO() as ss:
         cp.write(ss)
@@ -50,6 +54,8 @@ def get_configstr(cp):
         return ss.read()
 
 class Worker(Thread):
+    '''
+    '''
     def __init__(self, q):
         self.q = q
         super(Worker, self).__init__()
@@ -64,8 +70,200 @@ class Worker(Thread):
             except Empty:
                 return
 
-class Query(object):
+# john lee is satisfied with this class 6/3/2021
+class SetUp(object):
+    '''
+    Builds directories in config file 
+    Download the appropiate supplement data.
+    Only needs to be done once.
+    '''
     
+    def __init__(self, config): 
+        self.log = logging.getLogger('sra')
+        self.config = config
+        # directories
+        self.metadir = os.path.expanduser(self.config.get('DEFAULT','metadir'))
+        self.cachedir = os.path.expanduser(self.config.get('DEFAULT','cachedir'))
+        self.tempdir = os.path.expanduser(self.config.get('DEFAULT','tempdir'))
+        self.suppdir = os.path.expanduser(self.config.get('DEFAULT','suppdir'))
+        self.staroutdir = os.path.expanduser(self.config.get('DEFAULT','staroutdir'))
+
+        # genome generation
+        self.species = self.config.get('setup','species')
+        self.gtf_url = self.config.get('setup','gtf_url')
+        self.fa_url = self.config.get('setup','fa_url')
+        self.n_core = self.config.get('setup','n_core')
+
+
+    def make_directories(self) :
+        try :
+            os.makedirs(self.metadir)
+        except FileExistsError :
+            pass
+        try :
+            os.makedirs(self.cachedir)
+        except FileExistsError :
+            pass
+        try :
+            os.makedirs(self.tempdir)
+        except FileExistsError:
+            pass
+        try :
+            os.makedirs(self.suppdir)
+        except FileExistsError:
+            pass
+        try :
+            os.makedirs(self.staroutdir)
+        except FileExistsError:
+            pass
+
+    def get_whitelists(self) :
+        outDirec = "/".join([self.suppdir,"whitelists" ])
+        try :
+            os.makedirs(outDirec)
+        except FileExistsError: 
+            pass
+
+        urls = {
+            "whitelist_10xv1.txt" : "https://github.com/10XGenomics/cellranger/raw/master/lib/python/cellranger/barcodes/737K-april-2014_rc.txt",
+            "whitelist_10xv2.txt" : "https://github.com/10XGenomics/cellranger/raw/master/lib/python/cellranger/barcodes/737K-august-2016.txt",
+            "whitelist_10xv3.txt" : "https://github.com/10XGenomics/cellranger/raw/master/lib/python/cellranger/barcodes/3M-february-2018.txt.gz"
+        }
+
+        for key in urls :
+            url = urls[key]
+            if not os.path.exists("/".join([outDirec, key])) :
+                r = requests.get(url)
+                
+                if r.status_code == 200 :
+                    with open("/".join([outDirec, key]) ,"w" ) as f : 
+
+                        if url.endswith(".gz") :
+                            f.write(gzip.decompress(r.content).decode())
+                        else :
+                            f.write(r.text)
+                else : 
+                    self.log.info( "Requesting "+ url +" failed with status_code: "+str(r.status_code))
+                
+        pass
+
+    # needs to be properly wrapped - currently uses os.system( ... )
+    # needs error handling if fasta/gtf links are bad
+    def _get_genome_data(self) :
+
+        # if the species isn't human or mouse, require input of gtf/fa files
+        if (self.species not in ["mouse","human"]):
+            assert self.gtf_url is not None , f"Please specify a GTF url for {self.species} in etc/scqc.conf"
+            assert self.fa_url is not None , f"Please specify a FASTA url for {self.species} in etc/scqc.conf"
+
+
+        # where are we keeping the genomes? 
+        outdir = "/".join([self.suppdir, "genomes" ,self.species])
+        try :
+            os.makedirs( outdir )
+        except FileExistsError :
+            pass
+
+        spec2urls ={
+            "human" :{
+                "fa":"ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_37/GRCh38.primary_assembly.genome.fa.gz",
+                "gtf":"ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_37/gencode.v37.annotation.gtf.gz"
+            },
+            "mouse" :{
+                "fa":"ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M26/GRCm39.primary_assembly.genome.fa.gz",
+                "gtf":"ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M26/gencode.vM26.annotation.gtf.gz"
+            }
+        }   
+            
+
+
+        if self.gtf_url is not None : 
+            gtf_url = spec2urls[self.species]["gtf"] 
+        else :
+            gtf_url = self.gtf_url
+    
+
+        if self.fa_url is not None : 
+            fa_url = spec2urls[self.species]["fa"] 
+        else :
+            fa_url = self.fa_url
+    
+
+        flag=0
+        # if the files are new, download them to the generic file names 
+        # and create an empty file to identify current gtf/fa version
+        fa_tail = fa_url.split("/")[-1]
+        if not os.path.exists( f"{outdir}/{fa_tail}") : # this is a new fa file, let's overwrite the old genome.fa file
+            self.log.info(f"... Downloading FASTA file for {self.species}")
+            os.system( f"wget -O {outdir}/genome.fa.gz {fa_url}" )
+            os.system("gunzip -f "+ outdir+"/genome.fa.gz" )
+        else : # fa file given is the current version
+            flag += 1
+
+        gtf_tail =gtf_url.split("/")[-1]
+        if not os.path.exists( f"{outdir}/{gtf_tail}") : 
+            self.log.info(f"... Downloading GTF file for {self.species}")
+            os.system( f"wget -O {outdir}/annotation.gtf.gz {gtf_url}" )
+            os.system("gunzip -f "+ outdir+"/annotation.gtf.gz")
+        else : # gtf file given is the current version
+            flag += 1
+
+        # remove all gz objects in the directory - only keeps the most recent        
+        for p in Path(outdir).glob("*.gz") :
+            p.unlink()
+
+        # touch a gz file to remember gtf/fa version 
+        Path(f"{outdir}/{fa_tail}").touch()
+        Path(f"{outdir}/{gtf_tail}").touch()
+
+        return( f"{outdir}/annotation.gtf"  , f"{outdir}/genome.fa" , outdir ,flag)
+
+    # needs to be properly wrapped - currently uses os.system( ... )
+    def generate_genome_index(self) :
+
+        gtf_path, fa_path , outdir, flag = self._get_genome_data()        
+        outdir = "/".join([outdir ,"STAR_index"])
+
+        try:
+            os.makedirs( outdir)
+        except FileExistsError : 
+            pass
+        
+        if flag  < 2: # at least one file was updated. Let's re-generate the genome
+            self.log.info("... Generating the genome for {self.species}")
+
+            os.system(
+                "STAR" + 
+                " --runMode genomeGenerate " + 
+                " --runThreadN " + self.n_core +
+                " --genomeDir " + outdir +
+                " --genomeFastaFiles " + fa_path  +
+                " --sjdbGTFfile " +gtf_path
+            )        
+        else: 
+            self.log.info("... Genome Index has previously been generated with these GTF and FASTA files. Nothing to do.")
+
+    # to be done - get marker sets for mouse brain - see bin/getMarkers.R
+    def get_meta_marker_sets(self) :
+        pass
+
+    def execute(self):
+        self.make_directories()
+        self.get_whitelists()
+        self.generate_genome_index()
+
+
+
+# to do: batch for large queries. 
+# Ideally, we'd query once for all current data, (one large query)
+# then periodically query every few days (many smaller queries)
+
+# To do: Batch the requests to efetch
+# looping through all IDs in efetch can be slow (?)
+# requires more requests to the server and fails more often
+class Query(object):
+    '''
+    '''
     def __init__(self, config):
         self.log = logging.getLogger('sra')
         self.config = config
@@ -79,6 +277,8 @@ class Query(object):
 
 
     def execute(self):
+
+        # url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra&term=%22rna+seq%22[Strategy]+%22mus+musculus%22[Organism]+%22single+cell%22[Text Word]+%22brain%22[Text Word]&retstart=&retmax=50&retmode=json"
         self.log.info('querying SRA...')
         url =f"{self.sra_esearch}&term={self.search_term}&retmax={self.query_max}&retmode=json" 
         self.log.debug(f"search url: {url}")
@@ -113,7 +313,7 @@ class Query(object):
             self.log.info(f'updating uid done list...')
             writelist(self.uidfile, newdone)
             
-            df = pd.DataFrame(allrows , columns = ["project","experiment","submission", "runs","date","taxon_id", "organism","lcp","title","abstract" ])
+            df = pd.DataFrame(allrows , columns = ["project","experiment","submission", "runs","date","taxon_id", "organism","lcp","title","abstract","sample_attributes" ])
             df = df.fillna(value = "")  # fill None with empty strings. 
             df["status"] = "uidfetched"
             
@@ -134,7 +334,7 @@ class Query(object):
             self.log.info('no new uids to process...')
             return []
         
-    
+    # added sample attributes
     def _parse_experiment_pkg(self, xmlstr):
         root = et.fromstring(xmlstr)
         self.log.debug(f"root={root}")
@@ -151,6 +351,7 @@ class Query(object):
             date=[]
             taxon=[]
             orgsm =[]
+            sample_attrib={}
             for study in exp[3].iter("STUDY_TITLE") :
                 title = study.text 
             for study in exp[3].iter("STUDY_ABSTRACT") :
@@ -161,11 +362,18 @@ class Query(object):
                 date.append(run.attrib['published'])
                 for mem in run.iter("Member") : 
                     taxon.append(mem.attrib['tax_id'])
-                    orgsm.append(mem.attrib['organism'])       
-            row = [SRPs, SRXs, SRAs, SRRs, date, taxon, orgsm, lcp, title,abstract]
+                    orgsm.append(mem.attrib['organism'])   
+
+            for sample in exp.iter("SAMPLE_ATTRIBUTE") :
+                tag= sample[0].text
+                value = sample[1].text
+                sample_attrib[tag]  = value
+
+            row = [SRPs, SRXs, SRAs, SRRs, date, taxon, orgsm, lcp, title,abstract,sample_attrib]
             self.log.debug(f'got SRRs: {SRRs}')
             rows.append(row)
         return rows
+
 
     def _impute_tech(self, df):
         '''
@@ -221,9 +429,10 @@ class Query(object):
         df = df.merge(ulcp , on = "lcp")    
         return df    
 
-        
 
-
+# John Lee is satisfied with this class 6/03/2021
+# inputs are runs i.e. SRR 
+# outputs .sra 
 class Prefetch(object):
     '''
         Simple wrapper for NCBI prefetch
@@ -295,7 +504,8 @@ class Prefetch(object):
         if str(cp.returncode) == "0":
             self.outlist.append(self.runid)
         
-
+# inputs are the .sra paths from prefetch
+# currently does nothing.
 class FasterqDump(object):
     '''
         Simple wrapper for NCBI fasterq-dump
@@ -365,7 +575,7 @@ def get_run_metadata(sraproject):
     
     r = requests.put(url, data=payload, headers=headers, stream=True) 
     with io.BytesIO(r.content) as imf:
-        df = pandas.read_csv(imf)
+        df = pd.read_csv(imf)
     return df
 
 
@@ -390,7 +600,12 @@ if __name__ == "__main__":
                         action="store_true", 
                         dest='verbose', 
                         help='verbose logging')
-      
+    
+    parser.add_argument('-s','--setup' ,
+                        action ='store_true',
+                        dest = 'setup',
+                        help ='Set up directories and downloads supplemental data')
+
     parser.add_argument('-q','--query',
                         action="store_true", 
                         dest='query', 
@@ -434,22 +649,14 @@ if __name__ == "__main__":
     
     logging.debug(f"got config: {cs}")
 
+    if args.setup:
+        s = SetUp(cp)
+        s.execute()
+
     if args.query:
         q = Query(cp)
         q.execute()
 
-    if args.fasterq is not None:
-        dq = Queue()
-        for srr in args.fasterq:
-            fq = FasterqDump(cp, srr)
-            dq.put(fq)
-        logging.debug(f'created queue of {dq.qsize()} items')
-        md = int(cp.get('sra','max_downloads'))
-        for n in range(md):
-            Worker(dq).start()
-        logging.debug('waiting to join threads...')
-        dq.join()
-        logging.debug('all workers done...')
 
     if args.prefetch is not None:
         dq = Queue()
@@ -464,6 +671,20 @@ if __name__ == "__main__":
         dq.join()
         logging.debug('all workers done...')
 
+
+
+    if args.fasterq is not None:
+        dq = Queue()
+        for srr in args.fasterq:
+            fq = FasterqDump(cp, srr)
+            dq.put(fq)
+        logging.debug(f'created queue of {dq.qsize()} items')
+        md = int(cp.get('sra','max_downloads'))
+        for n in range(md):
+            Worker(dq).start()
+        logging.debug('waiting to join threads...')
+        dq.join()
+        logging.debug('all workers done...')
 
     elif args.metadata is not None:
         for srr in args.metadata:
