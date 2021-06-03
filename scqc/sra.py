@@ -432,7 +432,7 @@ class Query(object):
 
 # John Lee is satisfied with this class 6/03/2021
 # inputs are runs i.e. SRR 
-# outputs .sra 
+# downloads .sra 
 class Prefetch(object):
     '''
         Simple wrapper for NCBI prefetch
