@@ -196,7 +196,7 @@ class SetUp(object):
         if not os.path.exists( f"{outdir}/{fa_tail}") : # this is a new fa file, let's overwrite the old genome.fa file
             self.log.info(f"... Downloading FASTA file for {self.species}")
             os.system( f"wget -O {outdir}/genome.fa.gz {fa_url}" )
-            os.system("gunzip -f "+ outdir+"/genome.fa.gz" )
+            os.system(f"gunzip -f {outdir}/genome.fa.gz" )
         else : # fa file given is the current version
             flag += 1
 
@@ -204,7 +204,7 @@ class SetUp(object):
         if not os.path.exists( f"{outdir}/{gtf_tail}") : 
             self.log.info(f"... Downloading GTF file for {self.species}")
             os.system( f"wget -O {outdir}/annotation.gtf.gz {gtf_url}" )
-            os.system("gunzip -f "+ outdir+"/annotation.gtf.gz")
+            os.system(f"gunzip -f {outdir}/annotation.gtf.gz")
         else : # gtf file given is the current version
             flag += 1
 
@@ -218,7 +218,6 @@ class SetUp(object):
 
         return( f"{outdir}/annotation.gtf"  , f"{outdir}/genome.fa" , outdir ,flag)
 
-    # needs to be properly wrapped - currently uses os.system( ... )
     def generate_genome_index(self) :
 
         gtf_path, fa_path , outdir, flag = self._get_genome_data()        
@@ -230,16 +229,21 @@ class SetUp(object):
             pass
         
         if flag  < 2: # at least one file was updated. Let's re-generate the genome
-            self.log.info("... Generating the genome for {self.species}")
+            self.log.info(f"... Generating the genome for {self.species}")
+                
+            cmd =[  "STAR",  
+                    "--runMode", "genomeGenerate",
+                    "--runThreadN" , f'{self.n_core}',
+                    "--genomeDir", f'{outdir}',
+                    "--genomeFastaFiles", f'{fa_path}',
+                    "--sjdbGTFfile" ,f'{gtf_path}' ]
 
-            os.system(
-                "STAR" + 
-                " --runMode genomeGenerate " + 
-                " --runThreadN " + self.n_core +
-                " --genomeDir " + outdir +
-                " --genomeFastaFiles " + fa_path  +
-                " --sjdbGTFfile " +gtf_path
-            )        
+            cmdstr = " ".join(cmd) 
+            cp = subprocess.run(cmd)
+            logging.debug(f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} " )
+            if str(cp.returncode) == "0":
+                pass
+
         else: 
             self.log.info("... Genome Index has previously been generated with these GTF and FASTA files. Nothing to do.")
 
@@ -254,13 +258,14 @@ class SetUp(object):
 
 
 
-# to do: batch for large queries. 
+# To do: batch for large queries. 
 # Ideally, we'd query once for all current data, (one large query)
 # then periodically query every few days (many smaller queries)
 
 # To do: Batch the requests to efetch
 # looping through all IDs in efetch can be slow (?)
-# requires more requests to the server and fails more often
+# requires more requests to the server and fails more often - my tests:  fails ~25% of the time 
+# Note: repeated iterations of Query.execute() will include the failed UIDs
 class Query(object):
     '''
     '''
@@ -274,7 +279,6 @@ class Query(object):
         self.search_term=self.config.get('sra','search_term')
         self.query_max=self.config.get('sra','query_max')
         self.uidfile=os.path.expanduser(self.config.get('sra','uidfile'))
-
 
     def execute(self):
 
@@ -313,12 +317,13 @@ class Query(object):
             self.log.info(f'updating uid done list...')
             writelist(self.uidfile, newdone)
             
-            df = pd.DataFrame(allrows , columns = ["project","experiment","submission", "runs","date","taxon_id", "organism","lcp","title","abstract","sample_attributes" ])
+            df = pd.DataFrame(allrows , columns = ["project","experiment","submission", "runs","alias", "date","taxon_id", "organism","lcp","title","abstract","sample_attributes" ])
             df = df.fillna(value = "")  # fill None with empty strings. 
             df["status"] = "uidfetched"
             
             df = self._impute_tech(df)
-            
+            self._split_df_by_project(df)   # saves dfs by project accession 
+
             filepath = f"{self.metadir}/all_metadata.tsv"
             logging.info(f"saving metadata df to {filepath}")
             df.to_csv( filepath,
@@ -345,6 +350,7 @@ class Query(object):
             SRXs = exp[0].get('accession')
             SRAs = exp[1].get('accession')
             SRPs = exp[3].get('accession')
+            alias = exp[0].get('alias')
             # title = exp[3][1][0].text
             abstract =exp[3][1][2].text
             SRRs = []
@@ -369,11 +375,10 @@ class Query(object):
                 value = sample[1].text
                 sample_attrib[tag]  = value
 
-            row = [SRPs, SRXs, SRAs, SRRs, date, taxon, orgsm, lcp, title,abstract,sample_attrib]
+            row = [SRPs, SRXs, SRAs, SRRs,alias, date, taxon, orgsm, lcp, title,abstract,sample_attrib]
             self.log.debug(f'got SRRs: {SRRs}')
             rows.append(row)
         return rows
-
 
     def _impute_tech(self, df):
         '''
@@ -429,6 +434,13 @@ class Query(object):
         df = df.merge(ulcp , on = "lcp")    
         return df    
 
+    def _split_df_by_project(self, df) :
+        self.metadir 
+        for srp, df in df.groupby('project', as_index=False) : 
+            outfile = f'{self.metadir}/{srp}_metadata.tsv'
+            df.to_csv(outfile , sep="\t" , mode= "a" ,index=False, header=not os.path.exists(outfile))
+        return 
+       
 
 # John Lee is satisfied with this class 6/03/2021
 # inputs are runs i.e. SRR 
@@ -498,14 +510,15 @@ class Prefetch(object):
                     '--log-level', f'{loglev}', 
                     f'{self.runid}' ]
         cmdstr = " ".join(cmd)
-        logging.debug(f"prefetch command: {cmd} running...")        
+        logging.debug(f"prefetch command: {cmdstr} running...")        
         cp = subprocess.run(cmd)
-        logging.debug(f"Ran cmd='{cmd}' returncode={cp.returncode} {type(cp.returncode)} " )
+        logging.debug(f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} " )
         if str(cp.returncode) == "0":
             self.outlist.append(self.runid)
         
-# inputs are the .sra paths from prefetch
-# currently does nothing.
+# inputs are the runs completed by prefetch
+# assumes path is cachedir/<run>.sra
+# JL is satisfied with this 6/4/2021
 class FasterqDump(object):
     '''
         Simple wrapper for NCBI fasterq-dump
@@ -538,16 +551,186 @@ class FasterqDump(object):
         
     '''
 
-    def __init__(self, config, srrid):
+    def __init__(self, config, srrid,outlist):
         self.log = logging.getLogger('sra')
-        self.id = srrid
+        self.srrid = srrid
+        
         self.log.debug(f'downloading id {srrid}')
+        self.config = config
+        self.cachedir = os.path.expanduser(self.config.get('download','cachedir'))
+        self.num_streams = self.config.get('download','num_streams')
+
+        self.outlist = outlist
 
 
     def execute(self):
-        self.log.debug(f'downloading id {self.id}')
+        self.log.debug(f'downloading id {self.srrid}')
 
- 
+        loglev = LOGLEVELS[ self.log.getEffectiveLevel()]
+        # os.system("    + " -O "+fastqdirec+ " "+ fastqprefix +".sra" )
+
+        cmd = [     'fasterq-dump', 
+                    '--split-files',
+                    '--include-technical',
+                    '--threads', f'{self.num_streams}', 
+                    '--outdir' , f'{self.cachedir}/', 
+                    '--log-level', f'{loglev}', 
+                    f'{self.cachedir}/{self.srrid}.sra' ]
+
+        cmdstr = " ".join(cmd)
+        logging.debug(f"Fasterq-dump command: {cmdstr} running...")        
+        cp = subprocess.run(cmd)
+        logging.debug(f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} " )
+        # successful runs - append to outlist.
+        if str(cp.returncode) == "0":
+            self.outlist.append(self.srrid)
+
+
+
+# inputs should be runs  identified as 'some10x'
+# fastq files should already downloaded. 
+# srrid and species needs to be passed in from the dataframe
+class Align10xSTAR(object) :
+    '''
+        - Identifies 10x version
+        - gets the path to fastq files
+        - 
+        Simple wrapper for STAR - 10x input
+    '''
+    def __init__ (self, config, srrid,species,outlist ) :
+        self.log = logging.getLogger('sra')
+        self.config = config
+    
+        self.tempdir = os.path.expanduser(self.config.get('analysis','tempdir'))
+        self.srrid = srrid
+        self.log.debug(f'aligning id {srrid}')
+        self.staroutdir =os.path.expanduser(self.config.get('analysis','staroutdir'))
+        self.suppdir =os.path.expanduser(self.config.get('analysis','suppdir'))
+        self.species = species
+        self.outlist = outlist
+        self.num_streams = self.config.get('analysis','num_streams')
+        
+    # should  this be moved to query? download? 
+    def _impute_10x_version(self) :
+        # look at the first few lines of the fastq file.
+        loglev = LOGLEVELS[ self.log.getEffectiveLevel()]
+
+        cmd = [     'fastq-dump', 
+                    '--maxSpotId', '1',  
+                    '--split-spot',
+                    '--stdout' ,
+                    # '--outdir' , f'{self.tempdir}/', 
+                    '--log-level', f'{loglev}', 
+                    f'{self.cachedir}/{self.srrid}.sra' ]
+
+
+        cp = subprocess.Popen(cmd,stdout=subprocess.PIPE)
+        dat = cp.stdout.read().decode("utf-8").split('\n')[:-1]
+
+        # get the lengths of each read. 
+        lengths = {}
+        it=1
+        for line in dat[0::4] : # look at every 4 lines for the length of the read
+            lengths[f'{self.srrid}_{it}.fastq'] = line.split("length=")[-1]
+            it += 1
+
+        l =  [  int(l) for l in lengths.values()  ] 
+        ind = l.index(max(l))
+
+        read_bio = list(lengths.keys())[ind]
+        read_bio = f'{self.cachedir}/{read_bio}'
+
+        # 10xv2 is typically 98 bp 
+        # 10xv3 is typically 91 bp
+          
+        tech = "unknown"
+        for i in range(len(lengths)) :                    
+            if l[i] == 24 : 
+                tech = "10xv1"
+                ind2=i
+            elif l[i] == 26 :
+                ind2=i
+                tech = "10xv2"
+            elif l[i] == 28 :
+                ind2=i
+                tech = "10xv3"
+
+        if tech == "unknown" :
+            read_tech =None
+        else :
+            read_tech = list(lengths.keys())[ind2]
+            read_tech = f'{self.cachedir}/{read_tech}'
+
+
+        return( read_bio, read_tech , tech)
+        
+
+    def _get_10x_STAR_parameters(self, tech) :
+        d = {
+            "10xv1": 
+                {        
+                    "solo_type":"CB_UMI_Simple",
+                    "white_list_path" : f'{self.suppdir}/whitelists/whitelist_10xv1.txt',
+                    "CB_length":"14",
+                    "UMI_start":"15",
+                    "UMI_length":"10" 
+                },
+            "10xv2":
+                {        
+                    "solo_type":"CB_UMI_Simple",
+                    "white_list_path" : f'{self.suppdir}/whitelists/whitelist_10xv2.txt',
+                    "CB_length":"16",
+                    "UMI_start":"17",
+                    "UMI_length":"10" 
+                },
+            "10xv3" : 
+                {        
+                    "solo_type":"CB_UMI_Simple",
+                    "white_list_path" : f'{self.suppdir}/whitelists/whitelist_10xv3.txt',
+                    "CB_length":"16",
+                    "UMI_start":"17",
+                    "UMI_length":"12" 
+                }
+        }
+        return(d[tech])
+
+
+    def execute(self) : 
+        read_bio, read_tech, tech = self._impute_10x_version()
+        star_param = self._get_10x_STAR_parameters(tech) # as dictionary
+
+        if tech != 'unknown' :
+
+
+            cmd = [ 'STAR' ,
+                    '--runMode' ,'alignReads',
+                    '--runThreadN', self.num_streams , 
+                    '--genomeDir', f'{self.suppdir}/genomes/{self.species}/STAR_index',
+                    '--outFileNamePrefix', f'{self.staroutdir}/{self.srrid}_',
+                    '--soloCBwhitelist', star_param["white_list_path"] ,
+                    '--soloCBlen', star_param["CB_length"],
+                    '--soloUMIlen', star_param["UMI_length"],
+                    '--soloFeatures', 'Gene',
+                    '--readFilesIn', read_bio, read_tech,
+                    '--outSAMtype', 'None' ]
+
+            cp = subprocess.run(cmd) 
+
+
+            cmdstr = " ".join(cmd)
+            logging.debug(f"Fasterq-dump command: {cmdstr} running...")        
+            cp = subprocess.run(cmd)
+            logging.debug(f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} " )
+            # successful runs - append to outlist.
+            if str(cp.returncode) == "0":
+                self.outlist.append(self.srrid)
+
+        else : 
+            pass
+        
+
+        
+
 def get_run_metadata(sraproject):
     '''
     
