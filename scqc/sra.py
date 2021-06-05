@@ -279,6 +279,7 @@ class Prefetch(object):
         self.runid = runid
         self.outlist = outlist
         self.sracache = os.path.expanduser(self.config.get('sra','cachedir'))
+        self.max_size = int(self.config.get('sra','max_size'))
         self.log.debug(f'prefetch id {runid}')
 
     def execute(self):
@@ -286,7 +287,8 @@ class Prefetch(object):
         loglev = LOGLEVELS[ self.log.getEffectiveLevel()]
         cmd = [     'prefetch', 
                     '-O' , f'{self.sracache}/', 
-                    '--log-level', f'{loglev}', 
+                    '--log-level', f'{loglev}',
+                    '--max-size', f'{self.max_size}',  
                     f'{self.runid}' ]
         cmdstr = " ".join(cmd)
         logging.debug(f"prefetch command: {cmd} running...")        
