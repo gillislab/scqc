@@ -18,3 +18,12 @@ ln -s ../sratoolkit.2.11.0-centos_linux64/bin/* ./
 #ln -s ../sratoolkit.2.11.0-mac64/bin/* ./
 
 cd -
+
+
+
+
+# wget https://github.com/alexdobin/STAR/archive/2.7.8a.tar.gz
+# tar -xzf 2.7.8a.tar.gz
+# cd STAR-2.7.8a/source
+# make STAR
+# export PATH=$PATH:$PWD/STAR-2.7.8a/bin/Linux_x86_64
