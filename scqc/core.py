@@ -101,6 +101,7 @@ class Query(Stage):
         outlist = sq.execute()
         return outlist
 
+# to do: pf.execute() followed by FasterqDump
 class Download(Stage):
 
     def __init__(self, config):
@@ -211,7 +212,7 @@ class CLI(object):
         logging.debug(f"args: {args} ")
     
         if args.subcommand == 'query':
-            d = Query(cp)
+            d = Query(cp) 
             d.run()
         
         if args.subcommand == 'download':
