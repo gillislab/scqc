@@ -49,9 +49,8 @@ def get_default_config():
     cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
     return cp
 
+
 # john lee is satisfied with this class 6/3/2021
-
-
 def get_configstr(cp):
     with io.StringIO() as ss:
         cp.write(ss)
