@@ -77,9 +77,8 @@ class Worker(Thread):
             except Empty:
                 return
 
+
 # john lee is satisfied with this class 6/3/2021
-
-
 class SetUp(object):
     '''
     Builds directories in config file 
@@ -881,11 +880,6 @@ class AlignSmartSeqSTAR(object):
             self._merge_solo_out_results(
                 f'{self.staroutdir}/{self.srpid}_smartseq_',    # starout direc
                 out_file_prefix)                                # temp direc
-
-
-# to do: use meta markers to assign cell types for all cells.
-class AssignCellType(object):
-    pass
 
 
 def get_run_metadata(sraproject):

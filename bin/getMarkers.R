@@ -1,29 +1,78 @@
-# unable to get MetaMarkers to download properly in a conda environment... Cairo dependency issue
-library(rhdf5)
-library(Matrix)
-library(MetaMarkers) 
-library(taRifx)
-library(tibble)
-library(dplyr)
-library(SingleCellExperiment)
-library(rlist)
-library(ggplot2)
-# library(reticulate)
-# library(scater)
- 
+
+# library(Matrix)
+# library(MetaMarkers) 
+# library(taRifx)
+# library(tibble)
+# library(dplyr)
+# library(SingleCellExperiment)
+# library(rlist)
+# library(ggplot2)
+
+library(optparse)
+
+# make sure we use the R in conda and not the system R
+# configr::read.config(file="/home/johlee/git/scqc/etc/scqc.conf")
+
+option_list = list(  
+    optparse::make_option(
+        c("-m","--mode"), type="character", default='annotate', 
+        help="set_up or annotate", metavar="mm_mode"),
+
+    optparse::make_option(
+        c("-d", "--marker_direc"), type="character", default='~/scqc/supplement_data/markersets/MoP', 
+        help="Markerset Directory", metavar="markerdir"),
+
+    optparse::make_option(
+        c("-o", "--outdir"), type="character", default="~/scqc/metamarker", 
+        help="Output directory", metavar="outdir"),
+
+    optparse::make_option(
+        c("-r", "--max_rank"), type="integer", default=100, 
+        help="Maximum rank of marker genes", metavar="max_rank"),
+
+    optparse::make_option(
+        c("-s", "--solo_out_dir"), type="character", default=NULL, 
+        help="STARsolo Gene output directory (required)", metavar="solo_out_dir")
+
+); 
+
+opt_parser = optparse::OptionParser(option_list=option_list);
+opt = optparse::parse_args(opt_parser);
 
 
-# cell ontology obo
-# http://purl.obolibrary.org/obo/cl.obo
+
+# if annotate ...
+    # need to make sure I have a solo out directory
+    if (is.null(opt$solo_out_dir)  ) {
+        # no directory given, print help statement
+        optparse::print_help(opt_parser)
+    } else if (   file.exists(opt$solo_out_dir) ){
+        # annotate driver 
+        annotate_cells(opt )
+    } else if ( ! file.exists(opt$solo_out_dir) ){
+        # cant find directory 
+        # spit out an error
+    }
+
+    # need to make sure the marker sets are available.
+    if (dir.exists(opt$markerdir) ){
+        #  read in the markers 
+    } else {
+        # spit an error
+    }
 
 
+# if set up....
+
+
+# only done once
 getMergedBICCN <- function(filepath='/home/johlee/data/biccn/full_biccn.rds'){
     # currently data is only for the mouse primary cortex. Whole brain can be added later.
     # colData should have: joint_class_label  joint_subclass_label joint_cluster_label
     return(readRDS(filepath))
 }
 
-
+# only done once
 # hierarchical annotations vignette
 build_marker_sets_biccn <- function( outdir = "SupplementData/BICCN/"){
 
@@ -92,7 +141,7 @@ build_marker_sets_biccn <- function( outdir = "SupplementData/BICCN/"){
 
 }
 
-
+# not done in general
 plot_meta_markers <- function( metamarkers , sce ,labelset, outdir = "Figures/BICCN_markers") {
     # meta_markers should be a single df for a single label set   
     # sce is a SingleCellExperiment and should have a cpm field 
@@ -187,6 +236,8 @@ build_marker_sets <- function( label_set = "tissue", require_common_types=FALSE)
 }
 
 
+
+# part 1 of annotate
 parse_STAR_output <- function(outpath ){
 
     # is there an mtx file in this directory? 
@@ -204,7 +255,7 @@ parse_STAR_output <- function(outpath ){
         barcodes = read.csv(paste0(outpath, "/barcodes.tsv") ,sep = "\t", stringsAsFactors=FALSE,header=FALSE )
 
         rownames(mat) = genes[,2]       # the second column contains the gene symbols
-        colnames(mat) = barcodes[,1]    # only one column containing the barcodes which identifies the cells
+        colnames(mat) = barcodes[,1]    # only one column containing the barcodes or run ids which identifies the cells
 
     } else if ( grepl( ".csv", outpath ) ) {    
         mat = as.matrix(read.delim(outpath, sep=",", stringsAsFactors=FALSE,row.names=1)  )
@@ -221,15 +272,15 @@ parse_STAR_output <- function(outpath ){
 
 }
 
-
-get_top_markers <- function(markersetpath="SupplementData/TabulaMurisAll_tissue_markers.csv.gz"  , max_rank  = 100 ){
+# filter the markers. 
+get_top_markers <- function(markersetpath="~/scqc/supplement_data/markersets/MoP/class_marker_set.csv.gz"  , max_rank  = 100 ){
     meta_markers = MetaMarkers::read_meta_markers(markersetpath)
     top_markers = dplyr::filter(meta_markers, rank <=max_rank)  
     return(top_markers)
 }
 
 # Assign cells hierarchically
-assign_cell_type <- function(dataset, top_markers, group_assignment = NULL ,plot_it= FALSE ) {
+assign_cell_type <- function(dataset, top_markers, group_assignment = NULL ) {
     # given list of datasets as matrices, asign the cell type from the markerset - requires result from "build_marker_sets"
     # top markers should be a list of marker sets for hierarchical annotations
     # an example path - to be removed later
@@ -237,84 +288,42 @@ assign_cell_type <- function(dataset, top_markers, group_assignment = NULL ,plot
 
     # parse the data, score and assign cells using the top_marker
 
-    # class scores
     ct_scores = MetaMarkers::score_cells(dataset, top_markers)
     ct_enrichment = MetaMarkers::compute_marker_enrichment(ct_scores)
     ct_pred = MetaMarkers::assign_cells(ct_scores , group_assignment = group_assignment ) 
 
-
-
-    if (plot_it){
-            
-        sce = SingleCellExperiment::SingleCellExperiment(dataset)
-        hvg = MetaNeighbor::variableGenes(sce , exp_labels = rep("None", ncol(sce) ) )
-        umap = MetaMarkers::compute_umap(logcounts[hvg,])
-        
-        MetaMarkers::plot_assignments(ct_pred, umap_coordinates = umap[,2:3], enrichment_threshold = 1 )
-        ggsave("Figures/umap.png")
-    }
-
-
     return(ct_pred)
-    
-    # pr[[1]] = summarize_precision_recall(ct_enrichment, true_labels, seq(1,5,0.1)) %>%
-    #     filter(get_cell_type(marker_set) == true_label)
-}
-
-# not needed
-make_biccn_annotation_tree <- function(coldata ){
-    # order 1 annotation tree
-    coldata = coldata[,grep("*_label" ,colnames(coldata))]
-    coldata = coldata[,grep("joint*" ,colnames(coldata))]
-    
-    classes= unique(coldata$joint_class_label)
-    subclasses= unique(coldata$joint_subclass_label)
-    clusters= unique(coldata$joint_cluster_label)
-
-    is_a_df = data.frame(label=NULL, is_a=NULL)
-    for (cls in classes){
-        cd = coldata[coldata$joint_class_label == cls ,]
-        cts = unique(cd$joint_subclass_label)
-        df = data.frame( label = cts, is_a = cls)
-        is_a_df = rbind(is_a_df, df)
-    }
-
-    for (scls in subclasses){
-        cd = coldata[coldata$joint_subclass_label == scls ,]
-        cts = unique(cd$joint_cluster_label)
-        df = data.frame( label = cts, is_a = scls)
-        is_a_df = rbind(is_a_df, df)
-    }
-    
-    # i = match(is_a_df$label, unique(is_a_df$label) )
-    # j = match(is_a_df$is_a, unique(is_a_df$is_a) )
-    
-    # mat = Matrix::sparseMatrix(i,j , dimnames = list( unique(is_a_df$label), unique(is_a_df$is_a)))
-
-    return(is_a_df)
 
 }
 
 
-main <- function( acc="SRR11604218" ,STARout_direc= "STARout" ,biccnDirec= "SupplementData/BICCN",max_rank=100 ) {
+main <- function( solo_out_path, marker_dir,max_rank=100 ) {
     # need to figure out a good max_rank for each of the three label sets
 
-    solo_out_path = paste0(STARout_direc ,"/", acc, "Solo.out/Gene/filtered")
+     =
+    
     # solo_out_path ='/home/johlee/SCQC/SupplementData/FACS/Brain_Neurons-counts.csv'
     # solo_out_path = '/home/johlee/SCQC/SupplementData/FACS/Brain_Microglia-counts.csv'
     # solo_out_path = '/home/johlee/SCQC/SupplementData/FACS/Lung-counts.csv'
+    solo_out_path ="~/scqc/starout/SRP308826_smartseq_Solo.out/Gene/filtered"
     dataset = parse_STAR_output(solo_out_path)   
 
     # load the markers - ideally, save the top markers instead of the whole thing
-    marker_sets = readRDS(paste0(biccnDirec ,"/biccn_all_marker_sets.rds"))
-    
-    top_markers = lapply(marker_sets, function(x) {dplyr::filter(x, rank <=50) } )
+
+    marker_dir = "~/scqc/supplement_data/markersets/MoP"
+    marker_sets = list(class='class_marker_set.csv.gz' ,
+                    subclass= 'subclass_marker_set.csv.gz')
+
+    top_markers = lapply( paste(marker_dir,marker_sets,sep="/"),get_top_markers, max_rank =max_rank)
+    names(top_markers) = names(marker_sets)
     logcounts = log1p(MetaMarkers::convert_to_cpm(dataset))
 
-    class_pred = assign_cell_type(logcounts,top_markers$class,  group_assignment=NULL, plot_it=FALSE )
-    subclass_pred = assign_cell_type(logcounts,top_markers$subclass,  group_assignment=class_pred$predicted, plot_it=FALSE )
-    cluster_pred = assign_cell_type(logcounts,top_markers$cluster,  group_assignment=subclass_pred$predicted, plot_it=FALSE )
+    class_pred = assign_cell_type(logcounts,top_markers$class,  group_assignment = NULL)
+    subclass_pred = assign_cell_type(logcounts,top_markers$subclass,  group_assignment=class_pred$predicted)
+    cluster_pred = assign_cell_type(logcounts,top_markers$cluster,  group_assignment=subclass_pred$predicted)
 
     print(table(class_pred$predicted))
     print(table(subclass_pred$predicted) /sum(table(subclass_pred$predicted)))
+   
+    # save results
 }
