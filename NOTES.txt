@@ -16,7 +16,7 @@ no more than 3 per second. large jobs weekends, weekdays 9pm-5am
 SRA file format?
 prefetch and fasterq-dump still supported?
 
-Possible bioproject db search:
+Possible bioproject db search?:
 
 SRA QUERY
 https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra
@@ -89,20 +89,8 @@ https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=geoprofiles&id=1327
   <Id>132767181</Id>
 </IdList>
 
-
-
-
 <Id>132767180</Id>
 <Id>132767179</Id>
-
-
-
-
-
-
-
-
-
 
 
 DESIGN
@@ -123,11 +111,18 @@ Daemons:
 -- aggregate
 	calculate and store aggregate statistics for *all* datasets. 
 
+
 Directories:
 temp:  		immediately delete after usage. system local. 
 cache:  	deletable whenever   system local or network filesystem (depending on size, IO).  
 metadata:	retained metadata. can be re-downloaded
+resource:   downloadable or buildable static artifacts needed by pipeline. 
 statistics: calculated values. cannot be recreated without re-running pipeline. 
+
+metadata  read-write shared		metadata we maintain (dataframes now)
+cache	  read-write shared		cached, large, data passed from stage to stage
+temp	  read-write node-local 	work directory per node. not passed to other stage	
+resource  read-only	 shared		any static resource, genomes, metamarkers, etc.
 
 
 NOTES

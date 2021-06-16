@@ -2,6 +2,8 @@ conda create -n scqc python=3.8
 conda activate scqc
 
 conda install requests pandas ipython
+conda install -c bioconda star
+
 
 cd  $CONDA_PREFIX
 

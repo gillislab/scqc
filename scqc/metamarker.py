@@ -64,7 +64,7 @@ class Worker(Thread):
 
 class SetUp(object):
     def __init__(self, config):
-        self.log = logging.getLogger('sra')
+        self.log = logging.getLogger('metamarker')
         self.config = config
 
         self.marker_dir = os.path.expanduser(
@@ -89,6 +89,9 @@ class SetUp(object):
 
         cmdstr = " ".join(cmd)
         cp = subprocess.run(cmd)
+
+
+
 
 
 class AssignCellType(object):
