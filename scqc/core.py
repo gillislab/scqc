@@ -152,7 +152,7 @@ class Download(Stage):
 
 
     def setup(self):
-        sra.setup(config)
+        sra.setup(self.config)
 
 
 class Analysis(Stage):

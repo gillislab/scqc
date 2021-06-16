@@ -665,7 +665,7 @@ def query_project_for_uid(config, uid):
         root = et.fromstring(rd)
         proj_id = root.find('EXPERIMENT_PACKAGE').find('STUDY').get('accession')
         log.debug(f'found project id: {proj_id}')
-    time.sleep(1)
+    time.sleep(0.5)
     return proj_id
 
 # should  this be moved to query? download?
