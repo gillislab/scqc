@@ -95,6 +95,7 @@ https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=geoprofiles&id=1327
 
 DESIGN
 
+
 Daemons:
 -- query 
 	queries for new, removes finished. ?
@@ -133,7 +134,11 @@ doesn't really cause a problem. Each stage will always compare an inlist to what
 see is already done. Data missing just delays action. 
 
 
-TESTING
+
+
+
+TESTING/PROFILING
+
 time to download 5 run .sra files. 
 ~35 minutes for 24GB (3 + 4 + 6 + 6 + 5 )
 

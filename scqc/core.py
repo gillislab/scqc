@@ -105,15 +105,19 @@ class Query(Stage):
         Perform one run for stage.  
         '''
         self.log.debug('executing...')
-        self.log.info('ignoring dolist for query.')
-        sq = sra.Query(self.config)
-        outlist = sq.execute()
+        outlist = []
+        for projectid in dolist:
+            try:
+                sq = sra.Query(self.config)
+                out = sq.execute(projectid)
+                outlist.append(out)
+            except Exception as ex:
+                self.log.warning(f"exception raised during project query: {projectid}")
+                self.log.error(traceback.format_exc(None))
         return outlist
 
     def setup(self):
         sra.setup(self.config)
-
-# to do: pf.execute() followed by FasterqDump
 
 
 class Download(Stage):

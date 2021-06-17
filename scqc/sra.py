@@ -49,10 +49,12 @@ LOGLEVELS = {
 
 # srp, srx, sra, gsm, gse, taxon, organism, title, pubdate, abstract, lcp, sample_attrib, np.nan 
 
-META_COLUMNS = ['project', 'experiment', 'accession', 'gsm','gse', 'taxon_id', 'organism',  'title', 'pubdate', 
-                'abstract', 'lcp', 'sample_attributes', 'tech', 'status']
-PROJ_RUN_COLUMNS = ['project','run_id']
+#META_COLUMNS = ['project', 'experiment', 'accession', 'gsm','gse', 'taxon_id', 'organism',  'title', 'pubdate', 
+#                'abstract', 'lcp', 'sample_attributes', 'tech', 'status']
+#PROJ_RUN_COLUMNS = ['project','run_id']
 
+EXP_COLUMNS = ['proj_id', 'exp_id', 'sra_id', 'gsm', 'gse', 'title', 'pubdate', 'abstract', 'lcp', 'sample_attributes' ]
+RUN_COLUMNS = ['run_id', 'tot_spots', 'tot_bases', 'size', 'taxon', 'organism', 'nreads', 'readcount', 'basecount' ]
 
 # john lee is satisfied with this class 6/3/2021
 def get_default_config():
@@ -151,88 +153,75 @@ class Query(object):
         self.search_term = self.config.get('sra', 'search_term')
         self.query_max = self.config.get('sra', 'query_max')
         self.uidfile = os.path.expanduser(self.config.get('sra', 'uidfile'))
-        self.query_sleep = int(self.config.get('sra','query_sleep'))
+        self.query_sleep = float(self.config.get('sra','query_sleep'))
 
-    def execute(self):
+
+    def execute(self, projectid):
         """
-         Perform query, get ids, fetch for each id, parse XML response. 
-         Put project and run info in project_metadata.tsv and project_runs.tsv
-         Put completed project ids into query-donelist.txt
+         For projectid:
+             Perform query, get ids, fetch for each id, parse XML response. 
+             Put project and run info in project_metadata.tsv and project_runs.tsv
+             Put completed project ids into query-donelist.txt
          
         """
-        # url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra&term=%22rna+seq%22[Strategy]+%22mus+musculus%22[Organism]+%22single+cell%22[Text Word]+%22brain%22[Text Word]&retstart=&retmax=50&retmode=json"
-        self.log.info('querying SRA...')
-        url = f"{self.sra_esearch}&term={self.search_term}&retmax={self.query_max}&retmode=json"
-        self.log.debug(f"search url: {url}")
-        r = requests.get(url)
-        er = json.loads(r.content.decode('utf-8'))
-        logging.debug(f"er: {er}")
-        idlist = er['esearchresult']['idlist']
-        logging.debug(f"got idlist: {idlist}")
-        # filter ids by already done.
-        donelist = readlist(self.uidfile)
-        idlist = listdiff(idlist, donelist)
+        self.log.info(f'handling projectid {projectid}')
+        try:
+            pdf = query_project_metadata(projectid)
+            self.log.debug(f'info: {pdf}')
+            exprows = []
+            runrows = []
+            for exp in list(pdf.Experiment):
+                exd = self.query_experiment_package_set(exp)
+                (rows, runs) = self.parse_experiment_package_set(exd)
+                exprows = itertools.chain(exprows, rows)
+                runrows = itertools.chain(runrows, runs)
+            exprows = list(exprows)
+            runrows = list(runrows)
+            logging.debug(f'final exprows: {exprows}')
+            logging.debug(f'final runrows: {runrows}')
+            edf = pd.DataFrame(exprows, columns=EXP_COLUMNS)
+            merge_write_df(edf, f'{self.metadir}/experiments.tsv' )
+                      
+            rdf = pd.DataFrame(runrows, columns=RUN_COLUMNS)
+            merge_write_df(rdf, f'{self.metadir}/runs.tsv' )                       
 
-        if len(idlist) > 0:
-            allrows = []
-            allprojruns = []
-            doneids = []
-            for id in idlist:
-                try:
-                    url = f"{self.sra_efetch}&id={id}"
-                    self.log.debug(f"fetch url={url}")
-                    r = requests.post(url)
-                    #self.log.debug(f'status code {r.status_code} type {type(r.status_code)}')
-                    if r.status_code == 200:
-                        rd = r.content.decode()
-                        #logging.debug(f"data for id={id}: {rd}")
-                        #rows = self._parse_experiment_pkg(rd)
-                        (rows, proj_runs) = self.parse_experiment_package_set(rd)
-                        allrows = itertools.chain(allrows, rows)
-                        allprojruns = itertools.chain(allprojruns, proj_runs)
-                        #allprojruns.append(proj_runs)
-                        doneids.append(id)
-                    else:
-                        self.log.warn(f'bad HTTP response for NCBI uid {id}')
-                    
-                except Exception as ex:
-                    self.log.error(f'problem with NCBI uid {id}')
-                    logging.error(traceback.format_exc(None))
-                
-                finally:
-                    self.log.debug(f"sleeping {self.query_sleep} secs between fetch calls...")
-                    time.sleep(self.query_sleep)
+            self.log.info(f'successfully processed project {projectid}')
+            # return projectid only if it has completed successfully. 
+            return projectid
+        
+        except Exception as ex:
+            self.log.error(f'problem with NCBI id {xid}')
+            logging.error(traceback.format_exc(None))
+            raise ex
 
 
-            newdone = listmerge(donelist, doneids)
-            self.log.info(f'updating uid done list...')
-            writelist(self.uidfile, newdone)
             
-            filepath = f'{self.metadir}/all_metadata.tsv'
-            self.log.info(f'updating metadata df: {filepath}')
-            adf = pd.DataFrame(allrows, columns = META_COLUMNS)
-            #adf = self._impute_tech(adf) 
-            self.log.debug(f'made all df: {adf}')           
-            adf.drop_duplicates(inplace=True)
-            merge_write_df(adf, filepath )
-            #df["status"] = "tech_imputed"            
-
-            filepath = f"{self.metadir}/project_runs.tsv"            
-            self.log.info(f'updating proj-run df: {filepath}')
-            self.log.debug(f'making dataframe from proj-runs: {allprojruns}')
-            pdf = pd.DataFrame(allprojruns, columns = PROJ_RUN_COLUMNS)
-            self.log.debug(f'made project-run df: {pdf}')   
-            merge_write_df(pdf, filepath )
-                        
-            srplist = list(pdf.project.unique())
-            #sralist = list(itertools.chain.from_iterable(sl))
-            return srplist
+      
+      
+    def query_experiment_package_set(self, xid):
+        """
+        Query XML data for this experiment ID. 
+        
+        """
+        xmldata = None
+        try:
+            url = f"{self.sra_efetch}&id={xid}"
+            self.log.debug(f"fetch url={url}")
+            r = requests.post(url)
+            if r.status_code == 200:
+                xmldata = r.content.decode()
+                self.log.debug(f'good HTTP response for {xid}')
+            else:
+                self.log.warn(f'bad HTTP response for id {xid}')
             
-            #self._split_df_by_project(df)   # saves dfs by project accession
-        else:
-            self.log.info('no new uids to process...')
-            return []
-
+        except Exception as ex:
+            self.log.error(f'problem with NCBI id {xid}')
+            logging.error(traceback.format_exc(None))
+        
+        finally:
+            self.log.debug(f"sleeping {self.query_sleep} secs between fetch calls...")
+            time.sleep(self.query_sleep)
+        return xmldata
 
 
     def parse_experiment_package_set(self, xmlstr):
@@ -245,22 +234,21 @@ class Query(object):
         """
         root = et.fromstring(xmlstr)
         self.log.debug(f"root={root}")
-        rows = []
-        proj_runs = []
+        exp_rows = []
+        run_rows = []
         n_processed = 0
         for exp in root.iter("EXPERIMENT_PACKAGE"):
             (newrows, newruns) = self.parse_experiment_package(exp)        
-            rows.append(newrows)
-            # newruns is already a list of lists
-            #proj_runs.append(newruns)
-            proj_runs = itertools.chain(proj_runs, newruns)
+            exp_rows.append(newrows)
+            #run_rows.append(newruns)
+            run_rows = itertools.chain(run_rows, newruns)
             n_processed += 1
         self.log.debug(f"processed {n_processed} experiment packages.")
-        self.log.debug(f'returning rows: {rows} \n  proj_runs: {proj_runs}')
-        return (rows, proj_runs)
+        run_rows = list(run_rows)
+        self.log.debug(f'returning \n    exp_rows: {exp_rows} \n    run_rows: {run_rows}')
+        return (exp_rows, run_rows)
      
-        
-        
+           
     def parse_experiment_package(self, root):
         """
         NCBI provides no XSD, so we shouldn't rely on order
@@ -274,47 +262,70 @@ class Query(object):
         runs = root.find('RUN_SET')
         
         # get experiment properties. 
-        srx = exp.get('accession')
+        exp_id = exp.get('accession')
         gsm = exp.get('alias')
-        lcp = exp.find('DESIGN').find('LIBRARY_DESCRIPTOR').find('LIBRARY_CONSTRUCTION_PROTOCOL').text
+        try:
+            lcp = exp.find('DESIGN').find('LIBRARY_DESCRIPTOR').find('LIBRARY_CONSTRUCTION_PROTOCOL').text
+        except:
+            lcp = ''
+        
         lcp = lcp.strip()
                 
         # get submission properties
-        sra = sub.get('accession')
+        sra_id = sub.get('accession')
 
         # get study/project properties title, abstract
-        srp = proj.get('accession')
+        proj_id = proj.get('accession')
         gse = proj.get('alias')        
         d_elem=proj.find('DESCRIPTOR')
         title = d_elem.find('STUDY_TITLE').text
         abstract = d_elem.find('STUDY_ABSTRACT').text
                 
         # get sample properties
-        srs = samp.get('accession')
+        samp_id = samp.get('accession')
         sample_attributes = {}
         for elem in samp.find('SAMPLE_ATTRIBUTES').findall('SAMPLE_ATTRIBUTE'):
             tag = elem.find('TAG').text
             val = elem.find('VALUE').text
             sample_attributes[tag] = val
         
-        sample_attributes = str(sample_attributes)
-        
+        sample_attributes = str(sample_attributes)        
         pubdate = runs.find('RUN').get('published')
-        # get run info, child runs
-        run_acs = []
-        for run in runs.findall('RUN'):
-            run_ac = run.get('accession')
-            # ???? can one experiment have runs from different organisms??
-            taxon = run.find('Pool').find('Member').get('tax_id')
-            organism = run.find('Pool').find('Member').get('organism')
-            projrunrow = [srp, run_ac]
-            run_acs.append(projrunrow)
-            
-        self.log.debug(f'exp_pkg info: srp={srp} srx={srx} gsm={gsm} sra={sra} gse={gse} srs={srs} runs={run_acs}')          
-        row = [srp, srx, sra, gsm, gse, taxon, organism, title, pubdate, abstract, lcp, sample_attributes, np.nan, np.nan ]
-        self.log.debug(f'returning row: {row} \n  proj_runs: {run_acs}')
-        return( row, run_acs)
 
+        runrows = self.parse_run_set(runs)
+        
+        self.log.debug(f'exprow: proj_id={proj_id} exp_id={exp_id} gsm={gsm} sra_id={sra_id} gse={gse} samp_id={samp_id}')          
+        exprow = [proj_id, exp_id, sra_id, gsm, gse, title, pubdate, abstract, lcp, sample_attributes ]
+        self.log.debug(f'exprow: {exprow} \n  runrows: {runrows}')
+        return( exprow, runrows)
+    
+
+    def parse_run_set(self, runs):
+        """
+        
+        """
+        runrows = []
+        for run in runs.findall('RUN'):
+            runrow = self.parse_run(run)
+            runrows.append(runrow)
+        return runrows
+    
+        
+    def parse_run(self, run ):
+        run_id = run.get('accession')
+        total_spots= run.get('total_spots') 
+        total_bases=run.get('total_bases')
+        size=run.get('size')
+        taxon = run.find('Pool').find('Member').get('tax_id')
+        organism = run.find('Pool').find('Member').get('organism')
+        nreads= run.find('Statistics').get('nreads')
+        readcount=run.find('Statistics').find('Read').get('count')
+        bases = run.find('Bases')
+        basecount = bases.get('count')
+
+        
+        runrow = [run_id, total_spots, total_bases, size, taxon, organism, nreads, readcount, basecount ]
+        return runrow
       
 
     def query_runs_for_project(self, project):
@@ -580,11 +591,13 @@ def get_runs_for_project(config, projectid):
         return [] 
 
 
-
 def query_project_metadata(project_id):
     '''
+    E.g. https://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?db=sra&rettype=runinfo&save=efetch&term=SRP131661
+    
 
     '''
+    log= logging.getLogger('sra')
     url = "https://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi"
 
     headers = {
@@ -605,8 +618,10 @@ def query_project_metadata(project_id):
         "rettype": "runinfo",
         "save": "efetch",
         "term": project_id}
-
+    
+    log.debug('opening request...')
     r = requests.put(url, data=payload, headers=headers, stream=True)
+    log.debug('got return info. reading content...')
     with io.BytesIO(r.content) as imf:
         df = pd.read_csv(imf)
     return df
@@ -659,6 +674,7 @@ def query_project_for_uid(config, uid):
     sra_efetch = config.get('sra', 'sra_efetch')
     url = f"{sra_efetch}&id={uid}"
     log.debug(f"fetch url={url}")
+    proj_id = None
     r = requests.post(url)
     if r.status_code == 200:
         rd = r.content.decode()
@@ -753,9 +769,11 @@ if __name__ == "__main__":
                         help='Set up directories and downloads supplemental data')
 
     parser.add_argument('-q', '--query',
-                        action="store_true",
-                        dest='query',
-                        help='Perform standard query')
+                        metavar='query',
+                        type=str,
+                        nargs='+', 
+                        default=None,
+                        help='Perform standard query on supplied projectid')
 
     parser.add_argument('-f', '--fasterq',
                         metavar='fasterq',
@@ -771,7 +789,7 @@ if __name__ == "__main__":
                         nargs='+',
                         required=False,
                         default=None,
-                        help='Download args with prefetch. e.g. SRR14584407')
+                        help='Download (Run) args with prefetch. e.g. SRR14584407')
 
     parser.add_argument('-t', '--tenx',
                         metavar='tenx_align',
@@ -822,9 +840,10 @@ if __name__ == "__main__":
         s = SetUp(cp)
         s.execute()
 
-    if args.query:
+    if args.query is not None:
         q = Query(cp)
-        q.execute()
+        for pid in args.query:
+            q.execute(pid)
 
     if args.prefetch is not None:
         dq = Queue()
