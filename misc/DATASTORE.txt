@@ -3,11 +3,14 @@
 ?? possibly not needed if there are no project-level properties. 
 projects.tsv
 	projectid, 
+	
 
 
 
 experiments.tsv
-	proj_id, exp_id, sra_id 
+	proj_id,   # project ID e.g. SRPXXXXX  from the accesssion tag of exp XML.  
+	exp_id, 
+	sra_id 
 
 
 runs.tsv
