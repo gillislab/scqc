@@ -599,7 +599,8 @@ def get_runs_for_project(config, projectid):
 def query_project_metadata(project_id):
     '''
     E.g. https://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?db=sra&rettype=runinfo&save=efetch&term=SRP131661
-    
+
+wget -qO- 'http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=SRP131661'    
 
     '''
     log= logging.getLogger('sra')
@@ -889,9 +890,7 @@ if __name__ == "__main__":
         projlist = []
         for uid in uidlist:
             projid = query_project_for_uid(cp,uid)
-            projlist.append(projid)
-        
-        for pid in projlist:
             print(pid)
-            
+
+           
         
