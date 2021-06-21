@@ -51,6 +51,8 @@ class Stage(object):
             self.donefile = os.path.expanduser(self.donefile)
         self.shutdown = False
         self.sleep = int(self.config.get(f'{self.name}', 'sleep'))
+        self.batchsize = int(self.config.get(f'{self.name}', 'batchsize'))
+        self.batchsleep = float(self.config.get(f'{self.name}', 'batchsleep'))
         self.outlist = []
 
     def run(self):
@@ -65,21 +67,33 @@ class Stage(object):
                     self.dolist = listdiff(self.todolist, self.donelist)
                 else:
                     self.dolist = []
-                self.finished = self.execute(self.dolist)
-                self.log.debug(
-                    f"got donelist of length {len(self.finished)}. writing...")
+                
+                # cut into batches and do each separately, updating donelist. 
+                logging.debug(f'dolist len={len(self.dolist)}')
+                curid = 0
+                while curid < len(self.dolist):
+                    dobatch = self.dolist[curid:curid + self.batchsize]
+                    logging.debug(f'made dobatch length={len(dobatch)}')
+                    logging.debug(f'made dobatch: {dobatch}')
+                    finished = self.execute(dobatch)
+                    self.log.debug(f"got finished list len={len(finished)}. writing...")
+    
+                    if self.donefile is not None and len(finished) > 0:
+                        logging.info('reading current done.')
+                        donelist = readlist(self.donefile)
+                        logging.info('adding just finished.')
+                        alldone = listmerge(finished, donelist)
+                        writelist(self.donefile, alldone)
+                        self.log.debug(
+                            f"done writing donelist: {self.donefile}. sleeping {self.batchsleep} ...")
+                    else:
+                        logging.info(
+                            'donefile is None or no new processing. No output.')
+                        
+                    curid += self.batchsize
+                    time.sleep(self.batchsleep)
 
-                if self.donefile is not None and len(self.finished) > 0:
-                    logging.info('reading current done.')
-                    donelist = readlist(self.donefile)
-                    logging.info('adding just finished.')
-                    alldone = listmerge(self.finished, donelist)
-                    writelist(self.donefile, alldone)
-                    self.log.debug(
-                        f"done writing donelist: {self.donefile}. sleeping {self.sleep} ...")
-                else:
-                    logging.info(
-                        'donefile is None or no new processing. No output.')
+                # overall stage sleep
                 time.sleep(self.sleep)
 
         except KeyboardInterrupt:
@@ -104,16 +118,19 @@ class Query(Stage):
         '''
         Perform one run for stage.  
         '''
-        self.log.debug('executing...')
+        self.log.debug(f'got dolist len={len(dolist)}. executing...')
         outlist = []
         for projectid in dolist:
+            self.log.debug(f'handling id {projectid}...')
             try:
                 sq = sra.Query(self.config)
                 out = sq.execute(projectid)
+                self.log.debug(f'done with {projectid}')
                 outlist.append(out)
             except Exception as ex:
                 self.log.warning(f"exception raised during project query: {projectid}")
                 self.log.error(traceback.format_exc(None))
+        self.log.debug(f"returning outlist len={len(outlist)}")
         return outlist
 
     def setup(self):

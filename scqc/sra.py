@@ -70,10 +70,14 @@ def get_configstr(cp):
         ss.seek(0)  # rewind
         return ss.read()
 
+class RunUnavailableException(Exception):
+    """ Thrown when Run in a Runset is unavailable.  """
+
 
 class Worker(Thread):
-    '''
-    '''
+    """
+    
+    """
 
     def __init__(self, q):
         self.q = q
@@ -167,10 +171,12 @@ class Query(object):
         self.log.info(f'handling projectid {projectid}')
         try:
             pdf = query_project_metadata(projectid)
-            self.log.debug(f'info: {pdf}')
+            #self.log.debug(f'info: {pdf}')
+            explist = list(pdf.Experiment)
+            self.log.info(f'projectid {projectid} has {len(explist)} experiments.')
             exprows = []
             runrows = []
-            for exp in list(pdf.Experiment):
+            for exp in explist:
                 exd = self.query_experiment_package_set(exp)
                 (rows, runs) = self.parse_experiment_package_set(exd)
                 exprows = itertools.chain(exprows, rows)
@@ -190,12 +196,9 @@ class Query(object):
             return projectid
         
         except Exception as ex:
-            self.log.error(f'problem with NCBI id {xid}')
+            self.log.error(f'problem with NCBI projectid {projectid}')
             logging.error(traceback.format_exc(None))
             raise ex
-
-
-            
       
       
     def query_experiment_package_set(self, xid):
@@ -313,6 +316,9 @@ class Query(object):
         
     def parse_run(self, run ):
         run_id = run.get('accession')
+        avail_status = run.get('unavailable')
+        if avail_status == 'true':
+            raise RunUnavailableException(f'run data unavailable for {run_id}')
         total_spots= run.get('total_spots') 
         total_bases=run.get('total_bases')
         size=run.get('size')
@@ -322,7 +328,6 @@ class Query(object):
         readcount=run.find('Statistics').find('Read').get('count')
         bases = run.find('Bases')
         basecount = bases.get('count')
-
         
         runrow = [run_id, total_spots, total_bases, size, taxon, organism, nreads, readcount, basecount ]
         return runrow
