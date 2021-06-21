@@ -829,6 +829,11 @@ if __name__ == "__main__":
                         default=None,
                         help='Perform standard query on uids in file, print project_ids.')
 
+    parser.add_argument('-o', '--outfile',
+                        metavar='outfile',
+                        type=str,
+                        default=None,
+                        help='Outfile. ')
 
     args = parser.parse_args()
 
@@ -888,11 +893,13 @@ if __name__ == "__main__":
         qfile = args.uidquery
         uidlist = readlist(os.path.expanduser(qfile))
         projlist = []
-        for uid in uidlist:
-            projid = query_project_for_uid(cp,uid)
-            if projid is not None:
-                print(projid)
-                sys.stdout.flush()
+        with open(args.outfile, 'w') as f:
+            for uid in uidlist:
+                projid = query_project_for_uid(cp,uid)
+                if projid is not None:
+                    f.write(f'{projid}\n')
+                    f.flush()
+
 
            
         
