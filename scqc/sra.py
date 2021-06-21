@@ -890,7 +890,9 @@ if __name__ == "__main__":
         projlist = []
         for uid in uidlist:
             projid = query_project_for_uid(cp,uid)
-            print(projid)
+            if projid is not None:
+                print(projid)
+                sys.stdout.flush()
 
            
         
