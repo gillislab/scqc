@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 #
+#  Module to deal with interactions with SRA and parsing SRA metadata. 
+#
 # http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=
 #
 # Could use  SRR14584407 SRR14584408 in example..
@@ -10,7 +12,7 @@ import itertools
 import json
 import logging
 import os
-import gzip
+
 import ast
 import glob
 from pathlib import Path
@@ -28,9 +30,12 @@ from queue import Queue, Empty
 
 import xml.etree.ElementTree as et
 import pandas as pd
+import numpy as np
 
+
+gitpath = os.path.expanduser("~/git/scqc")
+sys.path.append(gitpath)
 from scqc.utils import *
-
 
 # Translate between Python and SRAToolkit log levels for wrapped commands.
 #  fatal|sys|int|err|warn|info|debug
@@ -42,6 +47,14 @@ LOGLEVELS = {
     50: 'fatal',
 }
 
+# srp, srx, sra, gsm, gse, taxon, organism, title, pubdate, abstract, lcp, sample_attrib, np.nan 
+
+#META_COLUMNS = ['project', 'experiment', 'accession', 'gsm','gse', 'taxon_id', 'organism',  'title', 'pubdate', 
+#                'abstract', 'lcp', 'sample_attributes', 'tech', 'status']
+#PROJ_RUN_COLUMNS = ['project','run_id']
+
+EXP_COLUMNS = ['proj_id', 'exp_id', 'sra_id', 'gsm', 'gse', 'title', 'pubdate', 'abstract', 'lcp', 'sample_attributes' ]
+RUN_COLUMNS = ['run_id', 'tot_spots', 'tot_bases', 'size', 'taxon', 'organism', 'nreads', 'readcount', 'basecount' ]
 
 # john lee is satisfied with this class 6/3/2021
 def get_default_config():
@@ -78,193 +91,39 @@ class Worker(Thread):
 
 
 # john lee is satisfied with this class 6/3/2021
-class SetUp(object):
+def setup(config):
     '''
     Builds directories in config file 
-    Download the appropiate supplement data.
+    Download the appropriate supplement data.
     Only needs to be done once.
     '''
+    
+    log = logging.getLogger('sra')
+    config = config
+    # directories
+    metadir = os.path.expanduser( config.get('sra', 'metadir'))
+    cachedir = os.path.expanduser( config.get('sra', 'cachedir'))
+    tempdir = os.path.expanduser( config.get('sra', 'tempdir'))
+    resourcedir = os.path.expanduser(config.get('sra', 'resourcedir'))
 
-    def __init__(self, config):
-        self.log = logging.getLogger('sra')
-        self.config = config
-        # directories
-        self.metadir = os.path.expanduser(
-            self.config.get('DEFAULT', 'metadir'))
-        self.cachedir = os.path.expanduser(
-            self.config.get('DEFAULT', 'cachedir'))
-        self.tempdir = os.path.expanduser(
-            self.config.get('DEFAULT', 'tempdir'))
-        self.suppdir = os.path.expanduser(
-            self.config.get('DEFAULT', 'suppdir'))
-        self.staroutdir = os.path.expanduser(
-            self.config.get('DEFAULT', 'staroutdir'))
-
-        # genome generation
-        self.species = self.config.get('setup', 'species')
-        self.gtf_url = self.config.get('setup', 'gtf_url')
-        self.fa_url = self.config.get('setup', 'fa_url')
-        self.n_core = self.config.get('setup', 'n_core')
-
-    def make_directories(self):
-        try:
-            os.makedirs(self.metadir)
-        except FileExistsError:
-            pass
-        try:
-            os.makedirs(self.cachedir)
-        except FileExistsError:
-            pass
-        try:
-            os.makedirs(self.tempdir)
-        except FileExistsError:
-            pass
-        try:
-            os.makedirs(self.suppdir)
-        except FileExistsError:
-            pass
-        try:
-            os.makedirs(self.staroutdir)
-        except FileExistsError:
-            pass
-
-    def get_whitelists(self):
-        outDirec = "/".join([self.suppdir, "whitelists"])
-        try:
-            os.makedirs(outDirec)
-        except FileExistsError:
-            pass
-
-        urls = {
-            "whitelist_10xv1.txt": "https://github.com/10XGenomics/cellranger/raw/master/lib/python/cellranger/barcodes/737K-april-2014_rc.txt",
-            "whitelist_10xv2.txt": "https://github.com/10XGenomics/cellranger/raw/master/lib/python/cellranger/barcodes/737K-august-2016.txt",
-            "whitelist_10xv3.txt": "https://github.com/10XGenomics/cellranger/raw/master/lib/python/cellranger/barcodes/3M-february-2018.txt.gz"
-        }
-
-        for key in urls:
-            url = urls[key]
-            if not os.path.exists("/".join([outDirec, key])):
-                r = requests.get(url)
-
-                if r.status_code == 200:
-                    with open("/".join([outDirec, key]), "w") as f:
-
-                        if url.endswith(".gz"):
-                            f.write(gzip.decompress(r.content).decode())
-                        else:
-                            f.write(r.text)
-                else:
-                    self.log.info("Requesting " + url +
-                                  " failed with status_code: "+str(r.status_code))
-
+    
+    try:
+        os.makedirs(metadir)
+    except FileExistsError:
+        pass
+    try:
+        os.makedirs(cachedir)
+    except FileExistsError:
+        pass
+    try:
+        os.makedirs(tempdir)
+    except FileExistsError:
+        pass
+    try:
+        os.makedirs(resourcedir)
+    except FileExistsError:
         pass
 
-    # needs to be properly wrapped - currently uses os.system( ... )
-    # needs error handling if fasta/gtf links are bad
-    def _get_genome_data(self):
-
-        # if the species isn't human or mouse, require input of gtf/fa files
-        if (self.species not in ["mouse", "human"]):
-            assert self.gtf_url is not None, f"Please specify a GTF url for {self.species} in etc/scqc.conf"
-            assert self.fa_url is not None, f"Please specify a FASTA url for {self.species} in etc/scqc.conf"
-
-        # where are we keeping the genomes?
-        outdir = "/".join([self.suppdir, "genomes", self.species])
-        try:
-            os.makedirs(outdir)
-        except FileExistsError:
-            pass
-
-        spec2urls = {
-            "human": {
-                "fa": "ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_37/GRCh38.primary_assembly.genome.fa.gz",
-                "gtf": "ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_37/gencode.v37.annotation.gtf.gz"
-            },
-            "mouse": {
-                "fa": "ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M26/GRCm39.primary_assembly.genome.fa.gz",
-                "gtf": "ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M26/gencode.vM26.annotation.gtf.gz"
-            }
-        }
-
-        if self.gtf_url is not None:
-            gtf_url = spec2urls[self.species]["gtf"]
-        else:
-            gtf_url = self.gtf_url
-
-        if self.fa_url is not None:
-            fa_url = spec2urls[self.species]["fa"]
-        else:
-            fa_url = self.fa_url
-
-        flag = 0
-        # if the files are new, download them to the generic file names
-        # and create an empty file to identify current gtf/fa version
-        fa_tail = fa_url.split("/")[-1]
-        # this is a new fa file, let's overwrite the old genome.fa file
-        if not os.path.exists(f"{outdir}/{fa_tail}"):
-            self.log.info(f"... Downloading FASTA file for {self.species}")
-            os.system(f"wget -O {outdir}/genome.fa.gz {fa_url}")
-            os.system(f"gunzip -f {outdir}/genome.fa.gz")
-        else:  # fa file given is the current version
-            flag += 1
-
-        gtf_tail = gtf_url.split("/")[-1]
-        if not os.path.exists(f"{outdir}/{gtf_tail}"):
-            self.log.info(f"... Downloading GTF file for {self.species}")
-            os.system(f"wget -O {outdir}/annotation.gtf.gz {gtf_url}")
-            os.system(f"gunzip -f {outdir}/annotation.gtf.gz")
-        else:  # gtf file given is the current version
-            flag += 1
-
-        # remove all gz objects in the directory - only keeps the most recent
-        for p in Path(outdir).glob("*.gz"):
-            p.unlink()
-
-        # touch a gz file to remember gtf/fa version
-        Path(f"{outdir}/{fa_tail}").touch()
-        Path(f"{outdir}/{gtf_tail}").touch()
-
-        return(f"{outdir}/annotation.gtf", f"{outdir}/genome.fa", outdir, flag)
-
-    def generate_genome_index(self):
-
-        gtf_path, fa_path, outdir, flag = self._get_genome_data()
-        outdir = "/".join([outdir, "STAR_index"])
-
-        try:
-            os.makedirs(outdir)
-        except FileExistsError:
-            pass
-
-        if flag < 2:  # at least one file was updated. Let's re-generate the genome
-            self.log.info(f"... Generating the genome for {self.species}")
-
-            cmd = ["STAR",
-                   "--runMode", "genomeGenerate",
-                   "--runThreadN", f'{self.n_core}',
-                   "--genomeDir", f'{outdir}',
-                   "--genomeFastaFiles", f'{fa_path}',
-                   "--sjdbGTFfile", f'{gtf_path}']
-
-            cmdstr = " ".join(cmd)
-            cp = subprocess.run(cmd)
-            logging.debug(
-                f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
-            if str(cp.returncode) == "0":
-                pass
-
-        else:
-            self.log.info(
-                "... Genome Index has previously been generated with these GTF and FASTA files. Nothing to do.")
-
-    # to be done - get marker sets for mouse brain - see bin/getMarkers.R
-    def get_meta_marker_sets(self):
-        pass
-
-    def execute(self):
-        self.make_directories()
-        self.get_whitelists()
-        self.generate_genome_index()
 
 
 # To do: batch for large queries.
@@ -275,9 +134,14 @@ class SetUp(object):
 # requires more requests to the server and fails more often - my tests:  fails ~25% of the time
 # Note: repeated iterations of Query.execute() will include the failed UIDs
 class Query(object):
-    '''
-    '''
+    """
+    
+    Run info for sample and projects?
+    wget -qO- 'http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=SRS049712'
+    wget -qO- 'http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=SRP290125'
 
+   
+    """
     def __init__(self, config):
         self.log = logging.getLogger('sra')
         self.config = config
@@ -289,109 +153,195 @@ class Query(object):
         self.search_term = self.config.get('sra', 'search_term')
         self.query_max = self.config.get('sra', 'query_max')
         self.uidfile = os.path.expanduser(self.config.get('sra', 'uidfile'))
+        self.query_sleep = float(self.config.get('sra','query_sleep'))
 
-    def execute(self):
 
-        # url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra&term=%22rna+seq%22[Strategy]+%22mus+musculus%22[Organism]+%22single+cell%22[Text Word]+%22brain%22[Text Word]&retstart=&retmax=50&retmode=json"
-        self.log.info('querying SRA...')
-        url = f"{self.sra_esearch}&term={self.search_term}&retmax={self.query_max}&retmode=json"
-        self.log.debug(f"search url: {url}")
-        r = requests.get(url)
-        er = json.loads(r.content.decode('utf-8'))
-        logging.debug(f"er: {er}")
-        idlist = er['esearchresult']['idlist']
-        logging.debug(f"got idlist: {idlist}")
-        # filter ids by already done.
-        donelist = readlist(self.uidfile)
-        idlist = listdiff(idlist, donelist)
+    def execute(self, projectid):
+        """
+         For projectid:
+             Perform query, get ids, fetch for each id, parse XML response. 
+             Put project and run info in project_metadata.tsv and project_runs.tsv
+             Put completed project ids into query-donelist.txt
+         
+        """
+        self.log.info(f'handling projectid {projectid}')
+        try:
+            pdf = query_project_metadata(projectid)
+            self.log.debug(f'info: {pdf}')
+            exprows = []
+            runrows = []
+            for exp in list(pdf.Experiment):
+                exd = self.query_experiment_package_set(exp)
+                (rows, runs) = self.parse_experiment_package_set(exd)
+                exprows = itertools.chain(exprows, rows)
+                runrows = itertools.chain(runrows, runs)
+            exprows = list(exprows)
+            runrows = list(runrows)
+            logging.debug(f'final exprows: {exprows}')
+            logging.debug(f'final runrows: {runrows}')
+            edf = pd.DataFrame(exprows, columns=EXP_COLUMNS)
+            merge_write_df(edf, f'{self.metadir}/experiments.tsv' )
+                      
+            rdf = pd.DataFrame(runrows, columns=RUN_COLUMNS)
+            merge_write_df(rdf, f'{self.metadir}/runs.tsv' )                       
 
-        if len(idlist) > 0:
-            allrows = []
-            doneids = []
-            for id in idlist:
-                try:
-                    url = f"{self.sra_efetch}&id={id}"
-                    self.log.debug(f"fetch url={url}")
-                    r = requests.post(url)
-                    rd = r.content.decode()
-                    #logging.debug(f"data for id={id}: {rd}")
-                    rows = self._parse_experiment_pkg(rd)
-                    allrows = itertools.chain(allrows, rows)
-                    doneids.append(id)
-                except Exception as ex:
-                    self.log.error(f'problem with NCBI uid {id}')
-                    logging.error(traceback.format_exc(None))
-                    time.sleep(1)
+            self.log.info(f'successfully processed project {projectid}')
+            # return projectid only if it has completed successfully. 
+            return projectid
+        
+        except Exception as ex:
+            self.log.error(f'problem with NCBI id {xid}')
+            logging.error(traceback.format_exc(None))
+            raise ex
 
-            newdone = listmerge(donelist, doneids)
-            self.log.info(f'updating uid done list...')
-            writelist(self.uidfile, newdone)
 
-            df = pd.DataFrame(allrows, columns=["project", "experiment", "submission", "runs", "alias",
-                              "date", "taxon_id", "organism", "lcp", "title", "abstract", "sample_attributes"])
-            df = df.fillna(value="")  # fill None with empty strings.
+            
+      
+      
+    def query_experiment_package_set(self, xid):
+        """
+        Query XML data for this experiment ID. 
+        
+        """
+        xmldata = None
+        try:
+            url = f"{self.sra_efetch}&id={xid}"
+            self.log.debug(f"fetch url={url}")
+            r = requests.post(url)
+            if r.status_code == 200:
+                xmldata = r.content.decode()
+                self.log.debug(f'good HTTP response for {xid}')
+            else:
+                self.log.warn(f'bad HTTP response for id {xid}')
+            
+        except Exception as ex:
+            self.log.error(f'problem with NCBI id {xid}')
+            logging.error(traceback.format_exc(None))
+        
+        finally:
+            self.log.debug(f"sleeping {self.query_sleep} secs between fetch calls...")
+            time.sleep(self.query_sleep)
+        return xmldata
 
-            df = self._impute_tech(df)
-            df["status"] = "tech_imputed"
 
-            self._split_df_by_project(df)   # saves dfs by project accession
-
-            filepath = f"{self.metadir}/all_metadata.tsv"
-            logging.info(f"saving metadata df to {filepath}")
-            df.to_csv(filepath,
-                      sep="\t",
-                      mode='a',
-                      index=False,
-                      header=not os.path.exists(filepath))
-
-            sl = list(df.runs)
-            sralist = list(itertools.chain.from_iterable(sl))
-            return sralist
-        else:
-            self.log.info('no new uids to process...')
-            return []
-
-    # added sample attributes
-    def _parse_experiment_pkg(self, xmlstr):
+    def parse_experiment_package_set(self, xmlstr):
+        """
+        package sets should have one package per uid pulled via efetch, e.g.
+        
+        https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=sra&id=12277089,12277091
+        https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=sra&id=13333495 
+        
+        """
         root = et.fromstring(xmlstr)
         self.log.debug(f"root={root}")
-        rows = []
+        exp_rows = []
+        run_rows = []
+        n_processed = 0
         for exp in root.iter("EXPERIMENT_PACKAGE"):
-            for lcp in exp[0].iter("LIBRARY_CONSTRUCTION_PROTOCOL"):
-                lcp = lcp.text
-            SRXs = exp[0].get('accession')
-            SRAs = exp[1].get('accession')
-            SRPs = exp[3].get('accession')
-            alias = exp[0].get('alias')
-            # title = exp[3][1][0].text
-            abstract = exp[3][1][2].text
-            SRRs = []
-            date = []
-            taxon = []
-            orgsm = []
-            sample_attrib = {}
-            for study in exp[3].iter("STUDY_TITLE"):
-                title = study.text
-            for study in exp[3].iter("STUDY_ABSTRACT"):
-                abstract = study.text
+            (newrows, newruns) = self.parse_experiment_package(exp)        
+            exp_rows.append(newrows)
+            #run_rows.append(newruns)
+            run_rows = itertools.chain(run_rows, newruns)
+            n_processed += 1
+        self.log.debug(f"processed {n_processed} experiment packages.")
+        run_rows = list(run_rows)
+        self.log.debug(f'returning \n    exp_rows: {exp_rows} \n    run_rows: {run_rows}')
+        return (exp_rows, run_rows)
+     
+           
+    def parse_experiment_package(self, root):
+        """
+        NCBI provides no XSD, so we shouldn't rely on order
+                
+        """
+        self.log.debug('parsing experiment package...')
+        exp = root.find('EXPERIMENT')
+        sub = root.find('SUBMISSION')
+        proj = root.find('STUDY')
+        samp = root.find('SAMPLE')
+        runs = root.find('RUN_SET')
+        
+        # get experiment properties. 
+        exp_id = exp.get('accession')
+        gsm = exp.get('alias')
+        try:
+            lcp = exp.find('DESIGN').find('LIBRARY_DESCRIPTOR').find('LIBRARY_CONSTRUCTION_PROTOCOL').text
+        except:
+            lcp = ''
+        
+        lcp = lcp.strip()
+                
+        # get submission properties
+        sra_id = sub.get('accession')
 
-            for run in exp.iter("RUN"):
-                SRRs.append(run.attrib['accession'])
-                date.append(run.attrib['published'])
-                for mem in run.iter("Member"):
-                    taxon.append(mem.attrib['tax_id'])
-                    orgsm.append(mem.attrib['organism'])
+        # get study/project properties title, abstract
+        proj_id = proj.get('accession')
+        gse = proj.get('alias')        
+        d_elem=proj.find('DESCRIPTOR')
+        title = d_elem.find('STUDY_TITLE').text
+        abstract = d_elem.find('STUDY_ABSTRACT').text
+                
+        # get sample properties
+        samp_id = samp.get('accession')
+        sample_attributes = {}
+        for elem in samp.find('SAMPLE_ATTRIBUTES').findall('SAMPLE_ATTRIBUTE'):
+            tag = elem.find('TAG').text
+            val = elem.find('VALUE').text
+            sample_attributes[tag] = val
+        
+        sample_attributes = str(sample_attributes)        
+        pubdate = runs.find('RUN').get('published')
 
-            for sample in exp.iter("SAMPLE_ATTRIBUTE"):
-                tag = sample[0].text
-                value = sample[1].text
-                sample_attrib[tag] = value
+        runrows = self.parse_run_set(runs)
+        
+        self.log.debug(f'exprow: proj_id={proj_id} exp_id={exp_id} gsm={gsm} sra_id={sra_id} gse={gse} samp_id={samp_id}')          
+        exprow = [proj_id, exp_id, sra_id, gsm, gse, title, pubdate, abstract, lcp, sample_attributes ]
+        self.log.debug(f'exprow: {exprow} \n  runrows: {runrows}')
+        return( exprow, runrows)
+    
 
-            row = [SRPs, SRXs, SRAs, SRRs, alias, date, taxon,
-                   orgsm, lcp, title, abstract, sample_attrib]
-            self.log.debug(f'got SRRs: {SRRs}')
-            rows.append(row)
-        return rows
+    def parse_run_set(self, runs):
+        """
+        
+        """
+        runrows = []
+        for run in runs.findall('RUN'):
+            runrow = self.parse_run(run)
+            runrows.append(runrow)
+        return runrows
+    
+        
+    def parse_run(self, run ):
+        run_id = run.get('accession')
+        total_spots= run.get('total_spots') 
+        total_bases=run.get('total_bases')
+        size=run.get('size')
+        taxon = run.find('Pool').find('Member').get('tax_id')
+        organism = run.find('Pool').find('Member').get('organism')
+        nreads= run.find('Statistics').get('nreads')
+        readcount=run.find('Statistics').find('Read').get('count')
+        bases = run.find('Bases')
+        basecount = bases.get('count')
+
+        
+        runrow = [run_id, total_spots, total_bases, size, taxon, organism, nreads, readcount, basecount ]
+        return runrow
+      
+
+    def query_runs_for_project(self, project):
+        """     
+         wget -qO- 'http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=SRP290125'
+Run,ReleaseDate,LoadDate,spots,bases,spots_with_mates,avgLength,size_MB,AssemblyName,download_path,Experiment,LibraryName,LibraryStrategy,LibrarySelection,LibrarySource,LibraryLayout,InsertSize,InsertDev,Platform,Model,SRAStudy,BioProject,Study_Pubmed_id,ProjectID,Sample,BioSample,SampleType,TaxID,ScientificName,SampleName,g1k_pop_code,source,g1k_analysis_group,Subject_ID,Sex,Disease,Tumor,Affection_Status,Analyte_Type,Histological_Type,Body_Site,CenterName,Submission,dbgap_study_accession,Consent,RunHash,ReadHash
+SRR12951718,2020-11-05 13:15:13,2020-11-05 12:55:40,128538925,12596814650,0,98,3781,GCA_000001635.4,https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos3/sra-pub-run-19/SRR12951718/SRR12951718.1,SRX9404801,,RNA-Seq,cDNA,TRANSCRIPTOMIC,SINGLE,0,0,ILLUMINA,NextSeq 550,SRP290125,PRJNA673364,3,673364,SRS7622575,SAMN16604770,simple,10090,Mus musculus,GSM4873966,,,,,,,no,,,,,GEO,SRA1151197,,public,1790FB1FF1C3B1A1D0E1958BE6859830,86BE0A6ECACE94B3BC53AFA6FE2A258F
+SRR12951719,2020-11-05 12:52:07,2020-11-05 12:39:41,137453038,13470397724,0,98,4581,GCA_000001635.4,https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos3/sra-pub-run-21/SRR12951719/SRR12951719.1,SRX9404802,,RNA-Seq,cDNA,TRANSCRIPTOMIC,SINGLE,0,0,ILLUMINA,NextSeq 550,SRP290125,PRJNA673364,3,673364,SRS7622574,SAMN16604769,simple,10090,Mus musculus,GSM4873967,,,,,,,no,,,,,GEO,SRA1151197,,public,8C05F51EF726335BE2C41DB9A6323EC4,2C810A53A72F30ECAC8AAD71B4E55CAB
+SRR12951720,2020-11-05 12:26:06,2020-11-05 12:13:08,100175297,9817179106,0,98,2840,GCA_000001635.4,https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos3/sra-pub-run-19/SRR12951720/SRR12951720.1,SRX9404803,,RNA-Seq,cDNA,TRANSCRIPTOMIC,SINGLE,0,0,ILLUMINA,NextSeq 550,SRP290125,PRJNA673364,3,673364,SRS7622576,SAMN16604768,simple,10090,Mus musculus,GSM4873968,,,,,,,no,,,,,GEO,SRA1151197,,public,D02C61154EB828AB07968FF1BFE52485,D80E2EB7A3A50FCE5062F584FD58FD8F
+        
+
+        """
+        pass
+
+
+    
 
     def _impute_tech(self, df):
         '''
@@ -449,23 +399,40 @@ class Query(object):
         df = df.merge(ulcp, on="lcp")
         return df
 
-    # also splits by imputed technology. Allows us to prioritize downloads by technology
     def _split_df_by_project(self, df):
         self.metadir
         for srp, srp_df in df.groupby('project', as_index=False):
 
             for tech, srp_tech_df in srp_df.groupby('method', as_index=False):
-                outfile = f'{self.metadir}/{srp}_{tech}_metadata.tsv'
+                outfile = f'{self.metadir}/{srp}_metadata.tsv'
                 srp_tech_df.to_csv(outfile, sep="\t", mode="a",
                                    index=False, header=not os.path.exists(outfile))
 
         return
 
 
+
+class PrefetchProject(object):
+    """
+    Handles all runid Prefetches for a project. 
+    
+    """
+    def __init__(self, config, proj_id, outlist):
+        self.log = logging.getLogger('sra')
+        self.config = config
+        self.proj_id = proj_id
+        self.outlist = outlist
+        self.sracache = os.path.expanduser(self.config.get('sra', 'cachedir'))
+        self.log.debug(f'prefetch for {proj_id}')
+
+#    def 
+
+
+
 # John Lee is satisfied with this class 6/03/2021
 # inputs are runs i.e. SRR
 # downloads .sra
-class Prefetch(object):
+class PrefetchRun(object):
     '''
         Simple wrapper for NCBI prefetch
     Usage: prefetch [ options ] [ accessions(s)... ]
@@ -527,6 +494,8 @@ class Prefetch(object):
         self.log.debug(f'prefetch id {self.runid}')
         loglev = LOGLEVELS[self.log.getEffectiveLevel()]
         cmd = ['prefetch',
+               '-X','100G',
+               '--resume','yes',
                '-O', f'{self.sracache}/',
                '--log-level', f'{loglev}',
                f'{self.runid}']
@@ -609,282 +578,26 @@ class FasterqDump(object):
         if str(cp.returncode) == "0":
             self.outlist.append(self.srrid)
 
+def get_runs_for_project(config, projectid):
+    """
+    
+    """
+    metadir = os.path.expanduser(config.get('sra','metadir'))
+    filepath = f"{metadir}/project_runs.tsv"
+    if os.path.isfile(filepath):
+        pdf = pd.read_csv(filepath, sep='\t', index_col=0, comment="#")
+        return list(pdf[pdf.project == 'SRP281950'].run_id)
+    else:
+        return [] 
 
-# inputs should be runs  identified as 'some10x'
-# fastq files should already downloaded.
-# srrid and species needs to be passed in from the dataframe
-# can pass star parameters from config
-class Align10xSTAR(object):
+
+def query_project_metadata(project_id):
     '''
-        - Identifies 10x version
-        - gets the path to fastq files
-        - 
-        Simple wrapper for STAR - 10x input
-    '''
-
-    def __init__(self, config, srrid, species, outlist):
-        self.log = logging.getLogger('sra')
-        self.config = config
-
-        self.tempdir = os.path.expanduser(
-            self.config.get('analysis', 'tempdir'))
-        self.srrid = srrid
-        self.log.debug(f'aligning id {srrid}')
-        self.staroutdir = os.path.expanduser(
-            self.config.get('analysis', 'staroutdir'))
-        self.suppdir = os.path.expanduser(
-            self.config.get('analysis', 'suppdir'))
-        self.species = species
-        self.outlist = outlist
-        self.num_streams = self.config.get('analysis', 'num_streams')
-
-    # should  this be moved to query? download?
-    # Note: special cases....
-    #       umi+cb = 30(v3) , 25(v2)
-    def _impute_10x_version(self):
-        # look at the first few lines of the fastq file.
-        loglev = LOGLEVELS[self.log.getEffectiveLevel()]
-
-        cmd = ['fastq-dump',
-               '--maxSpotId', '1',
-               '--split-spot',
-               '--stdout',
-               # '--outdir' , f'{self.tempdir}/',
-               '--log-level', f'{loglev}',
-               f'{self.cachedir}/{self.srrid}.sra']
-
-        cp = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-        dat = cp.stdout.read().decode("utf-8").split('\n')[:-1]
-
-        # get the lengths of each read.
-        lengths = {}
-        it = 1
-        for line in dat[0::4]:  # look at every 4 lines for the length of the read
-            lengths[f'{self.srrid}_{it}.fastq'] = line.split("length=")[-1]
-            it += 1
-
-        l = [int(l) for l in lengths.values()]
-        ind = l.index(max(l))
-
-        read_bio = list(lengths.keys())[ind]
-        read_bio = f'{self.cachedir}/{read_bio}'
-
-        # 10xv2 is typically 98 bp
-        # 10xv3 is typically 91 bp
-
-        tech = "unknown"
-        for i in range(len(lengths)):
-            if l[i] == 24:
-                tech = "10xv1"
-                ind2 = i
-            elif l[i] == 26:
-                ind2 = i
-                tech = "10xv2"
-            elif l[i] == 28:
-                ind2 = i
-                tech = "10xv3"
-
-        if tech == "unknown":
-            read_tech = None
-        else:
-            read_tech = list(lengths.keys())[ind2]
-            read_tech = f'{self.cachedir}/{read_tech}'
-
-        return(read_bio, read_tech, tech)
-
-    def _get_10x_STAR_parameters(self, tech):
-        d = {
-            "10xv1":
-                {
-                    "solo_type": "CB_UMI_Simple",
-                    "white_list_path": f'{self.suppdir}/whitelists/whitelist_10xv1.txt',
-                    "CB_length": "14",
-                    "UMI_start": "15",
-                    "UMI_length": "10"
-                },
-            "10xv2":
-                {
-                    "solo_type": "CB_UMI_Simple",
-                    "white_list_path": f'{self.suppdir}/whitelists/whitelist_10xv2.txt',
-                    "CB_length": "16",
-                    "UMI_start": "17",
-                    "UMI_length": "10"
-                },
-            "10xv3":
-                {
-                    "solo_type": "CB_UMI_Simple",
-                    "white_list_path": f'{self.suppdir}/whitelists/whitelist_10xv3.txt',
-                    "CB_length": "16",
-                    "UMI_start": "17",
-                    "UMI_length": "12"
-                }
-        }
-        return(d[tech])
-
-    # tested on SRR14633482 - did not get a Solo.out directory? Ran with 10xv3 params (though umi+cb=30)
-    def execute(self):
-        read_bio, read_tech, tech = self._impute_10x_version()
-        star_param = self._get_10x_STAR_parameters(tech)  # as dictionary
-
-        if tech != 'unknown':
-            cmd = ['STAR',
-                   '--runMode', 'alignReads',
-                   '--runThreadN', f'{self.num_streams}',
-                   '--genomeDir', f'{self.suppdir}/genomes/{self.species}/STAR_index',
-                   '--outFileNamePrefix', f'{self.staroutdir}/{self.srrid}_{tech}_',
-                   '--soloType', star_param["solo_type"],
-                   '--soloCBwhitelist', star_param["white_list_path"],
-                   '--soloCBlen', star_param["CB_length"],
-                   '--soloUMIstart', f'{int(star_param["CB_length"]) + 1}',
-                   '--soloUMIlen', star_param["UMI_length"],
-                   '--soloFeatures', 'Gene',
-                   '--readFilesIn', read_bio, read_tech,
-                   '--outSAMtype', 'None']
-
-            cp = subprocess.run(cmd)
-
-            cmdstr = " ".join(cmd)
-            logging.debug(f"Fasterq-dump command: {cmdstr} running...")
-            cp = subprocess.run(cmd)
-            logging.debug(
-                f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
-            # successful runs - append to outlist.
-            if str(cp.returncode) == "0":
-                self.outlist.append(self.srrid)
-
-        else:
-            pass
-
-
-# currently, if solo.out dir exsts, save results to the temp directory
-# then merge results with previous star runs (to do)
-# input should be a project accession
-# no real way to verify that the reads are indeed smartseq...
-# can pass star parameters from config
-class AlignSmartSeqSTAR(object):
-
-    def __init__(self, config, species, srpid, outlist):
-        self.log = logging.getLogger('sra')
-        self.config = config
-
-        self.tempdir = os.path.expanduser(
-            self.config.get('analysis', 'tempdir'))
-        self.srpid = srpid
-        self.log.debug(f'aligning smartseq run from {srpid}')
-        self.staroutdir = os.path.expanduser(
-            self.config.get('analysis', 'staroutdir'))
-        self.suppdir = os.path.expanduser(
-            self.config.get('analysis', 'suppdir'))
-        self.species = species
-        self.outlist = outlist
-        self.num_streams = self.config.get('analysis', 'num_streams')
-
-    def _make_manifest(self):
-        # search for all fastq files with <run>_[0-9].fastq
-        manipath = f"{self.metadir}/{self.srpid}_smartseq_manifest.tsv"
-
-        # metadata here should only contain smart seq data.
-        df = pd.read_csv(
-            f'{self.metadir}/{self.srpid}_smartseq_metadata.tsv', sep="\t")
-
-        df.runs = df.runs.apply(ast.literal_eval)
-        df = df.explode('runs')
-        # runlist = df.runs.values
-
-        # runid = runlist[1]
-        allRows = []
-        for runid in df.runs:
-            fqs = glob.glob(f'{self.cachedir}/{runid}*.fastq').sort()
-
-            if len(fqs) > 0 and len(fqs) < 3:  # fastq files found
-                if len(fqs) == 1:
-                    fqs.append(['-', runid])
-                elif len(fqs) == 2:
-                    fqs.append(runid)
-
-                allRows.append(fqs)
-
-        manifest = pd.DataFrame(allRows, columns=['read1', 'read2', 'run'])
-
-        # overwrite
-        manifest.to_csv(manipath, sep="\t", header=None, index=False, mode="w")
-
-        return(manipath, manifest)
-
-    # to do;
-    def _merge_solo_out_results(self, final_path, temp_path):
-        '''
-        Merge the Solo.out results for two star runs on different parts of the data
-        '''
-        # merge data,
-
-        # delete from temp
-
-        pass
-
-    def execute(self):
-
-        ss_params = {"solo_type": "SmartSeq",
-                     "soloUMIdedup": "Exact",
-                     "soloStrand": "Unstranded"}
-
-        manipath, manifest = self._make_manifest()
-
-        # do we already have star output for this project.
-        # If so, save starout results in a temp directory, merge data/stats
-        # then delete tmp
-        runs_done_file = f'{self.staroutdir}/{self.srpid}_smartseq_Solo.out/Gene/raw/barcodes.tsv'
-        if os.path.isfile(runs_done_file):
-            runs_done = open(runs_done_file).read().strip().split('\n')
-
-            # of the runs that i find in the manifest, which have already been aligned?
-            new_runs = listdiff(manifest.run.values, runs_done)
-            #list(set(manifest.run.values) - set(runs_done)).sort()
-            tmp_mani = manifest.loc[new_runs == manifest.run, :]
-
-            # save tmp manifest to temp directory - may be empty
-            tmp_manipath = manipath.replace(
-                f'{self.metadir}', f'{self.tempdir}')
-            tmp_mani.to_csv(tmp_manipath, sep="\t")
-            out_file_prefix = f'{self.tempdir}/{self.srpid}_smartseq_'
-        else:
-            tmp_manipath = manipath
-            out_file_prefix = f'{self.staroutdir}/{self.srpid}_smartseq_'
-
-        cmd = ['STAR',
-               '--runMode', 'alignReads',
-               '--runThreadN', f'{self.num_streams}',
-               '--genomeDir', f'{self.suppdir}/genomes/{self.species}/STAR_index',
-               '--outFileNamePrefix', out_file_prefix,
-               '--soloType', ss_params["solo_type"],
-               '--soloFeatures', 'Gene',
-               '--readFilesManifest', f'{tmp_manipath}',
-               '--soloUMIdedup', ss_params["soloUMIdedup"],
-               '--soloStrand', ss_params["soloStrand"],
-               '--outSAMtype', 'None']
-
-        cmdstr = " ".join(cmd)
-
-        logging.debug(f"STAR command: {cmdstr} running...")
-        cp = subprocess.run(cmd)
-
-        logging.debug(
-            f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
-        # successful runs - append to outlist.
-        if str(cp.returncode) == "0":
-            self.outlist.append(self.srrid)
-
-        # did we write to a temp directory?
-        if out_file_prefix.startswith(f'{self.tempdir}'):
-            self._merge_solo_out_results(
-                f'{self.staroutdir}/{self.srpid}_smartseq_',    # starout direc
-                out_file_prefix)                                # temp direc
-
-
-def get_run_metadata(sraproject):
-    '''
+    E.g. https://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?db=sra&rettype=runinfo&save=efetch&term=SRP131661
+    
 
     '''
+    log= logging.getLogger('sra')
     url = "https://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi"
 
     headers = {
@@ -904,12 +617,128 @@ def get_run_metadata(sraproject):
         "db": "sra",
         "rettype": "runinfo",
         "save": "efetch",
-        "term": sraproject}
-
+        "term": project_id}
+    
+    log.debug('opening request...')
     r = requests.put(url, data=payload, headers=headers, stream=True)
+    log.debug('got return info. reading content...')
     with io.BytesIO(r.content) as imf:
         df = pd.read_csv(imf)
     return df
+
+
+def query_all_uids(config):
+    """
+    Perform standard query with max return, loop over all entries. 
+    
+    retstart="+str(retstart)+"&retmax="+str(retmax)+"&retmode=json" 
+    
+    """
+    sra_esearch = config.get('sra', 'sra_esearch')
+    sra_efetch = config.get('sra', 'sra_efetch')
+    search_term = config.get('sra', 'search_term')
+    query_max = 50000
+    query_start = 0
+    
+    log = logging.getLogger('sra')
+    log.info('querying SRA...')
+    alluids = []
+    while True:
+        try:
+            url = f"{sra_esearch}&term={search_term}&retstart={query_start}&retmax={query_max}&retmode=json"
+            log.debug(f"search url: {url}")
+            r = requests.get(url)
+            er = json.loads(r.content.decode('utf-8'))
+            #log.debug(f"er: {er}")
+            idlist = er['esearchresult']['idlist']
+            log.debug(f"got idlist length={len(idlist)}")
+            if len(idlist) > 0:
+                for id in idlist:
+                    alluids.append(id)
+                query_start += query_max
+            else:
+                break
+        except Exception as ex:
+            #log.error(f'problem with NCBI uid {id}')
+            log.error(traceback.format_exc(None))
+        
+    log.debug(f'found {len(alluids)} uids.')
+    for i in alluids: 
+        print(i)
+
+def query_project_for_uid(config, uid):
+    """
+    Non OOP version of the Query method
+    """
+    log = logging.getLogger('sra')
+    sra_efetch = config.get('sra', 'sra_efetch')
+    url = f"{sra_efetch}&id={uid}"
+    log.debug(f"fetch url={url}")
+    proj_id = None
+    r = requests.post(url)
+    if r.status_code == 200:
+        rd = r.content.decode()
+        root = et.fromstring(rd)
+        proj_id = root.find('EXPERIMENT_PACKAGE').find('STUDY').get('accession')
+        log.debug(f'found project id: {proj_id}')
+    time.sleep(0.5)
+    return proj_id
+
+# should  this be moved to query? download?
+# Note: special cases....
+#       umi+cb = 30(v3) , 25(v2)
+def _impute_10x_version(self):
+    # look at the first few lines of the fastq file.
+    loglev = LOGLEVELS[self.log.getEffectiveLevel()]
+
+    cmd = ['fastq-dump',
+           '--maxSpotId', '1',
+           '--split-spot',
+           '--stdout',
+           # '--outdir' , f'{self.tempdir}/',
+           '--log-level', f'{loglev}',
+           f'{self.cachedir}/{self.srrid}.sra']
+
+    cp = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    dat = cp.stdout.read().decode("utf-8").split('\n')[:-1]
+
+    # get the lengths of each read.
+    lengths = {}
+    it = 1
+    for line in dat[0::4]:  # look at every 4 lines for the length of the read
+        lengths[f'{self.srrid}_{it}.fastq'] = line.split("length=")[-1]
+        it += 1
+
+    l = [int(l) for l in lengths.values()]
+    ind = l.index(max(l))
+
+    read_bio = list(lengths.keys())[ind]
+    read_bio = f'{self.cachedir}/{read_bio}'
+
+    # 10xv2 is typically 98 bp
+    # 10xv3 is typically 91 bp
+
+    tech = "unknown"
+    for i in range(len(lengths)):
+        if l[i] == 24:
+            tech = "10xv1"
+            ind2 = i
+        elif l[i] == 26:
+            ind2 = i
+            tech = "10xv2"
+        elif l[i] == 28:
+            ind2 = i
+            tech = "10xv3"
+
+    if tech == "unknown":
+        read_tech = None
+    else:
+        read_tech = list(lengths.keys())[ind2]
+        read_tech = f'{self.cachedir}/{read_tech}'
+
+    return(read_bio, read_tech, tech)
+
+
 
 
 # to do: include drivers for 10x and ss alignments
@@ -920,7 +749,7 @@ if __name__ == "__main__":
 
     FORMAT = '%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
     logging.basicConfig(format=FORMAT)
-    logging.getLogger().setLevel(logging.DEBUG)
+    logging.getLogger().setLevel(logging.WARN)
 
     parser = argparse.ArgumentParser()
 
@@ -940,9 +769,11 @@ if __name__ == "__main__":
                         help='Set up directories and downloads supplemental data')
 
     parser.add_argument('-q', '--query',
-                        action="store_true",
-                        dest='query',
-                        help='Perform standard query')
+                        metavar='query',
+                        type=str,
+                        nargs='+', 
+                        default=None,
+                        help='Perform standard query on supplied projectid')
 
     parser.add_argument('-f', '--fasterq',
                         metavar='fasterq',
@@ -958,9 +789,9 @@ if __name__ == "__main__":
                         nargs='+',
                         required=False,
                         default=None,
-                        help='Download args with prefetch. e.g. SRR14584407')
+                        help='Download (Run) args with prefetch. e.g. SRR14584407')
 
-    parser.add_argument('-tx', '--tenx',
+    parser.add_argument('-t', '--tenx',
                         metavar='tenx_align',
                         type=str,
                         nargs='+',
@@ -984,6 +815,15 @@ if __name__ == "__main__":
                         default=None,
                         help='Download metadata for args. ')
 
+    parser.add_argument('-u','--uidquery',
+                        metavar='uidfile',
+                        type=str,
+                        dest='uidquery',
+                        required=False,
+                        default=None,
+                        help='Perform standard query on uids in file, print project_ids.')
+
+
     args = parser.parse_args()
 
     if args.debug:
@@ -1000,9 +840,10 @@ if __name__ == "__main__":
         s = SetUp(cp)
         s.execute()
 
-    if args.query:
+    if args.query is not None:
         q = Query(cp)
-        q.execute()
+        for pid in args.query:
+            q.execute(pid)
 
     if args.prefetch is not None:
         dq = Queue()
@@ -1031,8 +872,21 @@ if __name__ == "__main__":
         logging.debug('all workers done...')
 
     elif args.metadata is not None:
-        for srr in args.metadata:
-            df = get_run_metadata(srr)
+        for srp in args.metadata:
+            df = query_project_metadata(srp)
             logging.debug(f"Got list of {len(df)} runs")
             runs = list(df['Run'])
             logging.info(f"Runlist: {runs}")
+    
+    if args.uidquery is not None:
+        qfile = args.uidquery
+        uidlist = readlist(os.path.expanduser(qfile))
+        projlist = []
+        for uid in uidlist:
+            projid = query_project_for_uid(cp,uid)
+            projlist.append(projid)
+        
+        for pid in projlist:
+            print(pid)
+            
+        

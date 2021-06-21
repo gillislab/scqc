@@ -69,7 +69,7 @@ def loadProjectData(project_acc,metaDirec = "MetaData" ) :
     return (dfout)
 
 # given 10x runs, figure out what version of 10x was used by length of spots
-def getReadFilesIn_10x(run ,project_acc, fastqstoredir) :
+def getReadFilesIn_10x(run , project_acc, fastqstoredir) :
 
 
     # look at the first spot - 

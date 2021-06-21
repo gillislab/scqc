@@ -14,8 +14,14 @@ import traceback
 from configparser import ConfigParser
 from queue import Queue
 
-from scqc import sra
+from scqc import sra, star
 from scqc.utils import *
+
+
+def get_default_config():
+    cp = ConfigParser()
+    cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
+    return cp
 
 
 class Stage(object):
@@ -99,12 +105,19 @@ class Query(Stage):
         Perform one run for stage.  
         '''
         self.log.debug('executing...')
-        self.log.info('ignoring dolist for query.')
-        sq = sra.Query(self.config)
-        outlist = sq.execute()
+        outlist = []
+        for projectid in dolist:
+            try:
+                sq = sra.Query(self.config)
+                out = sq.execute(projectid)
+                outlist.append(out)
+            except Exception as ex:
+                self.log.warning(f"exception raised during project query: {projectid}")
+                self.log.error(traceback.format_exc(None))
         return outlist
 
-# to do: pf.execute() followed by FasterqDump
+    def setup(self):
+        sra.setup(self.config)
 
 
 class Download(Stage):
@@ -121,10 +134,16 @@ class Download(Stage):
         '''
         self.log.debug(f'executing {self.name}')
         outlist = []
+        runlist = []
         dq = Queue()
-        for runid in dolist:
-            pf = sra.Prefetch(self.config, runid, outlist)
-            dq.put(pf)
+        for projectid in dolist:
+            runids = sra.get_runs_for_project(self.config, projectid)
+            self.log.debug(f'got runids to prefetch: {runids}')
+            for runid in runids:
+                projfetch = sra.ProjectPrefetch(self.config, projid, outlist)
+                #pf = sra.Prefetch(self.config, runid, outlist)
+                dq.put(pf)
+            outlist.append(projectid)
         logging.debug(f'created queue of {dq.qsize()} items')
         md = int(self.config.get('sra', 'max_downloads'))
         for n in range(md):
@@ -132,27 +151,40 @@ class Download(Stage):
         logging.debug('waiting to join threads...')
         dq.join()
         logging.debug('all workers done...')
+        logging.info(f'prefetched runs: {runlist}')
         return outlist
+
+
+    def setup(self):
+        sra.setup(self.config)
 
 
 class Analysis(Stage):
 
     def __init__(self, config):
-        super(Download, self).__init__(config, 'analysis')
+        super(Analysis, self).__init__(config, 'analysis')
         self.log.debug('super() ran. object initialized.')
 
     def execute(self):
         pass
+
+    def setup(self):
+        star.setup(self.config)
 
 
 class Statistics(Stage):
 
     def __init__(self, config):
-        super(Download, self).__init__(config, 'analysis')
+        super(Statistics, self).__init__(config, 'analysis')
         self.log.debug('super() ran. object initialized.')
 
     def execute(self):
         pass
+
+    def setup(self):
+        pass
+
+
 
 
 class CLI(object):
@@ -179,6 +211,13 @@ class CLI(object):
                             dest='conffile',
                             default='~/git/scqc/etc/scqc.conf',
                             help='Config file path [~/git/scqc/etc/scqc.conf]')
+
+        parser.add_argument('-s', '--setup',
+                            action="store_true",
+                            dest='setup',
+                            help='perform setup for chosen daemon and exit...'
+                            )
+
 
         subparsers = parser.add_subparsers(dest='subcommand',
                                            help='sub-command help.')
@@ -214,19 +253,32 @@ class CLI(object):
 
         if args.subcommand == 'query':
             d = Query(cp)
-            d.run()
+            if args.setup:
+                d.setup()
+            else:
+                d.run()
 
         if args.subcommand == 'download':
             d = Download(cp)
-            d.run()
+            if args.setup:
+                d.setup()
+            else:
+                d.run()
 
         if args.subcommand == 'analysis':
             d = Analysis(cp)
-            d.run()
+            if args.setup:
+                d.setup()
+            else:
+                d.run()
 
         if args.subcommand == 'statistics':
             d = Statistics(cp)
-            d.run()
+            if args.setup:
+                d.setup()
+            else:
+                d.run()
+
 
     def get_configstr(self, cp):
         with io.StringIO() as ss:
