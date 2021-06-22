@@ -169,10 +169,10 @@ class Query(object):
 
     def execute(self, projectid):
         """
-         For projectid:
-             Perform query, get ids, fetch for each id, parse XML response. 
-             Put project and run info in project_metadata.tsv and project_runs.tsv
-             Put completed project ids into query-donelist.txt
+        For projectid:
+            Perform query, get ids, fetch for each id, parse XML response. 
+            Put project and run info in project_metadata.tsv and project_runs.tsv
+            Put completed project ids into query-donelist.txt
 
         """
         self.log.info(f'handling projectid {projectid}')
@@ -284,41 +284,23 @@ class Query(object):
         runs = root.find('RUN_SET')
 
         # get experiment properties.
-        exp_id = exp.get('accession')
-        gsm = exp.get('alias')
-        try:
-            lcp = exp.find('DESIGN').find('LIBRARY_DESCRIPTOR').find(
-                'LIBRARY_CONSTRUCTION_PROTOCOL').text
-        except:
-            lcp = ''
-
-        lcp = lcp.strip()
 
         # get submission properties
         sra_id = sub.get('accession')
 
         # get study/project properties title, abstract
-        proj_id = proj.get('accession')
-        gse = proj.get('alias')
-        d_elem = proj.find('DESCRIPTOR')
-        title = d_elem.find('STUDY_TITLE').text
-        abstract = d_elem.find('STUDY_ABSTRACT').text
-
+        projrow = self.parse_proj(proj)
         # get sample properties
-        samp_id = samp.get('accession')
-        sample_attributes = {}
-        for elem in samp.find('SAMPLE_ATTRIBUTES').findall('SAMPLE_ATTRIBUTE'):
-            tag = elem.find('TAG').text
-            val = elem.find('VALUE').text
-            sample_attributes[tag] = val
+        samprow = self.parse_sample(samp)
 
-        sample_attributes = str(sample_attributes)
+        # get run properties
         pubdate = runs.find('RUN').get('published')
 
         runrows = self.parse_run_set(runs)
 
         self.log.debug(
             f'exprow: proj_id={proj_id} exp_id={exp_id} gsm={gsm} sra_id={sra_id} gse={gse} samp_id={samp_id}')
+
         projrow = ['proj_id', 'title', 'pubdate', 'abstract']
         exprow = [proj_id, exp_id, sra_id, gsm, gse, lcp, sample_attributes]
         self.log.debug(f'exprow: {exprow} \n  runrows: {runrows}')
@@ -353,26 +335,80 @@ class Query(object):
                   taxon, organism, nreads, readcount, basecount]
         return runrow
 
-    def parse_sample(self, sample):
-        sample_id = sample.get('accession')
-        avail_status = sample.get('unavailable')
-        if avail_status == 'true':
-            raise SampleUnavailableException(
-                f'sample data unavailable for {sample_id}')
-        taxid = sample.get('')
-        total_spots = sample.get('total_spots')
-        total_bases = sample.get('total_bases')
-        size = sample.get('size')
-        taxon = sample.find('Pool').find('Member').get('tax_id')
-        organism = sample.find('Pool').find('Member').get('organism')
-        nreads = sample.find('Statistics').get('nreads')
-        readcount = sample.find('Statistics').find('Read').get('count')
-        bases = sample.find('Bases')
-        basecount = bases.get('count')
+    def parse_sample(self, samp):
+        samp_ext_ids = {}
+        ids = samp.find('IDENTIFIERS')
+        samp_id = ids.find('PRIMARY_ID').text
+        for elem in ids.findall('EXTERNAL_ID'):
+            tag = elem.get('namespace')
+            val = elem.text
+            samp_ext_ids[tag] = val
+        samp_ext_ids = str(samp_ext_ids)
 
-        runrow = [sample, total_spots, total_bases, size,
-                  taxon, organism, nreads, readcount, basecount]
-        return runrow
+        samptitle = samp.find('TITLE').text
+
+        sample_attributes = {}
+        for elem in samp.find('SAMPLE_ATTRIBUTES').findall('SAMPLE_ATTRIBUTE'):
+            tag = elem.find('TAG').text
+            val = elem.find('VALUE').text
+            sample_attributes[tag] = val
+        sample_attributes = str(sample_attributes)
+
+        taxid = samp.find('SAMPLE_NAME').find('TAXON_ID').text
+        sciname = samp.find('SAMPLE_NAME').find('SCIENTIFIC_NAME').text
+        samprow = [samp_id, samp_ext_ids,  taxid,
+                   sciname, samptitle, sample_attributes]
+
+        return samprow
+
+    def parse_proj(self, proj):
+
+        proj_ext_ids = {}
+        ids = proj.find('IDENTIFIERS')
+        proj_id = ids.find('PRIMARY_ID').text
+        for elem in ids.findall('EXTERNAL_ID'):
+            tag = elem.get('namespace')
+            val = elem.text
+            proj_ext_ids[tag] = val
+        proj_ext_ids = str(proj_ext_ids)  # convert to strings to store in df
+        d_elem = proj.find('DESCRIPTOR')
+        title = d_elem.find('STUDY_TITLE').text
+        abstract = d_elem.find('STUDY_ABSTRACT').text
+
+        projrow = [proj_id, proj_ext_ids, title, abstract]
+        return projrow
+
+    def parse_exp(self, exp):
+
+        exp_ext_ids = {}
+        ids = exp.find('IDENTIFIERS')
+        exp_id = ids.find('PRIMARY_ID').text
+        for elem in ids.findall('EXTERNAL_ID'):
+            tag = elem.get('namespace')
+            val = elem.text
+            exp_ext_ids[tag] = val
+
+        projid = exp.find('STUDY_REF').get('accession')
+        des = exp.find('DESIGN')
+        sampid = des.find('SAMPLE_DESCRIPTOR').get('accession')
+        lcp = des.find('LIBRARY_DESCRIPTOR').find(
+            'LIBRARY_CONSTRUCTION_PROTOCOL').text
+        strat = des.find('LIBRARY_DESCRIPTOR').find(
+            'LIBRARY_STRATEGY').text
+        source = des.find('LIBRARY_DESCRIPTOR').find(
+            'LIBRARY_SOURCE').text
+                
+
+                
+        lcp = lcp.strip()
+
+
+
+        gsm = exp.get('alias')
+        exprow = [exp_id, exp_ext_ids, projid, sampid,  lcp]
+        return
+
+        
 
     def query_runs_for_project(self, project):
         """     
@@ -702,7 +738,7 @@ def query_project_metadata(project_id):
     '''
     E.g. https://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?db=sra&rettype=runinfo&save=efetch&term=SRP131661
 
-wget -qO- 'http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=SRP131661'    
+    wget -qO- 'http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=SRP131661'    
 
     '''
     log = logging.getLogger('sra')
