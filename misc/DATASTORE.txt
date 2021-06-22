@@ -1,17 +1,74 @@
+Notes:
+For every instance of IDENTIFIERS below, two sets of IDs are implied. PRIMARY_ID 
+will always be present. EXTERNAL_ID may not be present, but will be stored as 
+dictionaries if present with namespace as keys
+	PRIMARY_ID			# SRP, SRX, SRS, SRR
+	EXTERNAL_ID			# GSM, GSE etc
 
+For every instance of _ATTRIBUTE below, tag and values are implied. To be stored
+as dictionaries with TAG as keys
+	TAG 
+	VALUE
 
-?? possibly not needed if there are no project-level properties. 
-projects.tsv
-	projectid, 
+Study -> Sample -> Experiment -> Run 
+# Note that this can be supplemented with the TRACES link for the SRP
+===== projects.tsv =====
+STUDY
+	IDENTIFIERS				# project ids SRP and external
 	
+	DESCRIPTOR
+		STUDY_TITLE			
+		STUDY_ABSTRACT
+		
+
+===== samples.tsv =====
+SAMPLE	
+	IDENTIFIERS				# sample id SRS and external
+
+	TITLE					# Title of sample - can be used to name cells 
+							# (concatonated to barcode)
+
+	SAMPLE_NAME
+		TAXON_ID			
+		SCIENTIFIC_NAME
+
+	SAMPLE_ATTRIBUTES		# {KEY : VALUE }
 
 
+===== experiments.tsv =====
+EXPERIMENT
+	IDENTIFIERS				# experiment ids SRX and external
 
-experiments.tsv
-	proj_id,   # project ID e.g. SRPXXXXX  from the accesssion tag of exp XML.  
-	exp_id, 
-	sra_id 
+	STUDY_REF				# study/project ids SRP and external
+		IDENTIFIERS
+			
+	DESIGN 
+		SAMPLE_DESCRIPTOR	# sample ids SRS and external
+			IDENTIFIERS
+
+		LIBRARY_DESCRIPTOR
+			LIBRARY_STRATEGY	# should be RNA-Seq
+			LIBRARY_SOURCE		# should be TRANSCRIPTOMIC
+			LIBRARY_SELECTION	# i.e. cDNA
+			LIBRARY_CONSTRUCTION_PROTOCOL	
+
+	EXPERIMENT_ATTRIBUTES		# {TAG : VALUE}
+		
 
 
-runs.tsv
-	exp_id, run_id, 
+===== runs.tsv =====
+RUN_SET
+	RUN 
+		attr = [ total_spots, total_bases, published]
+
+		IDENTIFIERS			# run id and external
+		
+		EXPERIMENT_REF		# experiment id SRX 
+			attr = accession
+		
+		Pool
+			IDENTIFIERS		# sample id SRS
+			
+		Bases 
+			attr = count 	# total base counts 
+			Base 			# { value : count }  # A,T,C,G, or N

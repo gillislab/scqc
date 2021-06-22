@@ -8,13 +8,17 @@ import logging
 import os
 import requests
 import subprocess
-
-from scqc.utils  import gzip_decompress, download_ftpurl
+import ast
+import pandas as pd
+import glob
+from scqc.utils import gzip_decompress, download_ftpurl, listdiff
 
 # inputs should be runs  identified as 'some10x'
 # fastq files should already downloaded.
 # srrid and species needs to be passed in from the dataframe
 # can pass star parameters from config
+
+
 class Align10xSTAR(object):
     '''
         - Identifies 10x version
@@ -38,9 +42,6 @@ class Align10xSTAR(object):
         self.species = species
         self.outlist = outlist
         self.num_streams = self.config.get('analysis', 'num_streams')
-
-
-
 
     def _get_10x_STAR_parameters(self, tech):
         d = {
@@ -231,7 +232,6 @@ class AlignSmartSeqSTAR(object):
                 out_file_prefix)                                # temp direc
 
 
-
 def setup(config, force=False):
     '''
     Builds directories in config file 
@@ -244,14 +244,14 @@ def setup(config, force=False):
     tempdir = os.path.expanduser(config.get('star', 'tempdir'))
     resourcedir = os.path.expanduser(config.get('star', 'resourcedir'))
     #n_core = config.get('star', 'n_core')
-    
+
     for d in [metadir, cachedir, tempdir, resourcedir]:
         try:
             log.debug(f"making directory: {d}")
             os.makedirs(d)
         except FileExistsError:
             pass
-  
+
     get_whitelists(config, force)
     get_genome_data(config, force)
     build_genome_indices(config, force)
@@ -262,9 +262,9 @@ def get_whitelists(config):
     Get cellranger tag whitelists. Assumes resourcedir exists. 
     """
     log = logging.getLogger('star')
-    wls = [ '10x_v1_whitelist','10x_v2_whitelist', '10x_v3_whitelist']
-    outdir = os.path.expanduser(config.get('star','resourcedir'))
-    
+    wls = ['10x_v1_whitelist', '10x_v2_whitelist', '10x_v3_whitelist']
+    outdir = os.path.expanduser(config.get('star', 'resourcedir'))
+
     for key in wls:
         url = config.get('star', key)
         log.debug(f'getting cellranger whitelist from {url}...')
@@ -276,7 +276,8 @@ def get_whitelists(config):
                 else:
                     f.write(r.text)
         else:
-            self.log.warning(f"Retrieving {url} failed with status_code: {str(r.status_code)}")
+            self.log.warning(
+                f"Retrieving {url} failed with status_code: {str(r.status_code)}")
 
 
 def get_genome_data(config):
@@ -284,11 +285,11 @@ def get_genome_data(config):
     Download required genome data
     """
     log = logging.getLogger('star')
-    resourcedir = os.path.expanduser(config.get('star','resourcedir'))
-    speciesnames = config.get('star','species')
+    resourcedir = os.path.expanduser(config.get('star', 'resourcedir'))
+    speciesnames = config.get('star', 'species')
     specieslist = [i.strip() for i in speciesnames.split(',')]
     log.debug(f'got species {specieslist}')
-    
+
     for species in specieslist:
         outdir = "/".join([resourcedir, species])
         try:
@@ -296,61 +297,53 @@ def get_genome_data(config):
         except FileExistsError:
             pass
 
-        fa_url=config.get('star',f'{species}_fa')
+        fa_url = config.get('star', f'{species}_fa')
         log.debug(f'{species} fa_url={fa_url}')
         download_ftpurl(fa_url, outdir, 'genome.fa')
-        
-        gtf_url=config.get('star',f'{species}_gtf')
+
+        gtf_url = config.get('star', f'{species}_gtf')
         log.debug(f'{species} gtf_url={gtf_url}')
         download_ftpurl(gtf_url, outdir, 'annotation.gtf')
 
-      
+
 def build_genome_indices(config, force=False):
     log = logging.getLogger('star')
-    
-    n_core = int(config.get('star','n_core'))
-    resourcedir = os.path.expanduser(config.get('star','resourcedir'))
-    speciesnames = config.get('star','species')
+
+    n_core = int(config.get('star', 'n_core'))
+    resourcedir = os.path.expanduser(config.get('star', 'resourcedir'))
+    speciesnames = config.get('star', 'species')
     specieslist = [i.strip() for i in speciesnames.split(',')]
     log.debug(f'got species {specieslist}')
-    
+
     for species in specieslist:
         outdir = "/".join([resourcedir, species])
         cmd = ["STAR",
-           "--runMode", "genomeGenerate",
-           "--genomeSAsparseD", "3" ,   # for low memory
-           "--genomeSAindexNbases", "12" # for low memory
-           "--runThreadN", f'{n_core}',
-           "--genomeDir", f'{outdir}',
-           "--genomeFastaFiles", f'{outdir}/genome.fa',
-           "--sjdbGTFfile", f'{outdir}/annotation.gtf']
+               "--runMode", "genomeGenerate",
+               "--genomeSAsparseD", "3",   # for low memory
+               "--genomeSAindexNbases", "12"  # for low memory
+               "--runThreadN", f'{n_core}',
+               "--genomeDir", f'{outdir}',
+               "--genomeFastaFiles", f'{outdir}/genome.fa',
+               "--sjdbGTFfile", f'{outdir}/annotation.gtf']
 
         cmdstr = " ".join(cmd)
         log.info(f'running {cmdstr} ...')
-        cp = subprocess.run(cmdstr, 
-                            shell=True, 
-                            universal_newlines=True, 
-                            stdout=subprocess.PIPE, 
+        cp = subprocess.run(cmdstr,
+                            shell=True,
+                            universal_newlines=True,
+                            stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE)
         log.debug(f'Ran cmd={cmdstr}  returncode={cp.returncode} ')
 
-    
     logging.debug(
         f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
     if str(cp.returncode) == "0":
         log.warning(f"non-zero return code from STAR. See Log.out...")
 
 
-
 # to be done - get marker sets for mouse brain - see bin/getMarkers.R
 def get_meta_marker_sets(config):
     pass
-
-
-
-
-
-
 
 
 # to do: include drivers for 10x and ss alignments
@@ -383,7 +376,7 @@ if __name__ == "__main__":
     parser.add_argument('-F', '--force',
                         action='store_true',
                         dest='force',
-                        default=False, 
+                        default=False,
                         help='Re-do, overwriting what is done.')
 
     parser.add_argument('-f', '--fasterq',
@@ -393,7 +386,6 @@ if __name__ == "__main__":
                         required=False,
                         default=None,
                         help='Download args with fasterq-dump. e.g. SRR14584407')
-
 
     parser.add_argument('-tx', '--tenx',
                         metavar='tenx_align',
@@ -411,7 +403,6 @@ if __name__ == "__main__":
                         default=None,
                         help='Align SmartSeq args with STAR. e.g. SRP308826')
 
-
     args = parser.parse_args()
 
     if args.debug:
@@ -427,8 +418,3 @@ if __name__ == "__main__":
     if args.setup:
         s = SetUp(cp, force=args.force)
         s.execute()
-
-
-
-
-

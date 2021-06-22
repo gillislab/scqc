@@ -50,11 +50,15 @@
             </EXPERIMENT_ATTRIBUTE>
          </EXPERIMENT_ATTRIBUTES>
       </EXPERIMENT>
+
+      
       <SUBMISSION alias="GEO: GSE174530" broker_name="GEO" center_name="GEO" submission_comment="submission brokered by GEO" lab_name="" accession="SRA1233068">
          <IDENTIFIERS>
             <PRIMARY_ID>SRA1233068</PRIMARY_ID>
          </IDENTIFIERS>
       </SUBMISSION>
+
+
       <Organization type="center">
          <Name abbr="GEO">NCBI</Name>
          <Contact email="geo-group@ncbi.nlm.nih.gov">
@@ -64,6 +68,8 @@
             </Name>
          </Contact>
       </Organization>
+
+
       <STUDY center_name="GEO" alias="GSE174530" accession="SRP320073">
          <IDENTIFIERS>
             <PRIMARY_ID>SRP320073</PRIMARY_ID>
@@ -77,6 +83,8 @@
             <CENTER_PROJECT_NAME>GSE174530</CENTER_PROJECT_NAME>
          </DESCRIPTOR>
       </STUDY>
+
+
       <SAMPLE alias="GSM5318965" accession="SRS9000718">
          <IDENTIFIERS>
             <PRIMARY_ID>SRS9000718</PRIMARY_ID>
@@ -116,6 +124,8 @@
             </SAMPLE_ATTRIBUTE>
          </SAMPLE_ATTRIBUTES>
       </SAMPLE>
+
+
       <Pool>
          <Member member_name="" accession="SRS9000718" sample_name="GSM5318965" sample_title="B15_L1_803D73" spots="23362705" bases="7008811500" tax_id="10090" organism="Mus musculus">
             <IDENTIFIERS>
@@ -125,6 +135,8 @@
             </IDENTIFIERS>
          </Member>
       </Pool>
+
+
       <RUN_SET>
          <RUN alias="GSM5318965_r1" accession="SRR14565948" total_spots="23362705" total_bases="7008811500" size="2303441423" load_done="true" published="2021-05-18 17:22:26" is_public="true" cluster_name="public" static_data_available="1">
             <IDENTIFIERS>

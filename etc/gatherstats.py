@@ -15,7 +15,7 @@ from configparser import ConfigParser
 from threading import Thread
 from queue import Queue, Empty
 
-from scqc.utils import *
+from scqc.utils import gini_coefficient
 
 LOGLEVELS = {
     10: 'debug',
@@ -48,7 +48,8 @@ class GetStats(object):
         self.staroutdir = os.path.expanduser(
             self.config.get('stats', 'staroutdir'))
         self.statdir = os.path.expanduser(self.config.get('stats', 'statdir'))
-
+        self.starindexdir = os.path.expanduser(
+            self.config.get('stats', 'starindexdir'))
         self.metadir = os.path.expanduser(self.config.get('stats', 'metadir'))
 
     def _gather_stats_from_STAR(self):
@@ -79,19 +80,30 @@ class GetStats(object):
 
         return(barcode_stats, feature_stats, summary_stats)
 
+    # need to pass in star index directory
+
     def _parse_STAR_mtx(self):
         # note that scanpy uses cell x gene.
         # read into anndata
         # path should end with "Solo.out"
         # solooutdir = "/home/johlee/scqc/starout/SRP308826_smartseq_Solo.out"
         path = f'{self.solooutdir}/Gene/filtered'
+
         # mtx_files = os.listdir(path)
         adata = sc.read(f'{path}/matrix.mtx').T
 
+        geneinfo = pd.read_csv(
+            '~/scqc/supplement_data/genomes/mouse/STAR_index/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
+        geneinfo.columns = ['gene_accession', 'gene_symbol', 'type']
+        # geneinfo.index = geneinfo.gene_accession
+
         genenames = pd.read_csv(f'{path}/features.tsv',
-                                sep="\t", header=None, dtype="str")
+                                sep="\t", header=None, dtype=str)
         genenames.columns = ['gene_accession', 'gene_symbol', 'source']
-        # genenames.index = genenames.gene_accession
+
+        genenames = genenames.merge(geneinfo, how='left', on=[
+            "gene_accession", 'gene_symbol'], indicator=True)
+        genenames.index = genenames.gene_accession
 
         cellids = pd.read_csv(f'{path}/barcodes.tsv', sep="\t", header=None)
         cellids.columns = ["cell_id"]
@@ -103,12 +115,20 @@ class GetStats(object):
         return adata
 
     def _get_stats_scanpy(self, adata):
+        # merge var with geneinfo (from starindex)
+        # consider different gene sets - ERCC  corresponds to spike ins
         adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')
         adata.var['ERCC'] = adata.var.gene_symbol.str.startswith('ERCC')
+        adata.var['ribo'] = adata.var.type == "rRNA"
+
         # adata should be in raw counts
         sc.pp.calculate_qc_metrics(
-            adata, expr_type='counts', var_type='genes', qc_vars=['mt', "ERCC"],
+            adata, expr_type='counts', var_type='genes', qc_vars=['mt', 'ERCC', 'ribo'],
             percent_top=(50, 100, 200, 500), inplace=True, use_raw=False)
+
+        # unstructured data - dataset specific
+        adata.uns['gini_by_counts'] = gini_coefficient(
+            adata.obs['total_counts'])
 
         return adata
 
@@ -167,8 +187,6 @@ if __name__ == "__main__":
                         required=False,
                         default=None,
                         help='')
-
-
 
     args = parser.parse_args()
 
