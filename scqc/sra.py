@@ -6,6 +6,7 @@
 #
 # Could use  SRR14584407 SRR14584408 in example..
 
+
 from scqc.utils import *
 import argparse
 import io
@@ -33,9 +34,9 @@ import xml.etree.ElementTree as et
 import pandas as pd
 import numpy as np
 
-
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
+
 
 # Translate between Python and SRAToolkit log levels for wrapped commands.
 #  fatal|sys|int|err|warn|info|debug
@@ -47,18 +48,12 @@ LOGLEVELS = {
     50: 'fatal',
 }
 
-# srp, srx, sra, gsm, gse, taxon, organism, title, pubdate, abstract, lcp, sample_attrib, np.nan
-
-# META_COLUMNS = ['project', 'experiment', 'accession', 'gsm','gse', 'taxon_id', 'organism',  'title', 'pubdate',
-#                'abstract', 'lcp', 'sample_attributes', 'tech', 'status']
-#PROJ_RUN_COLUMNS = ['project','run_id']
-
 
 PROJ_COLUMNS = ['proj_id', 'title', 'pubdate', 'abstract']
 EXP_COLUMNS = ['proj_id', 'exp_id', 'sra_id',
                'gsm', 'gse', 'lcp', 'sample_attributes']
-RUN_COLUMNS = ['run_id', 'tot_spots', 'tot_bases', 'size',
-               'taxon', 'organism', 'nreads', 'readcount', 'basecount']
+RUN_COLUMNS = ['exp_id', 'run_id', 'tot_spots', 'tot_bases',
+               'size', 'taxon', 'organism', 'nreads', 'readcount', 'basecount']
 
 
 def get_default_config():
@@ -184,8 +179,9 @@ class Query(object):
             explist = list(pdf.Experiment)
             self.log.info(
                 f'projectid {projectid} has {len(explist)} experiments.')
-            exprows = []
-            runrows = []
+            proj_rows = []
+            exp_rows = []
+            run_rows = []
             for exp in explist:
                 exd = self.query_experiment_package_set(exp)
                 (projrows, exprows, runs) = self.parse_experiment_package_set(exd)
@@ -203,10 +199,11 @@ class Query(object):
             pdf = pd.DataFrame(proj_rows, columns=PROJ_COLUMNS)
             merge_write_df(pdf, f'{self.metadir}/projects.tsv')
 
-            edf = pd.DataFrame(exprows, columns=EXP_COLUMNS)
+            edf = pd.DataFrame(exp_rows, columns=EXP_COLUMNS)
             merge_write_df(edf, f'{self.metadir}/experiments.tsv')
 
-            rdf = pd.DataFrame(runrows, columns=RUN_COLUMNS)
+            rdf = pd.DataFrame(run_rows, columns=RUN_COLUMNS)
+            rdf['proj_id'] = projectid
             merge_write_df(rdf, f'{self.metadir}/runs.tsv')
 
             self.log.info(f'successfully processed project {projectid}')
@@ -227,12 +224,17 @@ class Query(object):
         try:
             url = f"{self.sra_efetch}&id={xid}"
             self.log.debug(f"fetch url={url}")
-            r = requests.post(url)
-            if r.status_code == 200:
-                xmldata = r.content.decode()
-                self.log.debug(f'good HTTP response for {xid}')
-            else:
-                self.log.warn(f'bad HTTP response for id {xid}')
+
+            while True:
+                r = requests.post(url)
+                if r.status_code == 200:
+                    xmldata = r.content.decode()
+                    self.log.debug(f'good HTTP response for {xid}')
+                    break
+                else:
+                    self.log.warn(
+                        f'bad HTTP response for id {xid}. retry in 10s')
+                    time.sleep(10)
 
         except Exception as ex:
             self.log.error(f'problem with NCBI id {xid}')
@@ -261,15 +263,16 @@ class Query(object):
         n_processed = 0
         for exp in root.iter("EXPERIMENT_PACKAGE"):
             (projrows, exprows, newruns) = self.parse_experiment_package(exp)
+            proj_rows.append(projrows)
             exp_rows.append(exprows)
             # run_rows.append(newruns)
             run_rows = itertools.chain(run_rows, newruns)
             n_processed += 1
-        self.log.debug(f"processed {n_processed} experiment packages.")
+        self.log.debug(f"processed {n_processed} experiment package(s).")
         run_rows = list(run_rows)
         self.log.debug(
-            f'returning \n    exp_rows: {exp_rows} \n    run_rows: {run_rows}')
-        return (exp_rows, run_rows)
+            f'returning\n    proj_rows: {proj_rows}\n    exp_rows: {exp_rows} \n    run_rows: {run_rows}')
+        return (proj_rows, exp_rows, run_rows)
 
     def parse_experiment_package(self, root):
         """
@@ -296,27 +299,27 @@ class Query(object):
         # get run properties
         pubdate = runs.find('RUN').get('published')
 
-        runrows = self.parse_run_set(runs)
+        runrows = self.parse_run_set(runs, exp_id)
 
         self.log.debug(
             f'exprow: proj_id={proj_id} exp_id={exp_id} gsm={gsm} sra_id={sra_id} gse={gse} samp_id={samp_id}')
-
-        projrow = ['proj_id', 'title', 'pubdate', 'abstract']
+        projrow = [proj_id, title, pubdate, abstract]
         exprow = [proj_id, exp_id, sra_id, gsm, gse, lcp, sample_attributes]
-        self.log.debug(f'exprow: {exprow} \n  runrows: {runrows}')
+        self.log.debug(
+            f'\n  projrow: {projrow}\n   exprow: {exprow} \n  runrows: {runrows}')
         return(projrow, exprow, runrows)
 
-    def parse_run_set(self, runs):
+    def parse_run_set(self, runs, exp_id):
         """
 
         """
         runrows = []
         for run in runs.findall('RUN'):
-            runrow = self.parse_run(run)
+            runrow = self.parse_run(run, exp_id)
             runrows.append(runrow)
         return runrows
 
-    def parse_run(self, run):
+    def parse_run(self, run, exp_id):
         run_id = run.get('accession')
         avail_status = run.get('unavailable')
         if avail_status == 'true':
@@ -331,8 +334,8 @@ class Query(object):
         bases = run.find('Bases')
         basecount = bases.get('count')
 
-        runrow = [run_id, total_spots, total_bases, size,
-                  taxon, organism, nreads, readcount, basecount]
+        runrow = [exp_id, run_id, total_spots, total_bases,
+                  size, taxon, organism, nreads, readcount, basecount]
         return runrow
 
     def parse_sample(self, samp):
@@ -397,18 +400,12 @@ class Query(object):
             'LIBRARY_STRATEGY').text
         source = des.find('LIBRARY_DESCRIPTOR').find(
             'LIBRARY_SOURCE').text
-                
 
-                
         lcp = lcp.strip()
-
-
 
         gsm = exp.get('alias')
         exprow = [exp_id, exp_ext_ids, projid, sampid,  lcp]
         return
-
-        
 
     def query_runs_for_project(self, project):
         """     
@@ -437,10 +434,6 @@ class Query(object):
 class Impute(object):
     """
     Imputes sequencing technology for all runs under a project. 
-
-
-
-
 
     """
 
@@ -763,12 +756,18 @@ def query_project_metadata(project_id):
         "save": "efetch",
         "term": project_id}
 
+    df = None
     log.debug('opening request...')
     r = requests.put(url, data=payload, headers=headers, stream=True)
-    log.debug('got return info. reading content...')
-    with io.BytesIO(r.content) as imf:
-        df = pd.read_csv(imf)
-    return df
+    if r.status_code == 200:
+        log.info('got good return. reading CSV to dataframe.')
+        with io.BytesIO(r.content) as imf:
+            df = pd.read_csv(imf)
+        return df
+
+    else:
+        log.warning(f'bad HTTP return for proj: {project_id}')
+        raise Exception(f'bad HTTP return for proj: {project_id}')
 
 
 def query_all_uids(config):
@@ -835,6 +834,7 @@ def query_project_for_uid(config, uid):
         except ConnectionError as ce:
             log.warn(f'got connection error for uid {uid}: {ce}')
             time.sleep(60)
+
         except Exception as e:
             log.warn(f'got another exception for uid {uid}: {e}  ')
             return None
@@ -925,14 +925,14 @@ if __name__ == "__main__":
                         help='Set up directories and downloads supplemental data')
 
     parser.add_argument('-q', '--query',
-                        metavar='query',
+                        metavar='project_id',
                         type=str,
                         nargs='+',
                         default=None,
                         help='Perform standard query on supplied projectid')
 
     parser.add_argument('-f', '--fasterq',
-                        metavar='fasterq',
+                        metavar='run_id',
                         type=str,
                         nargs='+',
                         required=False,
@@ -940,7 +940,7 @@ if __name__ == "__main__":
                         help='Download args with fasterq-dump. e.g. SRR14584407')
 
     parser.add_argument('-p', '--prefetch',
-                        metavar='prefetch',
+                        metavar='run_id',
                         type=str,
                         nargs='+',
                         required=False,
@@ -948,7 +948,7 @@ if __name__ == "__main__":
                         help='Download (Run) args with prefetch. e.g. SRR14584407')
 
     parser.add_argument('-t', '--tenx',
-                        metavar='tenx_align',
+                        metavar='project_id',
                         type=str,
                         nargs='+',
                         required=False,
@@ -956,7 +956,7 @@ if __name__ == "__main__":
                         help='Align 10x args with STAR. e.g. SRR14584407')
 
     parser.add_argument('-ss', '--smartseq',
-                        metavar='ss_align',
+                        metavar='project_id',
                         type=str,
                         nargs='+',
                         required=False,
@@ -964,7 +964,7 @@ if __name__ == "__main__":
                         help='Align SmartSeq args with STAR. e.g. SRP308826')
 
     parser.add_argument('-m', '--metadata',
-                        metavar='metadata',
+                        metavar='project_id',
                         type=str,
                         nargs='+',
                         required=False,
@@ -994,8 +994,9 @@ if __name__ == "__main__":
 
     cp = get_default_config()
     cs = get_configstr(cp)
-
     logging.debug(f"got config: {cs}")
+
+    logging.debug(f"args: {args}")
 
     if args.setup:
         s = SetUp(cp)
@@ -1035,9 +1036,11 @@ if __name__ == "__main__":
     elif args.metadata is not None:
         for srp in args.metadata:
             df = query_project_metadata(srp)
-            logging.debug(f"Got list of {len(df)} runs")
-            runs = list(df['Run'])
-            logging.info(f"Runlist: {runs}")
+            exps = list(df['Experiment'].unique())
+
+            logging.debug(f"Got list of {len(exps)} experiments")
+            for e in exps:
+                print(e)
 
     if args.uidquery is not None:
         qfile = args.uidquery
