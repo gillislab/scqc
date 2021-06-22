@@ -94,6 +94,7 @@ class Stage(object):
                     time.sleep(self.batchsleep)
 
                 # overall stage sleep
+                logging.info(f'done with all batches. Sleeping for stage. {self.sleep} sec...')
                 time.sleep(self.sleep)
 
         except KeyboardInterrupt:
