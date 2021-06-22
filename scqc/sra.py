@@ -49,7 +49,7 @@ SAMP_COLUMNS = ['samp_id', 'ext_ids',  'taxon',
                 'sciname', 'title', 'attributes', 'proj_id', 'submission_id']
 
 EXP_COLUMNS = ['exp_id', 'ext_ids',  'strategy',
-               'source', 'lcp', 'proj_id', 'samp_id', 'submission_id']
+               'source', 'lcp', 'samp_id', 'proj_id', 'submission_id']
 
 RUN_COLUMNS = ['run_id', 'ext_ids', 'tot_spots', 'tot_bases', 'size', 'publish_date',
                'taxon', 'organism', 'nreads',  'basecounts', 'expid', 'sampleid', 'proj_id', 'submission_id']
@@ -209,14 +209,13 @@ class Query(object):
             pdf = pd.DataFrame(proj_rows, columns=PROJ_COLUMNS)
             merge_write_df(pdf, f'{self.metadir}/projects.tsv')
 
-            pdf = pd.DataFrame(samp_rows, columns=SAMP_COLUMNS)
-            merge_write_df(pdf, f'{self.metadir}/samples.tsv')
+            sdf = pd.DataFrame(samp_rows, columns=SAMP_COLUMNS)
+            merge_write_df(sdf, f'{self.metadir}/samples.tsv')
 
             edf = pd.DataFrame(exp_rows, columns=EXP_COLUMNS)
             merge_write_df(edf, f'{self.metadir}/experiments.tsv')
 
             rdf = pd.DataFrame(run_rows, columns=RUN_COLUMNS)
-            rdf['proj_id'] = projectid
             merge_write_df(rdf, f'{self.metadir}/runs.tsv')
 
             self.log.info(f'successfully processed project {projectid}')
@@ -409,7 +408,7 @@ class Query(object):
 
         lcp = lcp.strip()
 
-        exprow = [exp_id, exp_ext_ids,  strat, source, lcp, projid, sampid]
+        exprow = [exp_id, exp_ext_ids,  strat, source, lcp,  sampid, projid]
         return exprow
 
     # need to append project id - done in execute
