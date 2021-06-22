@@ -770,13 +770,15 @@ def query_project_for_uid(config, uid):
                 proj_id = root.find('EXPERIMENT_PACKAGE').find('STUDY').get('accession')
                 log.debug(f'found project id: {proj_id}')
             time.sleep(0.5)
+            return proj_id
+
         except ConnectionError as ce:
             log.warn(f'got connection error for uid {uid}: {ce}')
             time.sleep(60)
         except Exception as e:
             log.warn(f'got another exception for uid {uid}: {e}  ')
-            break
-    return proj_id
+            return None
+
 
 # should  this be moved to query? download?
 # Note: special cases....
