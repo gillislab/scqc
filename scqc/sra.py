@@ -48,12 +48,22 @@ LOGLEVELS = {
     50: 'fatal',
 }
 
+PROJ_COLUMNS = ['proj_id', 'ext_ids', 'title', 'abstract', 'submission_id']
 
-PROJ_COLUMNS = ['proj_id', 'title', 'pubdate', 'abstract']
-EXP_COLUMNS = ['proj_id', 'exp_id', 'sra_id',
-               'gsm', 'gse', 'lcp', 'sample_attributes']
-RUN_COLUMNS = ['exp_id', 'run_id', 'tot_spots', 'tot_bases',
-               'size', 'taxon', 'organism', 'nreads', 'readcount', 'basecount']
+SAMP_COLUMNS = ['samp_id', 'ext_ids',  'taxon',
+                'sciname', 'title', 'attributes', 'proj_id', 'submission_id']
+
+EXP_COLUMNS = ['exp_id', 'ext_ids',  'strategy',
+               'source', 'lcp', 'proj_id', 'samp_id', 'submission_id']
+
+RUN_COLUMNS = ['run_id', 'ext_ids', 'tot_spots', 'tot_bases', 'size', 'publish_date',
+               'taxon', 'organism', 'nreads',  'basecounts', 'expid', 'sampleid', 'proj_id', 'submission_id']
+
+# PROJ_COLUMNS = ['proj_id', 'title', 'pubdate', 'abstract']
+# EXP_COLUMNS = ['proj_id', 'exp_id', 'sra_id',
+#                'gsm', 'gse', 'lcp', 'sample_attributes']
+# RUN_COLUMNS = ['exp_id', 'run_id', 'tot_spots', 'tot_bases',
+#                'size', 'taxon', 'organism', 'nreads', 'readcount', 'basecount']
 
 
 def get_default_config():
@@ -180,24 +190,32 @@ class Query(object):
             self.log.info(
                 f'projectid {projectid} has {len(explist)} experiments.')
             proj_rows = []
+            samp_rows = []
             exp_rows = []
             run_rows = []
             for exp in explist:
                 exd = self.query_experiment_package_set(exp)
-                (projrows, exprows, runs) = self.parse_experiment_package_set(exd)
+                (projrows, samprows, exprows,
+                 runs) = self.parse_experiment_package_set(exd)
                 proj_rows = itertools.chain(proj_rows, projrows)
+                samp_rows = itertools.chain(samp_rows, samprows)
                 exp_rows = itertools.chain(exp_rows, exprows)
                 run_rows = itertools.chain(run_rows, runs)
             proj_rows = list(proj_rows)
+            samp_rows = list(samp_rows)
             exp_rows = list(exp_rows)
             run_rows = list(run_rows)
 
             logging.debug(f'final proj_rows: {proj_rows}')
+            logging.debug(f'final samp_rows: {samp_rows}')
             logging.debug(f'final exp_rows: {exp_rows}')
             logging.debug(f'final run_rows: {run_rows}')
 
             pdf = pd.DataFrame(proj_rows, columns=PROJ_COLUMNS)
             merge_write_df(pdf, f'{self.metadir}/projects.tsv')
+
+            pdf = pd.DataFrame(samp_rows, columns=SAMP_COLUMNS)
+            merge_write_df(pdf, f'{self.metadir}/samples.tsv')
 
             edf = pd.DataFrame(exp_rows, columns=EXP_COLUMNS)
             merge_write_df(edf, f'{self.metadir}/experiments.tsv')
@@ -257,14 +275,16 @@ class Query(object):
         root = et.fromstring(xmlstr)
         self.log.debug(f"root={root}")
         proj_rows = []
+        samp_rows = []
         exp_rows = []
         run_rows = []
 
         n_processed = 0
         for exp in root.iter("EXPERIMENT_PACKAGE"):
-            (projrows, exprows, newruns) = self.parse_experiment_package(exp)
-            proj_rows.append(projrows)
-            exp_rows.append(exprows)
+            (projrow, samprow, exprow, newruns) = self.parse_experiment_package(exp)
+            proj_rows.append(projrow)
+            samp_rows.append(samprow)
+            exp_rows.append(exprow)
             # run_rows.append(newruns)
             run_rows = itertools.chain(run_rows, newruns)
             n_processed += 1
@@ -272,7 +292,7 @@ class Query(object):
         run_rows = list(run_rows)
         self.log.debug(
             f'returning\n    proj_rows: {proj_rows}\n    exp_rows: {exp_rows} \n    run_rows: {run_rows}')
-        return (proj_rows, exp_rows, run_rows)
+        return (proj_rows, samp_rows, exp_rows, run_rows)
 
     def parse_experiment_package(self, root):
         """
@@ -293,51 +313,110 @@ class Query(object):
 
         # get study/project properties title, abstract
         projrow = self.parse_proj(proj)
-        # get sample properties
+        projrow.append(sra_id)
+        proj_id = projrow[0]
+
+        # get sample properties - append project and sra ids
         samprow = self.parse_sample(samp)
+        samprow.append(proj_id)
+        samprow.append(sra_id)
+        samp_id = samprow[0]
 
-        # get run properties
-        pubdate = runs.find('RUN').get('published')
+        # get experiment properties
+        exprow = self.parse_exp(exp)
+        exprow.append(sra_id)
+        exp_id = exprow[0]
 
-        runrows = self.parse_run_set(runs, exp_id)
+        # get run properties - list of lists
+        runrows = self.parse_run_set(runs, proj_id)
 
         self.log.debug(
-            f'exprow: proj_id={proj_id} exp_id={exp_id} gsm={gsm} sra_id={sra_id} gse={gse} samp_id={samp_id}')
-        projrow = [proj_id, title, pubdate, abstract]
-        exprow = [proj_id, exp_id, sra_id, gsm, gse, lcp, sample_attributes]
+            f'exprow: proj_id={proj_id} exp_id={exp_id} sra_id={sra_id} samp_id={samp_id}')
+        # projrow = [proj_id, title, pubdate, abstract]
+        # exprow = [proj_id, exp_id, sra_id, gsm, gse, lcp, sample_attributes]
         self.log.debug(
             f'\n  projrow: {projrow}\n   exprow: {exprow} \n  runrows: {runrows}')
-        return(projrow, exprow, runrows)
+        return(projrow, samprow, exprow, runrows)
 
-    def parse_run_set(self, runs, exp_id):
+    def parse_run_set(self, runs, proj_id):
         """
 
         """
         runrows = []
         for run in runs.findall('RUN'):
-            runrow = self.parse_run(run, exp_id)
+            runrow = self.parse_run(run)
+            runrow.append(proj_id)
             runrows.append(runrow)
         return runrows
 
-    def parse_run(self, run, exp_id):
-        run_id = run.get('accession')
+    # need to append project id
+    def parse_run(self, run):
+
+        run_ext_ids = {}
+        ids = run.find('IDENTIFIERS')
+        run_id = ids.find('PRIMARY_ID').text
+        for elem in ids.findall('EXTERNAL_ID'):
+            tag = elem.get('namespace')
+            val = elem.text
+            run_ext_ids[tag] = val
+
         avail_status = run.get('unavailable')
         if avail_status == 'true':
             raise RunUnavailableException(f'run data unavailable for {run_id}')
+
         total_spots = run.get('total_spots')
         total_bases = run.get('total_bases')
         size = run.get('size')
-        taxon = run.find('Pool').find('Member').get('tax_id')
-        organism = run.find('Pool').find('Member').get('organism')
-        nreads = run.find('Statistics').get('nreads')
-        readcount = run.find('Statistics').find('Read').get('count')
-        bases = run.find('Bases')
-        basecount = bases.get('count')
+        pdate = run.get('published')
 
-        runrow = [exp_id, run_id, total_spots, total_bases,
-                  size, taxon, organism, nreads, readcount, basecount]
+        expid = run.find('EXPERIMENT_REF').get('accession')
+        pool = run.find('Pool')
+        sampleid = pool.find('Member').get('accession')
+        taxon = pool.find('Member').get('tax_id')
+        organism = pool.find('Member').get('organism')
+
+        nreads = run.find('Statistics').get('nreads')
+
+        bases = run.find('Bases')
+        basecounts = {}
+        for base in bases:
+            tag = base.get('value')
+            val = base.get('count')
+            basecounts[tag] = val
+
+        basecounts = str(basecounts)
+
+        runrow = [run_id, run_ext_ids, total_spots, total_bases, size, pdate,
+                  taxon, organism, nreads,  basecounts, expid, sampleid]
+
         return runrow
 
+    def parse_exp(self, exp):
+
+        exp_ext_ids = {}
+        ids = exp.find('IDENTIFIERS')
+        exp_id = ids.find('PRIMARY_ID').text
+        for elem in ids.findall('EXTERNAL_ID'):
+            tag = elem.get('namespace')
+            val = elem.text
+            exp_ext_ids[tag] = val
+        exp_ext_ids = str(exp_ext_ids)
+        projid = exp.find('STUDY_REF').get('accession')
+        des = exp.find('DESIGN')
+        sampid = des.find('SAMPLE_DESCRIPTOR').get('accession')
+        lcp = des.find('LIBRARY_DESCRIPTOR').find(
+            'LIBRARY_CONSTRUCTION_PROTOCOL').text
+        strat = des.find('LIBRARY_DESCRIPTOR').find(
+            'LIBRARY_STRATEGY').text
+        source = des.find('LIBRARY_DESCRIPTOR').find(
+            'LIBRARY_SOURCE').text
+
+        lcp = lcp.strip()
+
+        exprow = [exp_id, exp_ext_ids,  strat, source, lcp, projid, sampid]
+        return exprow
+
+    # need to append project id - done in execute
     def parse_sample(self, samp):
         samp_ext_ids = {}
         ids = samp.find('IDENTIFIERS')
@@ -380,32 +459,6 @@ class Query(object):
 
         projrow = [proj_id, proj_ext_ids, title, abstract]
         return projrow
-
-    def parse_exp(self, exp):
-
-        exp_ext_ids = {}
-        ids = exp.find('IDENTIFIERS')
-        exp_id = ids.find('PRIMARY_ID').text
-        for elem in ids.findall('EXTERNAL_ID'):
-            tag = elem.get('namespace')
-            val = elem.text
-            exp_ext_ids[tag] = val
-
-        projid = exp.find('STUDY_REF').get('accession')
-        des = exp.find('DESIGN')
-        sampid = des.find('SAMPLE_DESCRIPTOR').get('accession')
-        lcp = des.find('LIBRARY_DESCRIPTOR').find(
-            'LIBRARY_CONSTRUCTION_PROTOCOL').text
-        strat = des.find('LIBRARY_DESCRIPTOR').find(
-            'LIBRARY_STRATEGY').text
-        source = des.find('LIBRARY_DESCRIPTOR').find(
-            'LIBRARY_SOURCE').text
-
-        lcp = lcp.strip()
-
-        gsm = exp.get('alias')
-        exprow = [exp_id, exp_ext_ids, projid, sampid,  lcp]
-        return
 
     def query_runs_for_project(self, project):
         """     
