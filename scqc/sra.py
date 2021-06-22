@@ -53,8 +53,10 @@ LOGLEVELS = {
 #                'abstract', 'lcp', 'sample_attributes', 'tech', 'status']
 #PROJ_RUN_COLUMNS = ['project','run_id']
 
-EXP_COLUMNS = ['proj_id', 'exp_id', 'sra_id', 'gsm', 'gse',
-               'title', 'pubdate', 'abstract', 'lcp', 'sample_attributes']
+
+PROJ_COLUMNS = ['proj_id', 'title', 'pubdate', 'abstract']
+EXP_COLUMNS = ['proj_id', 'exp_id', 'sra_id',
+               'gsm', 'gse', 'lcp', 'sample_attributes']
 RUN_COLUMNS = ['run_id', 'tot_spots', 'tot_bases', 'size',
                'taxon', 'organism', 'nreads', 'readcount', 'basecount']
 
@@ -177,6 +179,8 @@ class Query(object):
         try:
             pdf = query_project_metadata(projectid)
             #self.log.debug(f'info: {pdf}')
+            #
+
             explist = list(pdf.Experiment)
             self.log.info(
                 f'projectid {projectid} has {len(explist)} experiments.')
@@ -184,13 +188,21 @@ class Query(object):
             runrows = []
             for exp in explist:
                 exd = self.query_experiment_package_set(exp)
-                (rows, runs) = self.parse_experiment_package_set(exd)
-                exprows = itertools.chain(exprows, rows)
-                runrows = itertools.chain(runrows, runs)
-            exprows = list(exprows)
-            runrows = list(runrows)
-            logging.debug(f'final exprows: {exprows}')
-            logging.debug(f'final runrows: {runrows}')
+                (projrows, exprows, runs) = self.parse_experiment_package_set(exd)
+                proj_rows = itertools.chain(proj_rows, projrows)
+                exp_rows = itertools.chain(exp_rows, exprows)
+                run_rows = itertools.chain(run_rows, runs)
+            proj_rows = list(proj_rows)
+            exp_rows = list(exp_rows)
+            run_rows = list(run_rows)
+
+            logging.debug(f'final proj_rows: {proj_rows}')
+            logging.debug(f'final exp_rows: {exp_rows}')
+            logging.debug(f'final run_rows: {run_rows}')
+
+            pdf = pd.DataFrame(proj_rows, columns=PROJ_COLUMNS)
+            merge_write_df(pdf, f'{self.metadir}/projects.tsv')
+
             edf = pd.DataFrame(exprows, columns=EXP_COLUMNS)
             merge_write_df(edf, f'{self.metadir}/experiments.tsv')
 
@@ -242,12 +254,14 @@ class Query(object):
         """
         root = et.fromstring(xmlstr)
         self.log.debug(f"root={root}")
+        proj_rows = []
         exp_rows = []
         run_rows = []
+
         n_processed = 0
         for exp in root.iter("EXPERIMENT_PACKAGE"):
-            (newrows, newruns) = self.parse_experiment_package(exp)
-            exp_rows.append(newrows)
+            (projrows, exprows, newruns) = self.parse_experiment_package(exp)
+            exp_rows.append(exprows)
             # run_rows.append(newruns)
             run_rows = itertools.chain(run_rows, newruns)
             n_processed += 1
@@ -305,10 +319,10 @@ class Query(object):
 
         self.log.debug(
             f'exprow: proj_id={proj_id} exp_id={exp_id} gsm={gsm} sra_id={sra_id} gse={gse} samp_id={samp_id}')
-        exprow = [proj_id, exp_id, sra_id, gsm, gse, title,
-                  pubdate, abstract, lcp, sample_attributes]
+        projrow = ['proj_id', 'title', 'pubdate', 'abstract']
+        exprow = [proj_id, exp_id, sra_id, gsm, gse, lcp, sample_attributes]
         self.log.debug(f'exprow: {exprow} \n  runrows: {runrows}')
-        return(exprow, runrows)
+        return(projrow, exprow, runrows)
 
     def parse_run_set(self, runs):
         """
@@ -372,6 +386,80 @@ class Query(object):
         """
         pass
 
+    def _split_df_by_project(self, df):
+        self.metadir
+        for srp, srp_df in df.groupby('project', as_index=False):
+
+            for tech, srp_tech_df in srp_df.groupby('method', as_index=False):
+                outfile = f'{self.metadir}/{srp}_metadata.tsv'
+                srp_tech_df.to_csv(outfile, sep="\t", mode="a",
+                                   index=False, header=not os.path.exists(outfile))
+
+        return
+
+
+class Impute(object):
+    """
+    Imputes sequencing technology for all runs under a project. 
+
+
+
+
+
+    """
+
+    def __init__(self, config):
+        self.log = logging.getLogger('sra')
+        self.config = config
+        self.metadir = os.path.expanduser(self.config.get('impute', 'metadir'))
+        self.cachedir = os.path.expanduser(
+            self.config.get('impute', 'cachedir'))
+        self.sra_esearch = self.config.get('sra', 'sra_esearch')
+        self.sra_efetch = self.config.get('sra', 'sra_efetch')
+        self.search_term = self.config.get('sra', 'search_term')
+        self.sleep = float(self.config.get('sra', 'sleep'))
+
+    def execute(self, projectid):
+        """
+         For projectid:
+
+             Put completed project ids into query-donelist.txt
+
+        """
+        self.log.info(f'handling projectid {projectid}')
+        try:
+
+            pdf = query_project_metadata(projectid)
+            #self.log.debug(f'info: {pdf}')
+            explist = list(pdf.Experiment)
+            self.log.info(
+                f'projectid {projectid} has {len(explist)} experiments.')
+            exprows = []
+            runrows = []
+            for exp in explist:
+                exd = self.query_experiment_package_set(exp)
+                (rows, runs) = self.parse_experiment_package_set(exd)
+                exprows = itertools.chain(exprows, rows)
+                runrows = itertools.chain(runrows, runs)
+            exprows = list(exprows)
+            runrows = list(runrows)
+            logging.debug(f'final exprows: {exprows}')
+            logging.debug(f'final runrows: {runrows}')
+            edf = pd.DataFrame(exprows, columns=EXP_COLUMNS)
+            merge_write_df(edf, f'{self.metadir}/experiments.tsv')
+
+            rdf = pd.DataFrame(runrows, columns=RUN_COLUMNS)
+            merge_write_df(rdf, f'{self.metadir}/runs.tsv')
+
+            self.log.info(f'successfully processed project {projectid}')
+            # return projectid only if it has completed successfully.
+            return projectid
+
+        except Exception as ex:
+            self.log.error(f'problem with NCBI projectid {projectid}')
+            logging.error(traceback.format_exc(None))
+            raise ex
+
     def _impute_tech(self, df):
         '''
         Take in df. 
@@ -428,17 +516,6 @@ class Query(object):
         df = df.merge(ulcp, on="lcp")
         return df
 
-    def _split_df_by_project(self, df):
-        self.metadir
-        for srp, srp_df in df.groupby('project', as_index=False):
-
-            for tech, srp_tech_df in srp_df.groupby('method', as_index=False):
-                outfile = f'{self.metadir}/{srp}_metadata.tsv'
-                srp_tech_df.to_csv(outfile, sep="\t", mode="a",
-                                   index=False, header=not os.path.exists(outfile))
-
-        return
-
 
 class PrefetchProject(object):
     """
@@ -456,10 +533,11 @@ class PrefetchProject(object):
 
 #    def
 
-
 # John Lee is satisfied with this class 6/03/2021
 # inputs are runs i.e. SRR
 # downloads .sra
+
+
 class PrefetchRun(object):
     '''
         Simple wrapper for NCBI prefetch
@@ -624,6 +702,7 @@ def query_project_metadata(project_id):
     '''
     E.g. https://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?db=sra&rettype=runinfo&save=efetch&term=SRP131661
 
+wget -qO- 'http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=SRP131661'    
 
     '''
     log = logging.getLogger('sra')
@@ -705,15 +784,25 @@ def query_project_for_uid(config, uid):
     url = f"{sra_efetch}&id={uid}"
     log.debug(f"fetch url={url}")
     proj_id = None
-    r = requests.post(url)
-    if r.status_code == 200:
-        rd = r.content.decode()
-        root = et.fromstring(rd)
-        proj_id = root.find('EXPERIMENT_PACKAGE').find(
-            'STUDY').get('accession')
-        log.debug(f'found project id: {proj_id}')
-    time.sleep(0.5)
-    return proj_id
+    while True:
+        try:
+            r = requests.post(url)
+            if r.status_code == 200:
+                rd = r.content.decode()
+                root = et.fromstring(rd)
+                proj_id = root.find('EXPERIMENT_PACKAGE').find(
+                    'STUDY').get('accession')
+                log.debug(f'found project id: {proj_id}')
+            time.sleep(0.5)
+            return proj_id
+
+        except ConnectionError as ce:
+            log.warn(f'got connection error for uid {uid}: {ce}')
+            time.sleep(60)
+        except Exception as e:
+            log.warn(f'got another exception for uid {uid}: {e}  ')
+            return None
+
 
 # should  this be moved to query? download?
 # Note: special cases....
@@ -854,6 +943,12 @@ if __name__ == "__main__":
                         default=None,
                         help='Perform standard query on uids in file, print project_ids.')
 
+    parser.add_argument('-o', '--outfile',
+                        metavar='outfile',
+                        type=str,
+                        default=None,
+                        help='Outfile. ')
+
     args = parser.parse_args()
 
     if args.debug:
@@ -912,9 +1007,9 @@ if __name__ == "__main__":
         qfile = args.uidquery
         uidlist = readlist(os.path.expanduser(qfile))
         projlist = []
-        for uid in uidlist:
-            projid = query_project_for_uid(cp, uid)
-            projlist.append(projid)
-
-        for pid in projlist:
-            print(pid)
+        with open(args.outfile, 'w') as f:
+            for uid in uidlist:
+                projid = query_project_for_uid(cp, uid)
+                if projid is not None:
+                    f.write(f'{projid}\n')
+                    f.flush()
