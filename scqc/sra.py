@@ -6,7 +6,7 @@
 #
 # Could use  SRR14584407 SRR14584408 in example..
 
-from scqc.utils import *
+
 import argparse
 import io
 import itertools
@@ -33,9 +33,10 @@ import xml.etree.ElementTree as et
 import pandas as pd
 import numpy as np
 
-
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
+from scqc.utils import *
+
 
 # Translate between Python and SRAToolkit log levels for wrapped commands.
 #  fatal|sys|int|err|warn|info|debug
@@ -47,11 +48,6 @@ LOGLEVELS = {
     50: 'fatal',
 }
 
-# srp, srx, sra, gsm, gse, taxon, organism, title, pubdate, abstract, lcp, sample_attrib, np.nan
-
-# META_COLUMNS = ['project', 'experiment', 'accession', 'gsm','gse', 'taxon_id', 'organism',  'title', 'pubdate',
-#                'abstract', 'lcp', 'sample_attributes', 'tech', 'status']
-#PROJ_RUN_COLUMNS = ['project','run_id']
 
 PROJ_COLUMNS = [ 'proj_id', 'title', 'pubdate', 'abstract' ]
 EXP_COLUMNS = [ 'proj_id', 'exp_id', 'sra_id', 'gsm', 'gse', 'lcp', 'sample_attributes' ]
@@ -181,8 +177,9 @@ class Query(object):
             explist = list(pdf.Experiment)
             self.log.info(
                 f'projectid {projectid} has {len(explist)} experiments.')
-            exprows = []
-            runrows = []
+            proj_rows = []
+            exp_rows = []
+            run_rows = []
             for exp in explist:
                 exd = self.query_experiment_package_set(exp)
                 (projrows, exprows, runs) = self.parse_experiment_package_set(exd)
