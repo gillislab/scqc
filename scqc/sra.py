@@ -7,25 +7,20 @@
 # Could use  SRR14584407 SRR14584408 in example..
 
 
-from scqc.utils import *
+
 import argparse
+import glob
 import io
 import itertools
 import json
 import logging
 import os
-
-import ast
-import glob
-from pathlib import Path
-
-# from queue import Queue
-
 import requests
 import subprocess
 import sys
 import time
 
+from pathlib import Path
 from configparser import ConfigParser
 from threading import Thread
 from queue import Queue, Empty
@@ -37,6 +32,7 @@ import numpy as np
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 
+from scqc.utils import *
 
 # Translate between Python and SRAToolkit log levels for wrapped commands.
 #  fatal|sys|int|err|warn|info|debug
