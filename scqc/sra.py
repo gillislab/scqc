@@ -213,6 +213,7 @@ class Query(object):
             logging.error(traceback.format_exc(None))
             raise ex
 
+
     def query_experiment_package_set(self, xid):
         """
         Query XML data for this experiment ID. 
@@ -243,6 +244,7 @@ class Query(object):
             time.sleep(self.query_sleep)
         return xmldata
 
+
     def parse_experiment_package_set(self, xmlstr):
         """
         package sets should have one package per uid pulled via efetch, e.g.
@@ -269,6 +271,7 @@ class Query(object):
         run_rows = list(run_rows)
         self.log.debug(f'returning\n    proj_rows: {proj_rows}\n    exp_rows: {exp_rows} \n    run_rows: {run_rows}')
         return (proj_rows, exp_rows, run_rows)
+
 
     def parse_experiment_package(self, root):
         """
@@ -323,6 +326,7 @@ class Query(object):
         self.log.debug(f'\n  projrow: {projrow}\n   exprow: {exprow} \n  runrows: {runrows}')
         return(projrow, exprow, runrows)
 
+
     def parse_run_set(self, runs, exp_id):
         """
 
@@ -352,6 +356,7 @@ class Query(object):
         runrow = [exp_id, run_id, total_spots, total_bases, size, taxon, organism, nreads, readcount, basecount ]
         return runrow
 
+
     def query_runs_for_project(self, project):
         """     
         wget -qO- 'http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=SRP290125'
@@ -363,6 +368,7 @@ class Query(object):
 
         """
         pass
+
 
     def _split_df_by_project(self, df):
         self.metadir
@@ -380,10 +386,6 @@ class Impute(object):
     """
     Imputes sequencing technology for all runs under a project. 
 
-
-
-
-
     """
 
     def __init__(self, config):
@@ -396,6 +398,7 @@ class Impute(object):
         self.sra_efetch = self.config.get('sra', 'sra_efetch')
         self.search_term = self.config.get('sra', 'search_term')
         self.sleep = float(self.config.get('sra', 'sleep'))
+
 
     def execute(self, projectid):
         """
@@ -437,6 +440,7 @@ class Impute(object):
             self.log.error(f'problem with NCBI projectid {projectid}')
             logging.error(traceback.format_exc(None))
             raise ex
+
 
     def _impute_tech(self, df):
         '''
@@ -989,8 +993,6 @@ if __name__ == "__main__":
             exps = list(df['Experiment'].unique())
             
             logging.debug(f"Got list of {len(exps)} experiments")
-            #runs = list(df['Run'])
-            #logging.info(f"Runlist: {runs}")
             for e in exps:
                 print(e) 
 
