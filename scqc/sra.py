@@ -7,7 +7,7 @@
 # Could use  SRR14584407 SRR14584408 in example..
 
 
-
+from scqc.utils import *
 import argparse
 import glob
 import io
@@ -32,7 +32,6 @@ import numpy as np
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 
-from scqc.utils import *
 
 # Translate between Python and SRAToolkit log levels for wrapped commands.
 #  fatal|sys|int|err|warn|info|debug
@@ -324,7 +323,7 @@ class Query(object):
         exp_id = exprow[0]
 
         # get run properties - list of lists
-        runrows = self.parse_run_set(runs, proj_id)
+        runrows = self.parse_run_set(runs, proj_id, sra_id)
 
         self.log.debug(
             f'exprow: proj_id={proj_id} exp_id={exp_id} sra_id={sra_id} samp_id={samp_id}')
@@ -334,7 +333,7 @@ class Query(object):
             f'\n  projrow: {projrow}\n   exprow: {exprow} \n  runrows: {runrows}')
         return(projrow, samprow, exprow, runrows)
 
-    def parse_run_set(self, runs, proj_id):
+    def parse_run_set(self, runs, proj_id, sra_id):
         """
 
         """
@@ -342,6 +341,7 @@ class Query(object):
         for run in runs.findall('RUN'):
             runrow = self.parse_run(run)
             runrow.append(proj_id)
+            runrow.append(sra_id)
             runrows.append(runrow)
         return runrows
 
@@ -355,7 +355,7 @@ class Query(object):
             tag = elem.get('namespace')
             val = elem.text
             run_ext_ids[tag] = val
-
+        run_ext_ids = str(run_ext_ids)
         avail_status = run.get('unavailable')
         if avail_status == 'true':
             raise RunUnavailableException(f'run data unavailable for {run_id}')

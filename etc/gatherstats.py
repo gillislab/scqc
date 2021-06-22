@@ -1,20 +1,19 @@
 # aggregates statistics.
 
-import pandas as pd
-from scipy.io import mmread
-import os
-import scanpy as sc  # pip install
-import numpy as np
-import io
 import argparse
-
+import io
+import logging
+import os
 import subprocess
 import sys
-
 from configparser import ConfigParser
+from queue import Empty, Queue
 from threading import Thread
-from queue import Queue, Empty
 
+import numpy as np
+import pandas as pd
+import scanpy as sc  # pip install
+from scipy.io import mmread
 from scqc.utils import gini_coefficient
 
 LOGLEVELS = {
@@ -115,20 +114,27 @@ class GetStats(object):
         return adata
 
     def _get_stats_scanpy(self, adata):
-        # merge var with geneinfo (from starindex)
+
         # consider different gene sets - ERCC  corresponds to spike ins
         adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')
         adata.var['ERCC'] = adata.var.gene_symbol.str.startswith('ERCC')
         adata.var['ribo'] = adata.var.type == "rRNA"
+        adata.var['Xist'] = adata.var.gene_symbol == 'Xist'
+        adata.var['cytoplasm'] = None
+        adata.var['metabolism'] = None
+        adata.var['membrane'] = None
 
-        # adata should be in raw counts
+        # append stats for gene sets above using scanpy
         sc.pp.calculate_qc_metrics(
-            adata, expr_type='counts', var_type='genes', qc_vars=['mt', 'ERCC', 'ribo'],
+            adata, expr_type='counts', var_type='genes', qc_vars=['mt', 'ERCC', 'ribo', 'Xist'],
             percent_top=(50, 100, 200, 500), inplace=True, use_raw=False)
 
         # unstructured data - dataset specific
         adata.uns['gini_by_counts'] = gini_coefficient(
             adata.obs['total_counts'])
+
+        adata.obs['Xist_count'] = adata[:,
+                                        adata.var.gene_symbol == 'Xist'].X.todense()
 
         return adata
 
@@ -160,55 +166,4 @@ class GetStats(object):
 
 
 if __name__ == "__main__":
-
-    gitpath = os.path.expanduser("~/git/scqc")
-    sys.path.append(gitpath)
-
-    FORMAT = '%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
-    logging.basicConfig(format=FORMAT)
-    logging.getLogger().setLevel(logging.DEBUG)
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument('-d', '--debug',
-                        action="store_true",
-                        dest='debug',
-                        help='debug logging')
-
-    parser.add_argument('-v', '--verbose',
-                        action="store_true",
-                        dest='verbose',
-                        help='verbose logging')
-
-    parser.add_argument('-s', '--srp',
-                        metavar='srpid',
-                        type=str,
-                        nargs='+',
-                        required=False,
-                        default=None,
-                        help='')
-
-    args = parser.parse_args()
-
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-    if args.verbose:
-        logging.getLogger().setLevel(logging.INFO)
-
-    cp = get_default_config()
-    cs = get_configstr(cp)
-
-    logging.debug(f"got config: {cs}")
-
-    if args.fasterq is not None:
-        dq = Queue()
-        for srr in args.fasterq:
-            fq = FasterqDump(cp, srr)
-            dq.put(fq)
-        logging.debug(f'created queue of {dq.qsize()} items')
-        md = int(cp.get('sra', 'max_downloads'))
-        for n in range(md):
-            Worker(dq).start()
-        logging.debug('waiting to join threads...')
-        dq.join()
-        logging.debug('all workers done...')
+    pass
