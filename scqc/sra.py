@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 #
-#  Module to deal with interactions with SRA and parsing SRA metadata. 
+#  Module to deal with interactions with SRA and parsing SRA metadata.
 #
 # http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=
 #
 # Could use  SRR14584407 SRR14584408 in example..
 
+from scqc.utils import *
 import argparse
 import io
 import itertools
@@ -35,7 +36,6 @@ import numpy as np
 
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
-from scqc.utils import *
 
 # Translate between Python and SRAToolkit log levels for wrapped commands.
 #  fatal|sys|int|err|warn|info|debug
@@ -47,16 +47,18 @@ LOGLEVELS = {
     50: 'fatal',
 }
 
-# srp, srx, sra, gsm, gse, taxon, organism, title, pubdate, abstract, lcp, sample_attrib, np.nan 
+# srp, srx, sra, gsm, gse, taxon, organism, title, pubdate, abstract, lcp, sample_attrib, np.nan
 
-#META_COLUMNS = ['project', 'experiment', 'accession', 'gsm','gse', 'taxon_id', 'organism',  'title', 'pubdate', 
+# META_COLUMNS = ['project', 'experiment', 'accession', 'gsm','gse', 'taxon_id', 'organism',  'title', 'pubdate',
 #                'abstract', 'lcp', 'sample_attributes', 'tech', 'status']
 #PROJ_RUN_COLUMNS = ['project','run_id']
 
-EXP_COLUMNS = ['proj_id', 'exp_id', 'sra_id', 'gsm', 'gse', 'title', 'pubdate', 'abstract', 'lcp', 'sample_attributes' ]
-RUN_COLUMNS = ['run_id', 'tot_spots', 'tot_bases', 'size', 'taxon', 'organism', 'nreads', 'readcount', 'basecount' ]
+EXP_COLUMNS = ['proj_id', 'exp_id', 'sra_id', 'gsm', 'gse',
+               'title', 'pubdate', 'abstract', 'lcp', 'sample_attributes']
+RUN_COLUMNS = ['run_id', 'tot_spots', 'tot_bases', 'size',
+               'taxon', 'organism', 'nreads', 'readcount', 'basecount']
 
-# john lee is satisfied with this class 6/3/2021
+
 def get_default_config():
     cp = ConfigParser()
     cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
@@ -70,13 +72,18 @@ def get_configstr(cp):
         ss.seek(0)  # rewind
         return ss.read()
 
+
 class RunUnavailableException(Exception):
     """ Thrown when Run in a Runset is unavailable.  """
 
 
+class SampleUnavailableException(Exception):
+    """ Thrown when Sample in a Runset is unavailable.  """
+
+
 class Worker(Thread):
     """
-    
+
     """
 
     def __init__(self, q):
@@ -101,16 +108,15 @@ def setup(config):
     Download the appropriate supplement data.
     Only needs to be done once.
     '''
-    
+
     log = logging.getLogger('sra')
     config = config
     # directories
-    metadir = os.path.expanduser( config.get('sra', 'metadir'))
-    cachedir = os.path.expanduser( config.get('sra', 'cachedir'))
-    tempdir = os.path.expanduser( config.get('sra', 'tempdir'))
+    metadir = os.path.expanduser(config.get('sra', 'metadir'))
+    cachedir = os.path.expanduser(config.get('sra', 'cachedir'))
+    tempdir = os.path.expanduser(config.get('sra', 'tempdir'))
     resourcedir = os.path.expanduser(config.get('sra', 'resourcedir'))
 
-    
     try:
         os.makedirs(metadir)
     except FileExistsError:
@@ -129,7 +135,6 @@ def setup(config):
         pass
 
 
-
 # To do: batch for large queries.
 # Ideally, we'd query once for all current data, (one large query)
 # then periodically query every few days (many smaller queries)
@@ -139,13 +144,14 @@ def setup(config):
 # Note: repeated iterations of Query.execute() will include the failed UIDs
 class Query(object):
     """
-    
+
     Run info for sample and projects?
     wget -qO- 'http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=SRS049712'
     wget -qO- 'http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=SRP290125'
 
-   
+
     """
+
     def __init__(self, config):
         self.log = logging.getLogger('sra')
         self.config = config
@@ -157,8 +163,7 @@ class Query(object):
         self.search_term = self.config.get('sra', 'search_term')
         self.query_max = self.config.get('sra', 'query_max')
         self.uidfile = os.path.expanduser(self.config.get('sra', 'uidfile'))
-        self.query_sleep = float(self.config.get('sra','query_sleep'))
-
+        self.query_sleep = float(self.config.get('sra', 'query_sleep'))
 
     def execute(self, projectid):
         """
@@ -166,14 +171,15 @@ class Query(object):
              Perform query, get ids, fetch for each id, parse XML response. 
              Put project and run info in project_metadata.tsv and project_runs.tsv
              Put completed project ids into query-donelist.txt
-         
+
         """
         self.log.info(f'handling projectid {projectid}')
         try:
             pdf = query_project_metadata(projectid)
             #self.log.debug(f'info: {pdf}')
             explist = list(pdf.Experiment)
-            self.log.info(f'projectid {projectid} has {len(explist)} experiments.')
+            self.log.info(
+                f'projectid {projectid} has {len(explist)} experiments.')
             exprows = []
             runrows = []
             for exp in explist:
@@ -186,25 +192,24 @@ class Query(object):
             logging.debug(f'final exprows: {exprows}')
             logging.debug(f'final runrows: {runrows}')
             edf = pd.DataFrame(exprows, columns=EXP_COLUMNS)
-            merge_write_df(edf, f'{self.metadir}/experiments.tsv' )
-                      
+            merge_write_df(edf, f'{self.metadir}/experiments.tsv')
+
             rdf = pd.DataFrame(runrows, columns=RUN_COLUMNS)
-            merge_write_df(rdf, f'{self.metadir}/runs.tsv' )                       
+            merge_write_df(rdf, f'{self.metadir}/runs.tsv')
 
             self.log.info(f'successfully processed project {projectid}')
-            # return projectid only if it has completed successfully. 
+            # return projectid only if it has completed successfully.
             return projectid
-        
+
         except Exception as ex:
             self.log.error(f'problem with NCBI projectid {projectid}')
             logging.error(traceback.format_exc(None))
             raise ex
-      
-      
+
     def query_experiment_package_set(self, xid):
         """
         Query XML data for this experiment ID. 
-        
+
         """
         xmldata = None
         try:
@@ -216,24 +221,24 @@ class Query(object):
                 self.log.debug(f'good HTTP response for {xid}')
             else:
                 self.log.warn(f'bad HTTP response for id {xid}')
-            
+
         except Exception as ex:
             self.log.error(f'problem with NCBI id {xid}')
             logging.error(traceback.format_exc(None))
-        
+
         finally:
-            self.log.debug(f"sleeping {self.query_sleep} secs between fetch calls...")
+            self.log.debug(
+                f"sleeping {self.query_sleep} secs between fetch calls...")
             time.sleep(self.query_sleep)
         return xmldata
-
 
     def parse_experiment_package_set(self, xmlstr):
         """
         package sets should have one package per uid pulled via efetch, e.g.
-        
+
         https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=sra&id=12277089,12277091
         https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=sra&id=13333495 
-        
+
         """
         root = et.fromstring(xmlstr)
         self.log.debug(f"root={root}")
@@ -241,21 +246,21 @@ class Query(object):
         run_rows = []
         n_processed = 0
         for exp in root.iter("EXPERIMENT_PACKAGE"):
-            (newrows, newruns) = self.parse_experiment_package(exp)        
+            (newrows, newruns) = self.parse_experiment_package(exp)
             exp_rows.append(newrows)
-            #run_rows.append(newruns)
+            # run_rows.append(newruns)
             run_rows = itertools.chain(run_rows, newruns)
             n_processed += 1
         self.log.debug(f"processed {n_processed} experiment packages.")
         run_rows = list(run_rows)
-        self.log.debug(f'returning \n    exp_rows: {exp_rows} \n    run_rows: {run_rows}')
+        self.log.debug(
+            f'returning \n    exp_rows: {exp_rows} \n    run_rows: {run_rows}')
         return (exp_rows, run_rows)
-     
-           
+
     def parse_experiment_package(self, root):
         """
         NCBI provides no XSD, so we shouldn't rely on order
-                
+
         """
         self.log.debug('parsing experiment package...')
         exp = root.find('EXPERIMENT')
@@ -263,27 +268,28 @@ class Query(object):
         proj = root.find('STUDY')
         samp = root.find('SAMPLE')
         runs = root.find('RUN_SET')
-        
-        # get experiment properties. 
+
+        # get experiment properties.
         exp_id = exp.get('accession')
         gsm = exp.get('alias')
         try:
-            lcp = exp.find('DESIGN').find('LIBRARY_DESCRIPTOR').find('LIBRARY_CONSTRUCTION_PROTOCOL').text
+            lcp = exp.find('DESIGN').find('LIBRARY_DESCRIPTOR').find(
+                'LIBRARY_CONSTRUCTION_PROTOCOL').text
         except:
             lcp = ''
-        
+
         lcp = lcp.strip()
-                
+
         # get submission properties
         sra_id = sub.get('accession')
 
         # get study/project properties title, abstract
         proj_id = proj.get('accession')
-        gse = proj.get('alias')        
-        d_elem=proj.find('DESCRIPTOR')
+        gse = proj.get('alias')
+        d_elem = proj.find('DESCRIPTOR')
         title = d_elem.find('STUDY_TITLE').text
         abstract = d_elem.find('STUDY_ABSTRACT').text
-                
+
         # get sample properties
         samp_id = samp.get('accession')
         sample_attributes = {}
@@ -291,62 +297,80 @@ class Query(object):
             tag = elem.find('TAG').text
             val = elem.find('VALUE').text
             sample_attributes[tag] = val
-        
-        sample_attributes = str(sample_attributes)        
+
+        sample_attributes = str(sample_attributes)
         pubdate = runs.find('RUN').get('published')
 
         runrows = self.parse_run_set(runs)
-        
-        self.log.debug(f'exprow: proj_id={proj_id} exp_id={exp_id} gsm={gsm} sra_id={sra_id} gse={gse} samp_id={samp_id}')          
-        exprow = [proj_id, exp_id, sra_id, gsm, gse, title, pubdate, abstract, lcp, sample_attributes ]
+
+        self.log.debug(
+            f'exprow: proj_id={proj_id} exp_id={exp_id} gsm={gsm} sra_id={sra_id} gse={gse} samp_id={samp_id}')
+        exprow = [proj_id, exp_id, sra_id, gsm, gse, title,
+                  pubdate, abstract, lcp, sample_attributes]
         self.log.debug(f'exprow: {exprow} \n  runrows: {runrows}')
-        return( exprow, runrows)
-    
+        return(exprow, runrows)
 
     def parse_run_set(self, runs):
         """
-        
+
         """
         runrows = []
         for run in runs.findall('RUN'):
             runrow = self.parse_run(run)
             runrows.append(runrow)
         return runrows
-    
-        
-    def parse_run(self, run ):
+
+    def parse_run(self, run):
         run_id = run.get('accession')
         avail_status = run.get('unavailable')
         if avail_status == 'true':
             raise RunUnavailableException(f'run data unavailable for {run_id}')
-        total_spots= run.get('total_spots') 
-        total_bases=run.get('total_bases')
-        size=run.get('size')
+        total_spots = run.get('total_spots')
+        total_bases = run.get('total_bases')
+        size = run.get('size')
         taxon = run.find('Pool').find('Member').get('tax_id')
         organism = run.find('Pool').find('Member').get('organism')
-        nreads= run.find('Statistics').get('nreads')
-        readcount=run.find('Statistics').find('Read').get('count')
+        nreads = run.find('Statistics').get('nreads')
+        readcount = run.find('Statistics').find('Read').get('count')
         bases = run.find('Bases')
         basecount = bases.get('count')
-        
-        runrow = [run_id, total_spots, total_bases, size, taxon, organism, nreads, readcount, basecount ]
+
+        runrow = [run_id, total_spots, total_bases, size,
+                  taxon, organism, nreads, readcount, basecount]
         return runrow
-      
+
+    def parse_sample(self, sample):
+        sample_id = sample.get('accession')
+        avail_status = sample.get('unavailable')
+        if avail_status == 'true':
+            raise SampleUnavailableException(
+                f'sample data unavailable for {sample_id}')
+        taxid = sample.get('')
+        total_spots = sample.get('total_spots')
+        total_bases = sample.get('total_bases')
+        size = sample.get('size')
+        taxon = sample.find('Pool').find('Member').get('tax_id')
+        organism = sample.find('Pool').find('Member').get('organism')
+        nreads = sample.find('Statistics').get('nreads')
+        readcount = sample.find('Statistics').find('Read').get('count')
+        bases = sample.find('Bases')
+        basecount = bases.get('count')
+
+        runrow = [sample, total_spots, total_bases, size,
+                  taxon, organism, nreads, readcount, basecount]
+        return runrow
 
     def query_runs_for_project(self, project):
         """     
-         wget -qO- 'http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=SRP290125'
-Run,ReleaseDate,LoadDate,spots,bases,spots_with_mates,avgLength,size_MB,AssemblyName,download_path,Experiment,LibraryName,LibraryStrategy,LibrarySelection,LibrarySource,LibraryLayout,InsertSize,InsertDev,Platform,Model,SRAStudy,BioProject,Study_Pubmed_id,ProjectID,Sample,BioSample,SampleType,TaxID,ScientificName,SampleName,g1k_pop_code,source,g1k_analysis_group,Subject_ID,Sex,Disease,Tumor,Affection_Status,Analyte_Type,Histological_Type,Body_Site,CenterName,Submission,dbgap_study_accession,Consent,RunHash,ReadHash
-SRR12951718,2020-11-05 13:15:13,2020-11-05 12:55:40,128538925,12596814650,0,98,3781,GCA_000001635.4,https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos3/sra-pub-run-19/SRR12951718/SRR12951718.1,SRX9404801,,RNA-Seq,cDNA,TRANSCRIPTOMIC,SINGLE,0,0,ILLUMINA,NextSeq 550,SRP290125,PRJNA673364,3,673364,SRS7622575,SAMN16604770,simple,10090,Mus musculus,GSM4873966,,,,,,,no,,,,,GEO,SRA1151197,,public,1790FB1FF1C3B1A1D0E1958BE6859830,86BE0A6ECACE94B3BC53AFA6FE2A258F
-SRR12951719,2020-11-05 12:52:07,2020-11-05 12:39:41,137453038,13470397724,0,98,4581,GCA_000001635.4,https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos3/sra-pub-run-21/SRR12951719/SRR12951719.1,SRX9404802,,RNA-Seq,cDNA,TRANSCRIPTOMIC,SINGLE,0,0,ILLUMINA,NextSeq 550,SRP290125,PRJNA673364,3,673364,SRS7622574,SAMN16604769,simple,10090,Mus musculus,GSM4873967,,,,,,,no,,,,,GEO,SRA1151197,,public,8C05F51EF726335BE2C41DB9A6323EC4,2C810A53A72F30ECAC8AAD71B4E55CAB
-SRR12951720,2020-11-05 12:26:06,2020-11-05 12:13:08,100175297,9817179106,0,98,2840,GCA_000001635.4,https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos3/sra-pub-run-19/SRR12951720/SRR12951720.1,SRX9404803,,RNA-Seq,cDNA,TRANSCRIPTOMIC,SINGLE,0,0,ILLUMINA,NextSeq 550,SRP290125,PRJNA673364,3,673364,SRS7622576,SAMN16604768,simple,10090,Mus musculus,GSM4873968,,,,,,,no,,,,,GEO,SRA1151197,,public,D02C61154EB828AB07968FF1BFE52485,D80E2EB7A3A50FCE5062F584FD58FD8F
-        
+        wget -qO- 'http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=SRP290125'
+            Run,ReleaseDate,LoadDate,spots,bases,spots_with_mates,avgLength,size_MB,AssemblyName,download_path,Experiment,LibraryName,LibraryStrategy,LibrarySelection,LibrarySource,LibraryLayout,InsertSize,InsertDev,Platform,Model,SRAStudy,BioProject,Study_Pubmed_id,ProjectID,Sample,BioSample,SampleType,TaxID,ScientificName,SampleName,g1k_pop_code,source,g1k_analysis_group,Subject_ID,Sex,Disease,Tumor,Affection_Status,Analyte_Type,Histological_Type,Body_Site,CenterName,Submission,dbgap_study_accession,Consent,RunHash,ReadHash
+            SRR12951718,2020-11-05 13:15:13,2020-11-05 12:55:40,128538925,12596814650,0,98,3781,GCA_000001635.4,https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos3/sra-pub-run-19/SRR12951718/SRR12951718.1,SRX9404801,,RNA-Seq,cDNA,TRANSCRIPTOMIC,SINGLE,0,0,ILLUMINA,NextSeq 550,SRP290125,PRJNA673364,3,673364,SRS7622575,SAMN16604770,simple,10090,Mus musculus,GSM4873966,,,,,,,no,,,,,GEO,SRA1151197,,public,1790FB1FF1C3B1A1D0E1958BE6859830,86BE0A6ECACE94B3BC53AFA6FE2A258F
+            SRR12951719,2020-11-05 12:52:07,2020-11-05 12:39:41,137453038,13470397724,0,98,4581,GCA_000001635.4,https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos3/sra-pub-run-21/SRR12951719/SRR12951719.1,SRX9404802,,RNA-Seq,cDNA,TRANSCRIPTOMIC,SINGLE,0,0,ILLUMINA,NextSeq 550,SRP290125,PRJNA673364,3,673364,SRS7622574,SAMN16604769,simple,10090,Mus musculus,GSM4873967,,,,,,,no,,,,,GEO,SRA1151197,,public,8C05F51EF726335BE2C41DB9A6323EC4,2C810A53A72F30ECAC8AAD71B4E55CAB
+            SRR12951720,2020-11-05 12:26:06,2020-11-05 12:13:08,100175297,9817179106,0,98,2840,GCA_000001635.4,https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos3/sra-pub-run-19/SRR12951720/SRR12951720.1,SRX9404803,,RNA-Seq,cDNA,TRANSCRIPTOMIC,SINGLE,0,0,ILLUMINA,NextSeq 550,SRP290125,PRJNA673364,3,673364,SRS7622576,SAMN16604768,simple,10090,Mus musculus,GSM4873968,,,,,,,no,,,,,GEO,SRA1151197,,public,D02C61154EB828AB07968FF1BFE52485,D80E2EB7A3A50FCE5062F584FD58FD8F
+
 
         """
         pass
-
-
-    
 
     def _impute_tech(self, df):
         '''
@@ -416,12 +440,12 @@ SRR12951720,2020-11-05 12:26:06,2020-11-05 12:13:08,100175297,9817179106,0,98,28
         return
 
 
-
 class PrefetchProject(object):
     """
     Handles all runid Prefetches for a project. 
-    
+
     """
+
     def __init__(self, config, proj_id, outlist):
         self.log = logging.getLogger('sra')
         self.config = config
@@ -430,8 +454,7 @@ class PrefetchProject(object):
         self.sracache = os.path.expanduser(self.config.get('sra', 'cachedir'))
         self.log.debug(f'prefetch for {proj_id}')
 
-#    def 
-
+#    def
 
 
 # John Lee is satisfied with this class 6/03/2021
@@ -499,8 +522,8 @@ class PrefetchRun(object):
         self.log.debug(f'prefetch id {self.runid}')
         loglev = LOGLEVELS[self.log.getEffectiveLevel()]
         cmd = ['prefetch',
-               '-X','100G',
-               '--resume','yes',
+               '-X', '100G',
+               '--resume', 'yes',
                '-O', f'{self.sracache}/',
                '--log-level', f'{loglev}',
                f'{self.runid}']
@@ -583,26 +606,27 @@ class FasterqDump(object):
         if str(cp.returncode) == "0":
             self.outlist.append(self.srrid)
 
+
 def get_runs_for_project(config, projectid):
     """
-    
+
     """
-    metadir = os.path.expanduser(config.get('sra','metadir'))
+    metadir = os.path.expanduser(config.get('sra', 'metadir'))
     filepath = f"{metadir}/project_runs.tsv"
     if os.path.isfile(filepath):
         pdf = pd.read_csv(filepath, sep='\t', index_col=0, comment="#")
         return list(pdf[pdf.project == 'SRP281950'].run_id)
     else:
-        return [] 
+        return []
 
 
 def query_project_metadata(project_id):
     '''
     E.g. https://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?db=sra&rettype=runinfo&save=efetch&term=SRP131661
-    
+
 
     '''
-    log= logging.getLogger('sra')
+    log = logging.getLogger('sra')
     url = "https://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi"
 
     headers = {
@@ -623,7 +647,7 @@ def query_project_metadata(project_id):
         "rettype": "runinfo",
         "save": "efetch",
         "term": project_id}
-    
+
     log.debug('opening request...')
     r = requests.put(url, data=payload, headers=headers, stream=True)
     log.debug('got return info. reading content...')
@@ -635,16 +659,16 @@ def query_project_metadata(project_id):
 def query_all_uids(config):
     """
     Perform standard query with max return, loop over all entries. 
-    
+
     retstart="+str(retstart)+"&retmax="+str(retmax)+"&retmode=json" 
-    
+
     """
     sra_esearch = config.get('sra', 'sra_esearch')
     sra_efetch = config.get('sra', 'sra_efetch')
     search_term = config.get('sra', 'search_term')
     query_max = 50000
     query_start = 0
-    
+
     log = logging.getLogger('sra')
     log.info('querying SRA...')
     alluids = []
@@ -666,10 +690,11 @@ def query_all_uids(config):
         except Exception as ex:
             #log.error(f'problem with NCBI uid {id}')
             log.error(traceback.format_exc(None))
-        
+
     log.debug(f'found {len(alluids)} uids.')
-    for i in alluids: 
+    for i in alluids:
         print(i)
+
 
 def query_project_for_uid(config, uid):
     """
@@ -684,7 +709,8 @@ def query_project_for_uid(config, uid):
     if r.status_code == 200:
         rd = r.content.decode()
         root = et.fromstring(rd)
-        proj_id = root.find('EXPERIMENT_PACKAGE').find('STUDY').get('accession')
+        proj_id = root.find('EXPERIMENT_PACKAGE').find(
+            'STUDY').get('accession')
         log.debug(f'found project id: {proj_id}')
     time.sleep(0.5)
     return proj_id
@@ -692,6 +718,8 @@ def query_project_for_uid(config, uid):
 # should  this be moved to query? download?
 # Note: special cases....
 #       umi+cb = 30(v3) , 25(v2)
+
+
 def _impute_10x_version(self):
     # look at the first few lines of the fastq file.
     loglev = LOGLEVELS[self.log.getEffectiveLevel()]
@@ -744,8 +772,6 @@ def _impute_10x_version(self):
     return(read_bio, read_tech, tech)
 
 
-
-
 # to do: include drivers for 10x and ss alignments
 if __name__ == "__main__":
 
@@ -776,7 +802,7 @@ if __name__ == "__main__":
     parser.add_argument('-q', '--query',
                         metavar='query',
                         type=str,
-                        nargs='+', 
+                        nargs='+',
                         default=None,
                         help='Perform standard query on supplied projectid')
 
@@ -820,14 +846,13 @@ if __name__ == "__main__":
                         default=None,
                         help='Download metadata for args. ')
 
-    parser.add_argument('-u','--uidquery',
+    parser.add_argument('-u', '--uidquery',
                         metavar='uidfile',
                         type=str,
                         dest='uidquery',
                         required=False,
                         default=None,
                         help='Perform standard query on uids in file, print project_ids.')
-
 
     args = parser.parse_args()
 
@@ -882,16 +907,14 @@ if __name__ == "__main__":
             logging.debug(f"Got list of {len(df)} runs")
             runs = list(df['Run'])
             logging.info(f"Runlist: {runs}")
-    
+
     if args.uidquery is not None:
         qfile = args.uidquery
         uidlist = readlist(os.path.expanduser(qfile))
         projlist = []
         for uid in uidlist:
-            projid = query_project_for_uid(cp,uid)
+            projid = query_project_for_uid(cp, uid)
             projlist.append(projid)
-        
+
         for pid in projlist:
             print(pid)
-            
-        

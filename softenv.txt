@@ -4,6 +4,8 @@ conda activate scqc
 conda install requests pandas ipython
 conda install -c bioconda star
 
+pip install scanpy
+
 
 cd  $CONDA_PREFIX
 
@@ -29,3 +31,19 @@ cd -
 # cd STAR-2.7.8a/source
 # make STAR
 # export PATH=$PATH:$PWD/STAR-2.7.8a/bin/Linux_x86_64
+
+
+# FastQC - possibly do
+wget https://www.bioinformatics.babraham.ac.uk/projects/fastqc/fastqc_v0.11.9.zip
+unzip fastqc_v0.11.9.zip
+cd FastQC
+chmod 755 fastqc
+./fastqc -t 30  SRR14633482.fastq 
+
+
+# SRR14633482.fastq
+# 10:45:45 ~ 5% per min  -> 20 min 
+# 	30915637776 bases 
+#     10930204446 bytes (10 gb)
+#     73 GB file
+
