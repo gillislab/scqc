@@ -6,8 +6,6 @@
 #
 # Could use  SRR14584407 SRR14584408 in example..
 
-
-from scqc.utils import *
 import argparse
 import glob
 import io
@@ -32,6 +30,7 @@ import numpy as np
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 
+from scqc.utils import *
 
 # Translate between Python and SRAToolkit log levels for wrapped commands.
 #  fatal|sys|int|err|warn|info|debug
@@ -393,6 +392,7 @@ class Query(object):
         exp_ext_ids = {}
         ids = exp.find('IDENTIFIERS')
         exp_id = ids.find('PRIMARY_ID').text
+        self.log.debug(f'parsing exp_id: {exp_id}')
         for elem in ids.findall('EXTERNAL_ID'):
             tag = elem.get('namespace')
             val = elem.text
@@ -401,14 +401,18 @@ class Query(object):
         projid = exp.find('STUDY_REF').get('accession')
         des = exp.find('DESIGN')
         sampid = des.find('SAMPLE_DESCRIPTOR').get('accession')
-        lcp = des.find('LIBRARY_DESCRIPTOR').find(
-            'LIBRARY_CONSTRUCTION_PROTOCOL').text
-        strat = des.find('LIBRARY_DESCRIPTOR').find(
-            'LIBRARY_STRATEGY').text
-        source = des.find('LIBRARY_DESCRIPTOR').find(
-            'LIBRARY_SOURCE').text
+        ldes = des.find('LIBRARY_DESCRIPTOR')
 
-        lcp = lcp.strip()
+        lcp = ""
+        strat = ""
+        source = ""
+        try:
+            lcp = ldes.find('LIBRARY_CONSTRUCTION_PROTOCOL').text
+            lcp = lcp.strip()
+            strat = ldes.find('LIBRARY_STRATEGY').text
+            source = ldes.find('LIBRARY_SOURCE').text
+        except AttributeError as ae:
+            self.log.warn(f'attribute error parsing LIBRARY_DESCRIPTOR children.')
 
         exprow = [exp_id, exp_ext_ids,  strat, source, lcp,  sampid, projid]
         return exprow
