@@ -54,6 +54,8 @@ EXP_COLUMNS = ['exp_id', 'ext_ids',  'strategy',
 RUN_COLUMNS = ['run_id', 'ext_ids', 'tot_spots', 'tot_bases', 'size', 'publish_date',
                'taxon', 'organism', 'nreads',  'basecounts', 'expid', 'sampleid', 'proj_id', 'submission_id']
 
+IMPUTE_COLUMNS = ['exp_id','tech']
+
 # PROJ_COLUMNS = ['proj_id', 'title', 'pubdate', 'abstract']
 # EXP_COLUMNS = ['proj_id', 'exp_id', 'sra_id',
 #                'gsm', 'gse', 'lcp', 'sample_attributes']

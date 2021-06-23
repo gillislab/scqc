@@ -53,10 +53,12 @@ class Stage(object):
         self.sleep = int(self.config.get(f'{self.name}', 'sleep'))
         self.batchsize = int(self.config.get(f'{self.name}', 'batchsize'))
         self.batchsleep = float(self.config.get(f'{self.name}', 'batchsleep'))
+        self.ncycles = int(self.config.get(f'{self.name}', 'ncycles'))
         self.outlist = []
 
     def run(self):
         self.log.info(f'{self.name} run...')
+        cycles = 0
         try:
             while not self.shutdown:
                 self.log.debug(
@@ -92,10 +94,14 @@ class Stage(object):
                         
                     curid += self.batchsize
                     time.sleep(self.batchsleep)
+                cycles += 1
+                if cycles >= self.ncycles:
+                    self.shutdown = True
 
                 # overall stage sleep
-                logging.info(f'done with all batches. Sleeping for stage. {self.sleep} sec...')
-                time.sleep(self.sleep)
+                if not self.shutdown:
+                    logging.info(f'done with all batches. Sleeping for stage. {self.sleep} sec...')
+                    time.sleep(self.sleep)
 
         except KeyboardInterrupt:
             print('\nCtrl-C. stopping.')
@@ -104,6 +110,8 @@ class Stage(object):
             self.log.warning("exception raised during main loop.")
             self.log.error(traceback.format_exc(None))
             raise ex
+        logging.info(f'Shutdown set. Exitting {self.name}')
+
 
     def stop(self):
         self.log.info('stopping...')
@@ -235,6 +243,12 @@ class CLI(object):
                             dest='setup',
                             help='perform setup for chosen daemon and exit...'
                             )
+        parser.add_argument('-n','--ncycles',
+                            action='store',
+                            dest='ncycles',
+                            default=None,
+                            help='halt after N cycles'
+                            )
 
 
         subparsers = parser.add_subparsers(dest='subcommand',
@@ -264,9 +278,12 @@ class CLI(object):
 
         cp = ConfigParser()
         cp.read(os.path.expanduser(args.conffile))
+        
+        if args.ncycles is not None:
+            cp.set('DEFAULT','ncycles',str(int(args.ncycles)))
+            
         cs = self.get_configstr(cp)
-        logging.debug(f"config: {cs} ")
-
+        logging.debug(f"config: \n{cs} ")
         logging.debug(f"args: {args} ")
 
         if args.subcommand == 'query':
