@@ -126,15 +126,24 @@ class GetStats(object):
         qcvars = ['mt', 'ERCC', 'ribo', 'female', 'male',
                   'essential', 'cell_cycle']
 
+        # get housekeeping genes
+        hk_genes = pd.read_csv(self.housekeeping, sep=",")
+        adata.var['housekeeping'] = adata.var.gene_symbol.isin(
+            hk_genes.gene)
+
         # get gender markers
         female_genes = pd.read_csv(self.female_markers, sep=",")
-        male_genes = pd.read_csv(self.male_markers, sep=",")
         adata.var['female'] = adata.var.gene_symbol.isin(
             female_genes.gene)
+
+        male_genes = pd.read_csv(self.male_markers, sep=",")
         adata.var['male'] = adata.var.gene_symbol.isin(
             male_genes.gene)
 
         # get essential genes
+        essential = pd.read_csv(self.essential, sep=",")
+        adata.var['essential'] = adata.var.gene_symbol.isin(
+            essential.gene)
 
         # get cell cycle genes
         cc = pd.read_csv(self.cc_marker_path, sep=",")
@@ -145,19 +154,19 @@ class GetStats(object):
 
         # append stats for gene sets above using scanpy
         sc.pp.calculate_qc_metrics(
-            adata, expr_type='counts', var_type='genes',
-            qc_vars=qcvars,
-            percent_top=(50, 100, 200, 500), inplace=True, use_raw=False)
+            adata,
+            expr_type='counts', var_type='genes',
+            percent_top=(50, 100, 200, 500), inplace=True, use_raw=False,
+            qc_vars=qcvars)
+
+        # computes the N+M x N+M corrcoef matrix - extract off diagonal block
+        adata.obs['corr_to_mean'] = np.array(sparse_pairwise_corr(
+            adata.var.mean_counts, adata.X)[0, 1:]).flatten()
 
         # unstructured data - dataset specific
         adata.uns['gini_by_counts'] = gini_coefficient(
             adata.obs['total_counts'])
 
-        mean_counts = adata.var.mean_counts
-        a = adata.X
-
-        # computes the N+M x N+M corrcoef matrix - extract off diagonal block
-        adata.obs['corr_to_mean'] = sparse_pairwise_corr(mean_counts, a)[0, 1:]
         return adata
 
     def execute(self):
