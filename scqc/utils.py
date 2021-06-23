@@ -6,7 +6,7 @@ import tempfile
 import traceback
 import urllib
 import numpy as np
-
+from scipy import sparse
 from ftplib import FTP
 
 import pandas as pd
@@ -169,3 +169,35 @@ def gini_coefficient(x):
     for i, xi in enumerate(x[:-1], 1):
         diffsum += np.sum(np.abs(xi - x[i:]))
     return diffsum / (len(x)**2 * np.mean(x))
+
+
+def sparse_pairwise_corr(A, B=None):
+    """
+    Compute pairwise correlation for sparse matrices. 
+    Currently only implements pearson correlation.
+    If A is N x P
+       B is M x P
+    Result is N+M x N+M symmetric matrix
+    with off diagonal blocks as correlations between 
+        elements in A with elements in B
+    and main diagonal blocks as correlations between
+        elements in A (or B) with elements in A (or B)
+    """
+
+    if B is not None:
+        A = sparse.vstack((A, B), format='csr')
+
+    A = A.astype(np.float64)
+    n = A.shape[1]
+
+    # Compute the covariance matrix
+    rowsum = A.sum(1)
+    centering = rowsum.dot(rowsum.T.conjugate()) / n
+    C = (A.dot(A.T.conjugate()) - centering) / (n - 1)
+
+    # The correlation coefficients are given by
+    # C_{i,j} / sqrt(C_{i} * C_{j})
+    d = np.diag(C)
+    coeffs = C / np.sqrt(np.outer(d, d))
+
+    return coeffs

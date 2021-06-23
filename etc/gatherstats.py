@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import scanpy as sc  # pip install
 from scipy.io import mmread
-from scqc.utils import gini_coefficient
+from scqc.utils import gini_coefficient, sparse_pairwise_corr
 
 LOGLEVELS = {
     10: 'debug',
@@ -119,23 +119,45 @@ class GetStats(object):
         adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')
         adata.var['ERCC'] = adata.var.gene_symbol.str.startswith('ERCC')
         adata.var['ribo'] = adata.var.type == "rRNA"
-        adata.var['Xist'] = adata.var.gene_symbol == 'Xist'
-        adata.var['cytoplasm'] = None
-        adata.var['metabolism'] = None
-        adata.var['membrane'] = None
+        adata.var['cytoplasm'] = None       # GO Term/kegg?
+        adata.var['metabolism'] = None      # GO Term/kegg?
+        adata.var['membrane'] = None        # GO Term/kegg?
+
+        qcvars = ['mt', 'ERCC', 'ribo', 'female', 'male',
+                  'essential', 'cell_cycle']
+
+        # get gender markers
+        female_genes = pd.read_csv(self.female_markers, sep=",")
+        male_genes = pd.read_csv(self.male_markers, sep=",")
+        adata.var['female'] = adata.var.gene_symbol.isin(
+            female_genes.gene)
+        adata.var['male'] = adata.var.gene_symbol.isin(
+            male_genes.gene)
+
+        # get essential genes
+
+        # get cell cycle genes
+        cc = pd.read_csv(self.cc_marker_path, sep=",")
+        adata.var['cell_cycle'] = adata.var.gene_symbol.isin(cc.gene)
+        for i in cc.cluster.unique():
+            adata.var[f'cc_cluster_{i}'] = adata.var.cluster == i
+            qcvars.append(f'cc_cluster_{i}')
 
         # append stats for gene sets above using scanpy
         sc.pp.calculate_qc_metrics(
-            adata, expr_type='counts', var_type='genes', qc_vars=['mt', 'ERCC', 'ribo', 'Xist'],
+            adata, expr_type='counts', var_type='genes',
+            qc_vars=qcvars,
             percent_top=(50, 100, 200, 500), inplace=True, use_raw=False)
 
         # unstructured data - dataset specific
         adata.uns['gini_by_counts'] = gini_coefficient(
             adata.obs['total_counts'])
 
-        adata.obs['Xist_count'] = adata[:,
-                                        adata.var.gene_symbol == 'Xist'].X.todense()
+        mean_counts = adata.var.mean_counts
+        a = adata.X
 
+        # computes the N+M x N+M corrcoef matrix - extract off diagonal block
+        adata.obs['corr_to_mean'] = sparse_pairwise_corr(mean_counts, a)[0, 1:]
         return adata
 
     def execute(self):
