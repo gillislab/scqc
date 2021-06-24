@@ -156,6 +156,10 @@ FLOW/ CONVENTIONS
 
 
 
- 
+Objectives for paper
+-- minimize things that will raise questions. 
+	-- Let esearch do all of the data filtering (on experiments).
+
+--  
 
 
