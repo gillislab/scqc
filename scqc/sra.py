@@ -864,26 +864,31 @@ def query_all_uids(config):
         print(i)
 
 
-def query_project_for_uid(config, uid):
+def query_project_for_uidlist(config, uidlist):
     """
     Non OOP version of the Query method
     """
     log = logging.getLogger('sra')
     sra_efetch = config.get('sra', 'sra_efetch')
-    url = f"{sra_efetch}&id={uid}"
-    log.debug(f"fetch url={url}")
-    proj_id = None
+    uids = ','.join(uidlist)
+    url = f"{sra_efetch}&id={uids}"
+    log.info(f"fetching url={url}")
+    tuples = []
+    
     while True:
         try:
             r = requests.post(url)
             if r.status_code == 200:
                 rd = r.content.decode()
                 root = et.fromstring(rd)
-                proj_id = root.find('EXPERIMENT_PACKAGE').find(
-                    'STUDY').get('accession')
-                log.debug(f'found project id: {proj_id}')
-            time.sleep(0.5)
-            return proj_id
+                expkgs = root.findall('EXPERIMENT_PACKAGE')
+                for exppkg in expkgs:
+                    exp = exppkg.find('EXPERIMENT')
+                    exp_id = exp.get('accession')
+                    proj_id = exp.find('STUDY_REF').get('accession')
+                    log.debug(f'exp_id: {exp_id} proj_id: {proj_id}')
+                    tuples.append( (exp_id, proj_id) )
+                return tuples
 
         except ConnectionError as ce:
             log.warn(f'got connection error for uid {uid}: {ce}')
@@ -892,6 +897,9 @@ def query_project_for_uid(config, uid):
         except Exception as e:
             log.warn(f'got another exception for uid {uid}: {e}  ')
             return None
+
+        finally:
+            time.sleep(0.5)
 
 
 # should  this be moved to query? download?
@@ -1122,10 +1130,21 @@ if __name__ == "__main__":
     if args.uidquery is not None:
         qfile = args.uidquery
         uidlist = readlist(os.path.expanduser(qfile))
-        projlist = []
+        tuplist = []
+        curid = 0
+        batchsize = int(cp.get('sra','uid_batchsize'))
+        efetch_sleep = float(cp.get('sra','query_sleep'))
+        
         with open(args.outfile, 'w') as f:
-            for uid in uidlist:
-                projid = query_project_for_uid(cp, uid)
-                if projid is not None:
-                    f.write(f'{projid}\n')
-                    f.flush()
+            while curid < len(uidlist):
+                dolist = uidlist[curid:curid + batchsize]
+                outtups = query_project_for_uidlist(cp, dolist)
+                for (expid, projid) in outtups:
+                    if projid is not None and expid is not None :
+                        f.write(f'{expid} {projid}\n')
+                        f.flush()
+                    else:
+                        logging.warning('exp_id or proj_id is None. Ignoring... ')
+                curid += batchsize
+            time.sleep(efetch_sleep)
+                
