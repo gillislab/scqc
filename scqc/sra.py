@@ -13,6 +13,7 @@ import itertools
 import json
 import logging
 import os
+import re
 import requests
 import subprocess
 import sys
@@ -53,13 +54,52 @@ EXP_COLUMNS = ['exp_id', 'ext_ids',  'strategy',
 RUN_COLUMNS = ['run_id', 'ext_ids', 'tot_spots', 'tot_bases', 'size', 'publish_date',
                'taxon', 'organism', 'nreads',  'basecounts', 'expid', 'sampleid', 'proj_id', 'submission_id']
 
-IMPUTE_COLUMNS = ['exp_id','tech']
+IMPUTE_COLUMNS = ['proj_id','exp_id','samp_id','run_id', 'tech']
 
-# PROJ_COLUMNS = ['proj_id', 'title', 'pubdate', 'abstract']
-# EXP_COLUMNS = ['proj_id', 'exp_id', 'sra_id',
-#                'gsm', 'gse', 'lcp', 'sample_attributes']
-# RUN_COLUMNS = ['exp_id', 'run_id', 'tot_spots', 'tot_bases',
-#                'size', 'taxon', 'organism', 'nreads', 'readcount', 'basecount']
+
+
+TECH_RES = {
+    '10x'   : re.compile("10x Genomics|chromium|10X protocol|Chrominum|10X 3' gene|10X Single|10x 3'|Kit v1|PN-120233|10X V1", re.IGNORECASE),
+    #'10xv1' : re.compile("", re.IGNORECASE),
+    #'10xv2' : re.compile("v2 chemistry|v2 reagent|V2 protocol|P/N 120230|Single Cell 3' v2|Reagent Kits v2|10X V2", re.IGNORECASE),
+    #'10xv3' : re.compile("v3 chemistry|v3 reagent|V3 protocol|CG000206|Single Cell 3' Reagent Kit v3|10X V3|1000078", re.IGNORECASE),
+    'ss'    : re.compile("Smart-Seq|SmartSeq|Picelli|SMART Seq", re.IGNORECASE),
+    'smarter' : re.compile("SMARTer", re.IGNORECASE),
+    'dropseq' : re.compile("Cell 161, 1202-1214|Macosko|dropseq|drop-seq", re.IGNORECASE),
+    'celseq'  : re.compile("CEL-Seq2|Muraro|Cell Syst 3, 385|Celseq2|Celseq1|Celseq|Cel-seq", re.IGNORECASE),
+    'sortseq' : re.compile("Sort-seq|Sortseq|Sort seq", re.IGNORECASE),
+    'seqwell' : re.compile("Seq-Well|seqwell", re.IGNORECASE),
+    'biorad'  : re.compile("Bio-Rad|ddSeq", re.IGNORECASE),
+    'indrops' : re.compile("inDrop|Klein|Zilionis", re.IGNORECASE),
+    'marsseq2': re.compile("MARS-seq|MARSseq|Jaitin et al|jaitin", re.IGNORECASE),
+    'tang'    : re.compile("Tang", re.IGNORECASE),
+    # 'TruSeq':re.compile("TruSeq", re.IGNORECASE),
+    'splitseq': re.compile("SPLiT-seq", re.IGNORECASE),
+    'microwellseq': re.compile("Microwell-seq", re.IGNORECASE)
+}
+
+keywords = {
+    "is10x": "10x Genomics|chromium|10X protocol|Chrominum|10X 3' gene|10X Single|10x 3'",
+    "v3": "v3 chemistry|v3 reagent|V3 protocol|CG000206|Single Cell 3' Reagent Kit v3|10X V3|1000078",
+    "v2": "v2 chemistry|v2 reagent|V2 protocol|P/N 120230|Single Cell 3' v2|Reagent Kits v2|10X V2",
+    "v1": "Kit v1|PN-120233|10X V1",
+    "ss": "Smart-Seq|SmartSeq|Picelli|SMART Seq",
+    "smarter": "SMARTer",
+    "dropseq": "Cell 161, 1202-1214|Macosko|dropseq|drop-seq",
+    "celseq": "CEL-Seq2|Muraro|Cell Syst 3, 385|Celseq2|Celseq1|Celseq|Cel-seq",
+    "sortseq": "Sort-seq|Sortseq|Sort seq",
+    "seqwell": "Seq-Well|seqwell",
+    "biorad": "Bio-Rad|ddSeq",
+    "indrops": "inDrop|Klein|Zilionis",
+    "marsseq2": "MARS-seq|MARSseq|Jaitin et al|jaitin",
+    "tang": "Tang",
+    # "TruSeq":"TruSeq",
+    "splitseq": "SPLiT-seq",
+    "microwellseq": "Microwell-seq"
+}
+
+
+
 
 
 def get_default_config():
@@ -189,6 +229,7 @@ class Query(object):
             samp_rows = []
             exp_rows = []
             run_rows = []
+            ##  BATCH THIS... XXX
             for exp in explist:
                 exd = self.query_experiment_package_set(exp)
                 (projrows, samprows, exprows,
@@ -206,17 +247,17 @@ class Query(object):
             logging.debug(f'final samp_rows: {samp_rows}')
             logging.debug(f'final exp_rows: {exp_rows}')
             logging.debug(f'final run_rows: {run_rows}')
-
+            
+            # make dataframes
             pdf = pd.DataFrame(proj_rows, columns=PROJ_COLUMNS)
-            merge_write_df(pdf, f'{self.metadir}/projects.tsv')
-
             sdf = pd.DataFrame(samp_rows, columns=SAMP_COLUMNS)
-            merge_write_df(sdf, f'{self.metadir}/samples.tsv')
-
             edf = pd.DataFrame(exp_rows, columns=EXP_COLUMNS)
-            merge_write_df(edf, f'{self.metadir}/experiments.tsv')
-
             rdf = pd.DataFrame(run_rows, columns=RUN_COLUMNS)
+            
+            # merge dataframes to files. 
+            merge_write_df(pdf, f'{self.metadir}/projects.tsv')            
+            merge_write_df(sdf, f'{self.metadir}/samples.tsv')
+            merge_write_df(edf, f'{self.metadir}/experiments.tsv')
             merge_write_df(rdf, f'{self.metadir}/runs.tsv')
 
             self.log.info(f'successfully processed project {projectid}')
@@ -499,105 +540,64 @@ class Impute(object):
             self.config.get('impute', 'cachedir'))
         self.sra_esearch = self.config.get('sra', 'sra_esearch')
         self.sra_efetch = self.config.get('sra', 'sra_efetch')
-        self.search_term = self.config.get('sra', 'search_term')
         self.sleep = float(self.config.get('sra', 'sleep'))
 
     def execute(self, projectid):
         """
          For projectid:
-
-             Put completed project ids into query-donelist.txt
+            Impute technology where possible. 
+            Put completed project ids into query-donelist.txt
 
         """
         self.log.info(f'handling projectid {projectid}')
         try:
-
-            pdf = query_project_metadata(projectid)
-            #self.log.debug(f'info: {pdf}')
-            explist = list(pdf.Experiment)
-            self.log.info(
-                f'projectid {projectid} has {len(explist)} experiments.')
-            exprows = []
-            runrows = []
-            for exp in explist:
-                exd = self.query_experiment_package_set(exp)
-                (rows, runs) = self.parse_experiment_package_set(exd)
-                exprows = itertools.chain(exprows, rows)
-                runrows = itertools.chain(runrows, runs)
-            exprows = list(exprows)
-            runrows = list(runrows)
-            logging.debug(f'final exprows: {exprows}')
-            logging.debug(f'final runrows: {runrows}')
-            edf = pd.DataFrame(exprows, columns=EXP_COLUMNS)
-            merge_write_df(edf, f'{self.metadir}/experiments.tsv')
-
-            rdf = pd.DataFrame(runrows, columns=RUN_COLUMNS)
-            merge_write_df(rdf, f'{self.metadir}/runs.tsv')
-
-            self.log.info(f'successfully processed project {projectid}')
-            # return projectid only if it has completed successfully.
-            return projectid
+            expfile = f'{self.metadir}/experiments.tsv'
+            edf = pd.read_csv(expfile, sep='\t', index_col=0)
+            self.log.debug(f'opened experiments DF OK...')
+            pdf = edf[edf.proj_id == projectid]
+            self.log.debug(f'got project-specific df: \n{pdf}')
+            idf = impute_tech_from_lcp(pdf)
+            self.log.debug(f'got initial imputed tech df: \n{idf}')
+            fdf = impute_10x_version(idf)
+            self.log.debug(f'got imputed 10x version df: \n{fdf}')
+            merge_write_df(fdf, f'{self.metadir}/tech.tsv' )          
+            self.log.info(f'completed imputation for proj_id {projectid}')
+            return projectid          
 
         except Exception as ex:
             self.log.error(f'problem with NCBI projectid {projectid}')
             logging.error(traceback.format_exc(None))
             raise ex
 
-    def _impute_tech(self, df):
-        '''
-        Take in df. 
-            Get unique library construciton protocol (lcp) values. 
-            For each value, loop over all keyword terms, identifying tech. 
-            Fill in method  column for all runs in temp DF. Merge DF.
-        Return filled in DF.  
 
-        '''
-        keywords = {
-            "is10x": "10x Genomics|chromium|10X protocol|Chrominum|10X 3' gene|10X Single|10x 3'",
-            "v3": "v3 chemistry|v3 reagent|V3 protocol|CG000206|Single Cell 3' Reagent Kit v3|10X V3|1000078",
-            "v2": "v2 chemistry|v2 reagent|V2 protocol|P/N 120230|Single Cell 3' v2|Reagent Kits v2|10X V2",
-            "v1": "Kit v1|PN-120233|10X V1",
-            "ss": "Smart-Seq|SmartSeq|Picelli|SMART Seq",
-            "smarter": "SMARTer",
-            "dropseq": "Cell 161, 1202-1214|Macosko|dropseq|drop-seq",
-            "celseq": "CEL-Seq2|Muraro|Cell Syst 3, 385|Celseq2|Celseq1|Celseq|Cel-seq",
-            "sortseq": "Sort-seq|Sortseq|Sort seq",
-            "seqwell": "Seq-Well|seqwell",
-            "biorad": "Bio-Rad|ddSeq",
-            "indrops": "inDrop|Klein|Zilionis",
-            "marsseq2": "MARS-seq|MARSseq|Jaitin et al|jaitin",
-            "tang": "Tang",
-            # "TruSeq":"TruSeq",
-            "splitseq": "SPLiT-seq",
-            "microwellseq": "Microwell-seq"
-        }
+def __impute_tech(self, df):
+    ulcp = pd.DataFrame({"lcp": df.lcp.unique()})
+   
+    # search for the keywords
+    for i in range(len(keywords)):
+        key = list(keywords)[i]
+        kw = keywords[key]
+        ulcp[key] = ulcp.lcp.str.lower().str.contains(
+            kw, case=False, regex=True)
+    self.log.debug(f'keyword hits: {ulcp.values}')
+    
+    tmpdf = ulcp.loc[:, list(keywords.keys())]
+    tmpdf = tmpdf.fillna(False)
+    #unknownTechs = ulcp.loc[tmpdf.sum(axis=1) ==0,"LCP"]
+    tmpdf["some10x"] = tmpdf.loc[:, "is10x"]
+    # tmpdf["isMultiple"] = tmpdf.iloc[:,4:-1].sum(axis=1)  > 1
+    tmpdf["smartseq"] = tmpdf.loc[:, "ss"] & ~(
+        tmpdf.loc[:, "is10x"].astype('bool'))
+    tmpdf["method"] = "Unknown"
+    
+    for tech in tmpdf.columns.values[5:-1]:
+        tmpdf.loc[tmpdf.loc[:, tech], "method"] = tech
+    
+    ulcp['method'] = tmpdf.method
+    ulcp = ulcp.loc[:, ["lcp", "method"]]
+    df = df.merge(ulcp, on="lcp")
+    return df
 
-        ulcp = pd.DataFrame({"lcp": df.lcp.unique()})
-
-        # search for the keywords
-        for i in range(len(keywords)):
-            key = list(keywords)[i]
-            kw = keywords[key]
-            ulcp[key] = ulcp.lcp.str.lower().str.contains(
-                kw, case=False, regex=True)
-        self.log.debug(f'keyword hits: {ulcp.values}')
-
-        tmpdf = ulcp.loc[:, list(keywords.keys())]
-        tmpdf = tmpdf.fillna(False)
-        #unknownTechs = ulcp.loc[tmpdf.sum(axis=1) ==0,"LCP"]
-        tmpdf["some10x"] = tmpdf.loc[:, "is10x"]
-        # tmpdf["isMultiple"] = tmpdf.iloc[:,4:-1].sum(axis=1)  > 1
-        tmpdf["smartseq"] = tmpdf.loc[:, "ss"] & ~(
-            tmpdf.loc[:, "is10x"].astype('bool'))
-        tmpdf["method"] = "Unknown"
-
-        for tech in tmpdf.columns.values[5:-1]:
-            tmpdf.loc[tmpdf.loc[:, tech], "method"] = tech
-
-        ulcp['method'] = tmpdf.method
-        ulcp = ulcp.loc[:, ["lcp", "method"]]
-        df = df.merge(ulcp, on="lcp")
-        return df
 
 
 class PrefetchProject(object):
@@ -898,10 +898,30 @@ def query_project_for_uid(config, uid):
 # Note: special cases....
 #       umi+cb = 30(v3) , 25(v2)
 
+def impute_tech_from_lcp(df):
+    '''
+    Take in experiment df for specific project.  
+        Get unique library construction protocol (lcp) values. 
+        For each value, loop over all keyword terms, identifying putative tech. 
+        Fill in method column for all runs in temp DF.   
+        Create impute DF
+    
+    '''
+    logging.debug(f'got df: \n{df}')
+    
+    return df
 
-def _impute_10x_version(self):
+
+
+
+def impute_10x_version(df):
+    """
+    For known 10x, get first part of fasta file and determine version.
+    
+    """
+    log = logging.getLogger('sra')
     # look at the first few lines of the fastq file.
-    loglev = LOGLEVELS[self.log.getEffectiveLevel()]
+    loglev = LOGLEVELS[log.getEffectiveLevel()]
 
     cmd = ['fastq-dump',
            '--maxSpotId', '1',
@@ -948,7 +968,10 @@ def _impute_10x_version(self):
         read_tech = list(lengths.keys())[ind2]
         read_tech = f'{self.cachedir}/{read_tech}'
 
-    return(read_bio, read_tech, tech)
+    #return(read_bio, read_tech, tech)
+    return df
+
+
 
 
 # to do: include drivers for 10x and ss alignments

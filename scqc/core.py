@@ -69,7 +69,6 @@ class Stage(object):
                     self.dolist = listdiff(self.todolist, self.donelist)
                 else:
                     self.dolist = []
-                
                 # cut into batches and do each separately, updating donelist. 
                 logging.debug(f'dolist len={len(self.dolist)}')
                 curid = 0
@@ -78,8 +77,12 @@ class Stage(object):
                     logging.debug(f'made dobatch length={len(dobatch)}')
                     logging.debug(f'made dobatch: {dobatch}')
                     finished = self.execute(dobatch)
+                    try:
+                        finished.remove(None)
+                    except:
+                        self.log.warn('Got None in finished list from an execute. Removed.')
                     self.log.debug(f"got finished list len={len(finished)}. writing...")
-    
+                    
                     if self.donefile is not None and len(finished) > 0:
                         logging.info('reading current done.')
                         donelist = readlist(self.donefile)
@@ -118,6 +121,11 @@ class Stage(object):
 
 
 class Query(Stage):
+    """
+    Stage takes in list of NCBI project ids. 
+    Collects metadata on projects, samples, experiments, and runs. Stores in DFs. 
+    Outputs complete project ids. 
+    """
 
     def __init__(self, config):
         super(Query, self).__init__(config, 'query')
@@ -136,6 +144,43 @@ class Query(Stage):
                 out = sq.execute(projectid)
                 self.log.debug(f'done with {projectid}')
                 outlist.append(out)
+            except Exception as ex:
+                self.log.warning(f"exception raised during project query: {projectid}")
+                self.log.error(traceback.format_exc(None))
+        self.log.debug(f"returning outlist len={len(outlist)}")
+        return outlist
+
+    def setup(self):
+        sra.setup(self.config)
+
+class Impute(Stage):
+    """
+    Stage takes in list of NCBI project ids. 
+    Examines Library Construction Protocol, and where needed downloads first X kilobytes of run files to guess
+    library technology. 
+    
+    Outputs complete project ids. 
+    
+    """
+    def __init__(self, config):
+        super(Impute, self).__init__(config, 'impute')
+        self.log.debug('super() ran. object initialized.')
+
+    def execute(self, dolist):
+        '''
+        Perform one run for stage.  
+        '''
+        self.log.debug(f'got dolist len={len(dolist)}. executing...')
+        outlist = []
+        for projectid in dolist:
+            self.log.debug(f'handling id {projectid}...')
+            try:
+                si = sra.Impute(self.config)
+                out = si.execute(projectid)
+                self.log.debug(f'done with {projectid}')
+                if out is not None:
+                    outlist.append(out)
+            
             except Exception as ex:
                 self.log.warning(f"exception raised during project query: {projectid}")
                 self.log.error(traceback.format_exc(None))
@@ -257,6 +302,9 @@ class CLI(object):
         parser_analysis = subparsers.add_parser('query',
                                                 help='query daemon')
 
+        parser_analysis = subparsers.add_parser('impute',
+                                                help='impute daemon')
+
         parser_download = subparsers.add_parser('download',
                                                 help='download daemon')
 
@@ -288,6 +336,13 @@ class CLI(object):
 
         if args.subcommand == 'query':
             d = Query(cp)
+            if args.setup:
+                d.setup()
+            else:
+                d.run()
+
+        if args.subcommand == 'impute':
+            d = Impute(cp)
             if args.setup:
                 d.setup()
             else:
