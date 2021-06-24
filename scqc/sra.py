@@ -300,6 +300,7 @@ class Query(object):
             time.sleep(self.query_sleep)
         return xmldata
 
+
     def parse_experiment_package_set(self, xmlstr):
         """
         package sets should have one package per uid pulled via efetch, e.g.
