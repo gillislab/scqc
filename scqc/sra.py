@@ -864,6 +864,23 @@ def query_all_uids(config):
     for i in alluids:
         print(i)
 
+def query_project_for_uidlist_byone(config, uidlist):
+    """
+    Fallback routine for troublesome encoding error with particular uids. 
+    """
+    log = logging.getLogger('sra')
+    tuples = []
+    for uid in uidlist:
+        log.debug(f'handling single uid: {uid}')
+        tuplist = query_project_for_uidlist(config, [uid])
+        for tup in tuplist:
+            if tup is not None:
+                tuples.append(tup)
+            else:
+                log.warning(f'Problem querying during special handling. uid {uid}')
+    log.warning(f'returning special tuplelist: {tuples}')
+    return tuples
+
 
 def query_project_for_uidlist(config, uidlist):
     """
@@ -874,7 +891,7 @@ def query_project_for_uidlist(config, uidlist):
     uids = ','.join(uidlist)
     url = f"{sra_efetch}&id={uids}"
     log.info(f"fetching url={url}")
-    
+    tries = 0
     while True:
         try:
             tuples = []
@@ -893,9 +910,20 @@ def query_project_for_uidlist(config, uidlist):
             return tuples
         
         except ChunkedEncodingError as cee:
-            log.warning(f'got error for uidlist {uids}: {cee}')
-            time.sleep(0.5)
-
+            log.warning(f'got ChunkedEncodingError error for uidlist {uids}: {cee}')
+            tries += 1
+            if tries >= 3 and len(uidlist) == 1:
+                log.warning(f'got ChunkedEncodingError for uid: {uidlist[0]} Giving up, returning None.')
+                return None
+            elif tries >= 3:
+                log.warning(f'got too many ChunkedEncodingErrors for uidlist {uidlist}. Doing one-by-one...')
+                tuples = query_project_for_uidlist_byone(config, uidlist)
+                return tuples
+            else:
+                log.warning(f'got ChunkedEncodingError. Try {tries}')
+            time.sleep(0.5)                
+            
+            
         except ConnectionError as ce:
             log.warning(f'got connection error for uidlist {uids}: {ce}')
             time.sleep(30)
@@ -1007,6 +1035,12 @@ if __name__ == "__main__":
                         dest='verbose',
                         help='verbose logging')
 
+    parser.add_argument('-c', '--config',
+                            action="store",
+                            dest='conffile',
+                            default='~/git/scqc/etc/scqc.conf',
+                            help='Config file path [~/git/scqc/etc/scqc.conf]')
+
     parser.add_argument('-s', '--setup',
                         action='store_true',
                         dest='setup',
@@ -1080,7 +1114,12 @@ if __name__ == "__main__":
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)
 
-    cp = get_default_config()
+    if args.conffile is not None:
+        cp = ConfigParser()
+        cp.read(os.path.expanduser(args.conffile)) 
+    else:
+        cp = get_default_config()
+        
     cs = get_configstr(cp)
     logging.debug(f"got config: {cs}")
 
