@@ -890,6 +890,10 @@ def query_project_for_uidlist(config, uidlist):
                     tuples.append( (exp_id, proj_id) )
             time.sleep(0.5)
             return tuples
+        
+        except InvalidChunkLength as icl:
+            log.warning(f'got error for uidlist {uids}: {icl}')
+            time.sleep(0.5)
 
         except ConnectionError as ce:
             log.warning(f'got connection error for uidlist {uids}: {ce}')
