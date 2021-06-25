@@ -23,6 +23,7 @@ from pathlib import Path
 from configparser import ConfigParser
 from threading import Thread
 from queue import Queue, Empty
+from requests.exceptions import ChunkedEncodingError
 
 import xml.etree.ElementTree as et
 import pandas as pd
