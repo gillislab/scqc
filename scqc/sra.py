@@ -892,11 +892,11 @@ def query_project_for_uidlist(config, uidlist):
                 return tuples
 
         except ConnectionError as ce:
-            log.warn(f'got connection error for uid {uid}: {ce}')
+            log.warn(f'got connection error for uidlist {uids}: {ce}')
             time.sleep(60)
 
         except Exception as e:
-            log.warn(f'got another exception for uid {uid}: {e}  ')
+            log.warn(f'got another exception for uidlist {uids}: {e}  ')
             return None
 
         finally:
