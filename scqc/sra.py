@@ -891,8 +891,8 @@ def query_project_for_uidlist(config, uidlist):
             time.sleep(0.5)
             return tuples
         
-        except InvalidChunkLength as icl:
-            log.warning(f'got error for uidlist {uids}: {icl}')
+        except ChunkedEncodingError as cee:
+            log.warning(f'got error for uidlist {uids}: {cee}')
             time.sleep(0.5)
 
         except ConnectionError as ce:
