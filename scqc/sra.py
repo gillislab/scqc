@@ -873,10 +873,10 @@ def query_project_for_uidlist(config, uidlist):
     uids = ','.join(uidlist)
     url = f"{sra_efetch}&id={uids}"
     log.info(f"fetching url={url}")
-    tuples = []
     
     while True:
         try:
+            tuples = []
             r = requests.post(url)
             if r.status_code == 200:
                 rd = r.content.decode()
@@ -888,18 +888,16 @@ def query_project_for_uidlist(config, uidlist):
                     proj_id = exp.find('STUDY_REF').get('accession')
                     log.debug(f'exp_id: {exp_id} proj_id: {proj_id}')
                     tuples.append( (exp_id, proj_id) )
-                return tuples
+            time.sleep(0.5)
+            return tuples
 
         except ConnectionError as ce:
             log.warning(f'got connection error for uidlist {uids}: {ce}')
-            time.sleep(60)
+            time.sleep(30)
 
         except Exception as e:
-            log.warn(f'got another exception for uidlist {uids}: {e}  ')
+            log.warning(f'got another exception for uidlist {uids}: {e}  ')
             return None
-
-        finally:
-            time.sleep(0.5)
 
 
 # should  this be moved to query? download?
