@@ -532,7 +532,6 @@ class Impute(object):
     Imputes sequencing technology for all runs under a project. 
 
     """
-
     def __init__(self, config):
         self.log = logging.getLogger('sra')
         self.config = config
@@ -892,7 +891,7 @@ def query_project_for_uidlist(config, uidlist):
                 return tuples
 
         except ConnectionError as ce:
-            log.warn(f'got connection error for uidlist {uids}: {ce}')
+            log.warning(f'got connection error for uidlist {uids}: {ce}')
             time.sleep(60)
 
         except Exception as e:
