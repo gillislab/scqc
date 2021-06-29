@@ -14,7 +14,11 @@ import numpy as np
 import pandas as pd
 import scanpy as sc  # pip install
 from scipy.io import mmread
-from scqc.utils import gini_coefficient, sparse_pairwise_corr
+
+
+gitpath = os.path.expanduser("~/git/scqc")
+sys.path.append(gitpath)
+from scqc.utils import *
 
 LOGLEVELS = {
     10: 'debug',
@@ -114,6 +118,8 @@ class GetStats(object):
         return adata
 
     def _get_stats_scanpy(self, adata):
+        adata.obs['batch'] = None
+
 
         # consider different gene sets - ERCC  corresponds to spike ins
         adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')
@@ -152,7 +158,6 @@ class GetStats(object):
             adata.var[f'cc_cluster_{i}'] = adata.var.cluster == i
             qcvars.append(f'cc_cluster_{i}')
 
-        # append stats for gene sets above using scanpy
         sc.pp.calculate_qc_metrics(
             adata,
             expr_type='counts', var_type='genes',
@@ -162,6 +167,9 @@ class GetStats(object):
         # computes the N+M x N+M corrcoef matrix - extract off diagonal block
         adata.obs['corr_to_mean'] = np.array(sparse_pairwise_corr(
             adata.var.mean_counts, adata.X)[0, 1:]).flatten()
+
+        # this part is slow (~10-15 min) because of a for loop - can parallelize
+        adata.obs['gini'] = gini_coefficient_spmat(adata.X )
 
         # unstructured data - dataset specific
         adata.uns['gini_by_counts'] = gini_coefficient(

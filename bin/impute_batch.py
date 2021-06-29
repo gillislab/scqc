@@ -1,6 +1,6 @@
 # given a set of sample and runs dataframe for a project, guess the batch based on sample attributes
 import pandas as pd
-
+import ast 
 
 # run this prior to saving the dataframes to runs.tsv
 # include another column header in runs.tsv for batch
@@ -24,3 +24,16 @@ def impute_batch(sdf, rdf):
         new_rdf = pd.concat([new_rdf, tm_rdf])
 
     return new_rdf
+
+
+def impute_tissue(sdf) :
+    # tags = ['source_name','tissue','organ', 'cell_type']
+
+    # look at source name - get unique 
+
+    attr = pd.DataFrame({ 'attr': sdf.attributes.unique() })
+
+    source_names = attr.applymap(lambda x: ast.literal_eval(x)['source_name'])
+    # map these back to the sample id? 
+
+    # map these to the runs? 

@@ -3,46 +3,217 @@
 #  Module to deal with running STAR/StarSolo
 #
 
-import gzip
+import argparse
+import glob
+import io
+import itertools
+import json
 import logging
 import os
+import re
 import requests
 import subprocess
+import sys
+import time
+import urllib
 import ast
-import pandas as pd
-import glob
-from scqc.utils import gzip_decompress, download_ftpurl, listdiff
+from pathlib import Path
+from configparser import ConfigParser
+from threading import Thread
+from queue import Queue, Empty
+from requests.exceptions import ChunkedEncodingError
 
+import xml.etree.ElementTree as et
+import pandas as pd
+import numpy as np
+
+gitpath = os.path.expanduser("~/git/scqc")
+sys.path.append(gitpath)
+
+from scqc.utils import *
 # inputs should be runs  identified as 'some10x'
 # fastq files should already downloaded.
 # srrid and species needs to be passed in from the dataframe
 # can pass star parameters from config
 
 
-class Align10xSTAR(object):
-    '''
-        - Identifies 10x version
-        - gets the path to fastq files
-        - 
-        Simple wrapper for STAR - 10x input
-    '''
 
-    def __init__(self, config, srrid, species, outlist):
+class AlignReads(object):
+    '''
+    Requires:
+        - Set Up to be done first.
+        - fastq files for the given project in tempdir
+        - STAR 2.7.# in path
+        - project included in metadata
+ 
+    '''
+    def __init__(self, config, srpid ):
         self.log = logging.getLogger('star')
         self.config = config
 
         self.tempdir = os.path.expanduser(
-            self.config.get('analysis', 'tempdir'))
-        self.srrid = srrid
-        self.log.debug(f'aligning id {srrid}')
-        self.staroutdir = os.path.expanduser(
-            self.config.get('analysis', 'staroutdir'))
+            self.config.get('star', 'tempdir'))
+    
+        self.metadir= os.path.expanduser(
+            self.config.get('star', 'metadir'))
         self.resourcedir = os.path.expanduser(
-            self.config.get('analysis', 'resourcedir'))
-        self.species = species
-        self.outlist = outlist
-        self.num_streams = self.config.get('analysis', 'num_streams')
+            self.config.get('star', 'resourcedir'))
+        self.species = self.config.get('star', 'tempdir')
+        
+        self.outputdir= os.path.expanduser(
+            self.config.get('star', 'outputdir'))
+        # self.outlist = outlist
+        self.ncore_align = self.config.get('star', 'ncore_align')
 
+        self.log.debug(f'initializing STAR alignment for {srpid}')
+        self.srpid=srpid
+
+
+    def execute(self):
+        # get relevant metadata
+        rdf = self._get_meta_data()
+        # split by technology and parses independently based on tech
+        for tech, df in rdf.groupby(by = "tech") :
+            # smartseq runs
+            if tech =="smartseq":
+                # build the manifest
+                (manipath, manifest) = self._make_manifest(df) 
+                # run star
+                self._run_star_smartseq(manipath,manifest)
+            
+            # 10x runs
+            if tech.startswith('10xv'): 
+                # grab star params
+                # for run in run_ids
+                #    run star
+                for row in df.shape[0]:
+                    srrid = df.run_id[row]
+                    read1 = df.read1[row]
+                    read2 = df.read2[row]
+                    # saves to disk
+                    self._run_star_10x(srrid, tech, read1,read2)
+                pass 
+            else :
+                self.log.debug(
+                    f'{tech} is not yet supported for STAR alignment.')
+                # log... technology not yet supported
+                pass
+
+
+    # TODO  make a run|taxon|tech|read1|read2|batch  dataframe in impute. 
+    #       taxon to filter
+    #       tech for star run
+    #       reads will be used to determine which is the biological/technical
+    #           read1 should be biological (cDNA)
+    #           read2 should be technical (umi+cb)
+    #       batch will be used by stats
+    def _get_meta_data(self ):
+        '''
+        example srpid="SRP114926"
+        '''
+        
+        # sdf = pd.read_csv(f'{metadir}/samples.tsv',sep="\t" ,index_col=0)
+        # edf = pd.read_csv(f'{metadir}/experiments.tsv',sep="\t" ,index_col=0)
+        rdf = pd.read_csv(f'{self.metadir}/runs.tsv',sep="\t" ,index_col=0)
+        
+        # TODO from imputation - df containing runs with corresponding tech
+        run2tech = pd.read_csv(f'{self.metadir}/run2tech.tsv',sep="\t" ,index_col=0)
+        run2tech.columns = ["run_id","tech"]
+        # filter to include only requested project id
+        rdf = rdf.loc[ rdf.proj_id==self.srpid ,:]
+        # filter to include only requested species and only keep run ids
+        rdf = rdf.loc[ rdf.taxon == int(spec_to_taxon(self.species)) ,['run_id','nreads']]
+
+        rdf = pd.merge(rdf, run2tech , how = 'left', on = "run_id") 
+
+        return (rdf)
+
+    # smart seq scripts
+    def _make_manifest(self,run_data):
+        # search for all fastq files with <run>_[0-9].fastq
+        manipath = f"{self.metadir}/{self.srpid}_smartseq_manifest.tsv"
+
+        # runid = runlist[1]
+        allRows = []
+        for runid in run_data.run_id:
+            # where are the fastq files? In temp
+            fqs = glob.glob(f'{self.tempdir}/{runid}*.fastq')
+            fqs.sort()
+            # number of fastq files found for the run
+            if len(fqs) > 0 and len(fqs) < 3:
+                if len(fqs) == 1:
+                    fqs.append('-')
+                    fqs.append(runid)
+                elif len(fqs) == 2:
+                    fqs.append(runid)
+
+                allRows.append(fqs)
+
+        manifest = pd.DataFrame(allRows, columns=['read1', 'read2', 'run'])
+
+        # overwrite
+        manifest.to_csv(manipath, sep="\t", header=None, index=False, mode="w")
+
+        return(manipath, manifest)
+
+    def _run_star_smartseq(self,manifest,manipath):
+
+        ss_params = {"solo_type": "SmartSeq",
+                     "soloUMIdedup": "Exact",
+                     "soloStrand": "Unstranded"}
+
+        # TODO filter to the runs that we havne't aligned yet. 
+        #   adjust manifest accordingly.
+
+        # runs_done_file = f'{self.outputdir}/{self.srpid}_smartseq_Solo.out/Gene/raw/barcodes.tsv'
+        # if os.path.isfile(runs_done_file):
+        #     runs_done = open(runs_done_file).read().strip().split('\n')
+
+        #     # of the runs that i find in the manifest, which have already been aligned?
+        #     new_runs = listdiff(manifest.run.values, runs_done)
+        #     #list(set(manifest.run.values) - set(runs_done)).sort()
+        #     tmp_mani = manifest.loc[new_runs == manifest.run, :]
+
+        #     # save tmp manifest to temp directory - may be empty
+        #     tmp_manipath = manipath.replace(
+        #         f'{self.metadir}', f'{self.tempdir}')
+        #     tmp_mani.to_csv(tmp_manipath, sep="\t")
+        #     out_file_prefix = f'{self.tempdir}/{self.srpid}_smartseq_'
+        # else:
+        #     tmp_manipath = manipath
+        #     out_file_prefix = f'{self.staroutdir}/{self.srpid}_smartseq_'
+        
+        out_file_prefix = f'{self.outputdir}/{self.srpid}_smartseq_'
+        cmd = ['STAR',
+               '--runMode', 'alignReads',
+               '--runThreadN', f'{self.num_streams}',
+               '--genomeDir', f'{self.resourcedir}/genomes/{self.species}/STAR_index',
+               '--outFileNamePrefix', out_file_prefix,
+               '--soloType', ss_params["solo_type"],
+               '--soloFeatures', 'Gene',
+               '--readFilesManifest', f'{manipath}',
+               '--soloUMIdedup', ss_params["soloUMIdedup"],
+               '--soloStrand', ss_params["soloStrand"],
+               '--outSAMtype', 'None']
+
+        cmdstr = " ".join(cmd)
+
+        logging.debug(f"STAR command: {cmdstr} running...")
+        cp = subprocess.run(cmd)
+
+        logging.debug(
+            f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
+        # successful runs - append to outlist.
+        if str(cp.returncode) == "0":
+            self.outlist.append(self.srrid)
+
+        # # did we write to a temp directory?
+        # if out_file_prefix.startswith(f'{self.tempdir}'):
+        #     self._merge_solo_out_results(
+        #         f'{self.staroutdir}/{self.srpid}_smartseq_',    # starout direc
+        #         out_file_prefix)                                # temp direc
+
+    # 10x scripts
     def _get_10x_STAR_parameters(self, tech):
         d = {
             "10xv1":
@@ -71,6 +242,68 @@ class Align10xSTAR(object):
                 }
         }
         return(d[tech])
+   
+    # impute stage will obtain tech, and bio/tech_readpaths for 10x runs
+    def _run_star_10x(self,srrid, tech, bio_readpath,tech_readpath):
+
+        # read_bio, read_tech, tech = self._impute_10x_version()
+        # ideally, which read is which will be obtained from impute stage
+        star_param = self._get_10x_STAR_parameters(tech)  # as dictionary
+
+        cmd = ['STAR',
+                '--runMode', 'alignReads',
+                '--runThreadN', f'{self.ncore_align}',
+                '--genomeDir', f'{self.resourcedir}/genomes/{self.species}/STAR_index',
+                '--outFileNamePrefix', f'{self.outputdir}/{srrid}_{tech}_',
+                '--soloType', star_param["solo_type"],
+                '--soloCBwhitelist', star_param["white_list_path"],
+                '--soloCBlen', star_param["CB_length"],
+                '--soloUMIstart', f'{int(star_param["CB_length"]) + 1}',
+                '--soloUMIlen', star_param["UMI_length"],
+                '--soloFeatures', 'Gene',
+                '--readFilesIn', bio_readpath, tech_readpath,
+                '--outSAMtype', 'None']
+
+        cp = subprocess.run(cmd)
+
+        cmdstr = " ".join(cmd)
+        logging.debug(f"Fasterq-dump command: {cmdstr} running...")
+        cp = subprocess.run(cmd)
+        logging.debug(
+            f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
+        # successful runs - append to outlist.
+        if str(cp.returncode) == "0":
+            self.outlist.append(self.srrid)
+
+ 
+
+
+
+
+class Align10xSTAR(object):
+    '''
+        - Identifies 10x version
+        - gets the path to fastq files
+        - 
+        Simple wrapper for STAR - 10x input
+    '''
+
+    def __init__(self, config, srrid, species, outlist):
+        self.log = logging.getLogger('star')
+        self.config = config
+
+        self.tempdir = os.path.expanduser(
+            self.config.get('analysis', 'tempdir'))
+        self.srrid = srrid
+        self.log.debug(f'aligning id {srrid}')
+        self.staroutdir = os.path.expanduser(
+            self.config.get('analysis', 'staroutdir'))
+        self.resourcedir = os.path.expanduser(
+            self.config.get('analysis', 'resourcedir'))
+        self.species = species
+        self.outlist = outlist
+        self.num_streams = self.config.get('analysis', 'num_streams')
+
 
     # tested on SRR14633482 - did not get a Solo.out directory? Ran with 10xv3 params (though umi+cb=30)
     def execute(self):
@@ -112,6 +345,22 @@ class Align10xSTAR(object):
 # input should be a project accession
 # no real way to verify that the reads are indeed smartseq...
 # can pass star parameters from config
+
+def get_default_config():
+    cp = ConfigParser()
+    cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
+    return cp
+
+
+# john lee is satisfied with this class 6/3/2021
+def get_configstr(cp):
+    with io.StringIO() as ss:
+        cp.write(ss)
+        ss.seek(0)  # rewind
+        return ss.read()
+
+
+
 class AlignSmartSeqSTAR(object):
 
     def __init__(self, config, species, srpid, outlist):
@@ -232,6 +481,7 @@ class AlignSmartSeqSTAR(object):
                 out_file_prefix)                                # temp direc
 
 
+### setup scripts
 def setup(config, force=False):
     '''
     Builds directories in config file 
@@ -257,7 +507,7 @@ def setup(config, force=False):
     build_genome_indices(config, force)
 
 
-def get_whitelists(config):
+def get_whitelists(config,force=False):
     """
     Get cellranger tag whitelists. Assumes resourcedir exists. 
     """
@@ -276,11 +526,11 @@ def get_whitelists(config):
                 else:
                     f.write(r.text)
         else:
-            self.log.warning(
+            log.warning(
                 f"Retrieving {url} failed with status_code: {str(r.status_code)}")
 
 
-def get_genome_data(config):
+def get_genome_data(config,force=False):
     """
     Download required genome data
     """
@@ -309,7 +559,7 @@ def get_genome_data(config):
 def build_genome_indices(config, force=False):
     log = logging.getLogger('star')
 
-    n_core = int(config.get('star', 'n_core'))
+    n_core = int(config.get('star', 'ncore_index'))
     resourcedir = os.path.expanduser(config.get('star', 'resourcedir'))
     speciesnames = config.get('star', 'species')
     specieslist = [i.strip() for i in speciesnames.split(',')]
@@ -341,16 +591,9 @@ def build_genome_indices(config, force=False):
         log.warning(f"non-zero return code from STAR. See Log.out...")
 
 
-# to be done - get marker sets for mouse brain - see bin/getMarkers.R
-def get_meta_marker_sets(config):
-    pass
-
 
 # to do: include drivers for 10x and ss alignments
 if __name__ == "__main__":
-
-    gitpath = os.path.expanduser("~/git/scqc")
-    sys.path.append(gitpath)
 
     FORMAT = '%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
     logging.basicConfig(format=FORMAT)
@@ -416,5 +659,5 @@ if __name__ == "__main__":
     logging.debug(f"got config: {cs}")
 
     if args.setup:
-        s = SetUp(cp, force=args.force)
+        s = setup(cp, force=args.force)
         s.execute()

@@ -79,6 +79,7 @@ TECH_RES = {
     'microwellseq': re.compile("Microwell-seq", re.IGNORECASE)
 }
 
+#deprecated
 keywords = {
     "is10x": "10x Genomics|chromium|10X protocol|Chrominum|10X 3' gene|10X Single|10x 3'",
     "v3": "v3 chemistry|v3 reagent|V3 protocol|CG000206|Single Cell 3' Reagent Kit v3|10X V3|1000078",
@@ -109,7 +110,6 @@ def get_default_config():
     return cp
 
 
-# john lee is satisfied with this class 6/3/2021
 def get_configstr(cp):
     with io.StringIO() as ss:
         cp.write(ss)
@@ -206,7 +206,7 @@ class Query(object):
         self.sra_efetch = self.config.get('sra', 'sra_efetch')
         self.search_term = self.config.get('sra', 'search_term')
         self.query_max = self.config.get('sra', 'query_max')
-        self.uidfile = os.path.expanduser(self.config.get('sra', 'uidfile'))
+        # self.uidfile = os.path.expanduser(self.config.get('sra', 'uidfile'))
         self.query_sleep = float(self.config.get('sra', 'query_sleep'))
 
     def execute(self, projectid):
@@ -526,79 +526,6 @@ class Query(object):
                                    index=False, header=not os.path.exists(outfile))
 
         return
-
-
-class Impute(object):
-    """
-    Imputes sequencing technology for all runs under a project. 
-
-    """
-    def __init__(self, config):
-        self.log = logging.getLogger('sra')
-        self.config = config
-        self.metadir = os.path.expanduser(self.config.get('impute', 'metadir'))
-        self.cachedir = os.path.expanduser(
-            self.config.get('impute', 'cachedir'))
-        self.sra_esearch = self.config.get('sra', 'sra_esearch')
-        self.sra_efetch = self.config.get('sra', 'sra_efetch')
-        self.sleep = float(self.config.get('sra', 'sleep'))
-
-    def execute(self, projectid):
-        """
-         For projectid:
-            Impute technology where possible. 
-            Put completed project ids into query-donelist.txt
-
-        """
-        self.log.info(f'handling projectid {projectid}')
-        try:
-            expfile = f'{self.metadir}/experiments.tsv'
-            edf = pd.read_csv(expfile, sep='\t', index_col=0)
-            self.log.debug(f'opened experiments DF OK...')
-            pdf = edf[edf.proj_id == projectid]
-            self.log.debug(f'got project-specific df: \n{pdf}')
-            idf = impute_tech_from_lcp(pdf)
-            self.log.debug(f'got initial imputed tech df: \n{idf}')
-            fdf = impute_10x_version(idf)
-            self.log.debug(f'got imputed 10x version df: \n{fdf}')
-            merge_write_df(fdf, f'{self.metadir}/tech.tsv' )          
-            self.log.info(f'completed imputation for proj_id {projectid}')
-            return projectid          
-
-        except Exception as ex:
-            self.log.error(f'problem with NCBI projectid {projectid}')
-            logging.error(traceback.format_exc(None))
-            raise ex
-
-
-def __impute_tech(self, df):
-    ulcp = pd.DataFrame({"lcp": df.lcp.unique()})
-   
-    # search for the keywords
-    for i in range(len(keywords)):
-        key = list(keywords)[i]
-        kw = keywords[key]
-        ulcp[key] = ulcp.lcp.str.lower().str.contains(
-            kw, case=False, regex=True)
-    self.log.debug(f'keyword hits: {ulcp.values}')
-    
-    tmpdf = ulcp.loc[:, list(keywords.keys())]
-    tmpdf = tmpdf.fillna(False)
-    #unknownTechs = ulcp.loc[tmpdf.sum(axis=1) ==0,"LCP"]
-    tmpdf["some10x"] = tmpdf.loc[:, "is10x"]
-    # tmpdf["isMultiple"] = tmpdf.iloc[:,4:-1].sum(axis=1)  > 1
-    tmpdf["smartseq"] = tmpdf.loc[:, "ss"] & ~(
-        tmpdf.loc[:, "is10x"].astype('bool'))
-    tmpdf["method"] = "Unknown"
-    
-    for tech in tmpdf.columns.values[5:-1]:
-        tmpdf.loc[tmpdf.loc[:, tech], "method"] = tech
-    
-    ulcp['method'] = tmpdf.method
-    ulcp = ulcp.loc[:, ["lcp", "method"]]
-    df = df.merge(ulcp, on="lcp")
-    return df
-
 
 
 class PrefetchProject(object):
@@ -936,80 +863,6 @@ def query_project_for_uidlist(config, uidlist):
 # should  this be moved to query? download?
 # Note: special cases....
 #       umi+cb = 30(v3) , 25(v2)
-
-def impute_tech_from_lcp(df):
-    '''
-    Take in experiment df for specific project.  
-        Get unique library construction protocol (lcp) values. 
-        For each value, loop over all keyword terms, identifying putative tech. 
-        Fill in method column for all runs in temp DF.   
-        Create impute DF
-    
-    '''
-    logging.debug(f'got df: \n{df}')
-    
-    return df
-
-
-
-
-def impute_10x_version(df):
-    """
-    For known 10x, get first part of fasta file and determine version.
-    
-    """
-    log = logging.getLogger('sra')
-    # look at the first few lines of the fastq file.
-    loglev = LOGLEVELS[log.getEffectiveLevel()]
-
-    cmd = ['fastq-dump',
-           '--maxSpotId', '1',
-           '--split-spot',
-           '--stdout',
-           # '--outdir' , f'{self.tempdir}/',
-           '--log-level', f'{loglev}',
-           f'{self.cachedir}/{self.srrid}.sra']
-
-    cp = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    dat = cp.stdout.read().decode("utf-8").split('\n')[:-1]
-
-    # get the lengths of each read.
-    lengths = {}
-    it = 1
-    for line in dat[0::4]:  # look at every 4 lines for the length of the read
-        lengths[f'{self.srrid}_{it}.fastq'] = line.split("length=")[-1]
-        it += 1
-
-    l = [int(l) for l in lengths.values()]
-    ind = l.index(max(l))
-
-    read_bio = list(lengths.keys())[ind]
-    read_bio = f'{self.cachedir}/{read_bio}'
-
-    # 10xv2 is typically 98 bp
-    # 10xv3 is typically 91 bp
-
-    tech = "unknown"
-    for i in range(len(lengths)):
-        if l[i] == 24:
-            tech = "10xv1"
-            ind2 = i
-        elif l[i] == 26:
-            ind2 = i
-            tech = "10xv2"
-        elif l[i] == 28:
-            ind2 = i
-            tech = "10xv3"
-
-    if tech == "unknown":
-        read_tech = None
-    else:
-        read_tech = list(lengths.keys())[ind2]
-        read_tech = f'{self.cachedir}/{read_tech}'
-
-    #return(read_bio, read_tech, tech)
-    return df
-
 
 
 

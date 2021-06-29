@@ -167,8 +167,28 @@ def gini_coefficient(x):
     """Compute Gini coefficient of array of values"""
     diffsum = 0
     for i, xi in enumerate(x[:-1], 1):
-        diffsum += np.sum(np.abs(xi - x[i:]))
+        diffsum += np.sum(np.abs(xi - x[i:,:]))
     return diffsum / (len(x)**2 * np.mean(x))
+
+
+def gini_coefficient_spmat(x):
+    """ 
+        Compute Gini coefficient for expression matrix
+        Assumes x is a cell x gene matrix
+        expected time ~ 10 min for 55000 genes 
+    """
+    diffsum = 0
+    # XXX loop is slow! Can be parallelized if speed is desired.
+    for i in range(x.shape[1]):
+        xi = x[:,i]
+        rem = x[:,i:]
+        # make xi the correct size. Broadcasting doesn't work for sparse matrices
+        n = rem.shape[1]
+        diffsum += np.sum(np.abs(xi[:,np.zeros(n)] - rem) ,axis=1)
+        # if i%1000 ==0 :
+        #     print(i) 
+       
+    return diffsum / (x.shape[1]**2 * np.mean(x,axis=1))
 
 
 def sparse_pairwise_corr(A, B=None):
@@ -201,3 +221,17 @@ def sparse_pairwise_corr(A, B=None):
     coeffs = C / np.sqrt(np.outer(d, d))
 
     return coeffs
+
+
+
+def taxon_to_spec(taxid= '10090'):
+    d = {   '10090': "mouse",
+            '9606':"human"}
+    return(d[taxid])
+
+
+def spec_to_taxon(spec="mouse"):
+    d = {   "mouse":"10090",
+            "human":"9606"}         
+    return(d[spec])
+
