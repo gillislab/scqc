@@ -53,7 +53,7 @@ EXP_COLUMNS = ['exp_id', 'ext_ids',  'strategy',
                'source', 'lcp', 'samp_id', 'proj_id', 'submission_id']
 
 RUN_COLUMNS = ['run_id', 'ext_ids', 'tot_spots', 'tot_bases', 'size', 'publish_date',
-               'taxon', 'organism', 'nreads',  'basecounts', 'expid', 'samp_id', 'proj_id', 'submission_id']
+               'taxon', 'organism', 'nreads',  'basecounts', 'exp_id', 'samp_id', 'proj_id', 'submission_id']
 
 IMPUTE_COLUMNS = ['proj_id','exp_id','samp_id','run_id', 'tech']
 
