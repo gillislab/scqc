@@ -46,14 +46,14 @@ EXP_COLUMNS = ['exp_id', 'ext_ids',  'strategy',
 RUN_COLUMNS = ['run_id', 'ext_ids', 'tot_spots', 'tot_bases', 'size', 'publish_date',
                'taxon', 'organism', 'nreads',  'basecounts', 'exp_id', 'samp_id', 'proj_id', 'submission_id']
 
-IMPUTE_COLUMNS = ['proj_id','exp_id','samp_id','run_id', 'tech']
-# run_id tech_version                read1                read2      exp_id   proj_id taxon
+IMPUTE_COLUMNS = ['run_id' ,'tech_version','read1','read2','exp_id','proj_id', 'taxon','batch']
+
 TECH_RES = {
-    '10x'   : re.compile("10x Genomics|chromium|10X protocol|Chrominum|10X 3' gene|10X Single|10x 3'|Kit v1|PN-120233|10X V1", re.IGNORECASE),
+    '10x'     : re.compile("10x Genomics|chromium|10X protocol|Chrominum|10X 3' gene|10X Single|10x 3'|Kit v1|PN-120233|10X V1", re.IGNORECASE),
     #'10xv1' : re.compile("", re.IGNORECASE),
     #'10xv2' : re.compile("v2 chemistry|v2 reagent|V2 protocol|P/N 120230|Single Cell 3' v2|Reagent Kits v2|10X V2", re.IGNORECASE),
     #'10xv3' : re.compile("v3 chemistry|v3 reagent|V3 protocol|CG000206|Single Cell 3' Reagent Kit v3|10X V3|1000078", re.IGNORECASE),
-    'smartseq'    : re.compile("Smart-Seq|SmartSeq|Picelli|SMART Seq", re.IGNORECASE),
+    'smartseq': re.compile("Smart-Seq|SmartSeq|Picelli|SMART Seq", re.IGNORECASE),
     'smarter' : re.compile("SMARTer", re.IGNORECASE),
     'dropseq' : re.compile("Cell 161, 1202-1214|Macosko|dropseq|drop-seq", re.IGNORECASE),
     'celseq'  : re.compile("CEL-Seq2|Muraro|Cell Syst 3, 385|Celseq2|Celseq1|Celseq|Cel-seq", re.IGNORECASE),
@@ -83,7 +83,7 @@ def get_configstr(cp):
         ss.seek(0)  # rewind
         return ss.read()
 
-
+# TODO output lists. imputation successful or not
 class Impute(object):
     """
     Imputes sequencing technology for all runs under a project. 
@@ -99,8 +99,11 @@ class Impute(object):
         # self.sra_efetch = self.config.get('sra', 'sra_efetch')
         # self.sleep = float(self.config.get('sra', 'sleep'))
 
+    # TODO input requested projects as a list instead of through a loop for speed
+    # change df.proj_id == projectid  -> df.proj_id.isin(projectid) 
     def execute(self, projectid):
         """
+        XXX if tech is not supported, will return an empty dataframe
          For projectid:
             Impute technology where possible. 
             Put completed project ids into query-donelist.txt
@@ -124,12 +127,29 @@ class Impute(object):
             rdf = pd.read_csv(runfile, sep='\t', index_col=0)
             rdf = rdf[rdf.proj_id==projectid].reset_index(drop=True)
             # impute 10x version
-            fdf = self.impute_10x_version(idf, rdf)
-            self.log.debug(f'got imputed 10x version df: \n{fdf}')
-            ssdat = self.parse_smartseq(idf, rdf)
+            outdf = self.impute_10x_version(idf, rdf)
+            self.log.debug(f'got imputed 10x version df: \n{outdf}')
+            ssdf = self.parse_smartseq(idf, rdf)
+            self.log.debug(f'parsed smartseq df: \n{ssdf}')
+            # save to disk
+            outdf=outdf.append(ssdf)
+
+            # append the inferred batch from samples.tsv
+            samplefile = f'{self.metadir}/samples.tsv'
+            sdf = pd.read_csv(samplefile, sep='\t', index_col=0)
+            sdf = sdf[sdf.proj_id==projectid].reset_index(drop=True)
+
+            #impute batch
+            bdf = self.impute_batch(sdf, rdf)
+            outdf = outdf.merge(bdf, on='run_id',how='inner')
 
             # save to disk
-            merge_write_df(fdf, f'{self.metadir}/tech.tsv' )          
+            outdf = outdf[['run_id' ,'tech_version','read1','read2','exp_id','proj_id', 'taxon','batch']]
+            outdf.columns = IMPUTE_COLUMNS  # renames the columns from global 
+            if outdf.shape[0] > 0:
+                merge_write_df(outdf, f'{self.metadir}/impute.tsv')  
+            else :
+                print('EMPTY DF NOT SAVING')        
             self.log.info(f'completed imputation for proj_id {projectid}')
             return projectid          
 
@@ -183,7 +203,7 @@ class Impute(object):
         
         '''
         logging.debug(f'got df: \n{df}')
-        df.lcp= df.lcp.fillna('None').values()
+        df.lcp= df.lcp.fillna('None').values
 
         ulcp = pd.DataFrame({"lcp": df.lcp.unique()})
         ulcp['tech'] ='unknown'
@@ -212,16 +232,18 @@ class Impute(object):
 
 
     # TODO include logging
+    # TODO error handling
     def impute_10x_version(self,idf,rdf):
         """
         For known 10x, get first part of fasta file and determine version.
         Only looks at the 10x portion if multiple techs used.
         Returns only 10x runs
+        doesn't matter if multiple projects are included
         """
 
         # look at the first few lines of the fastq file.
         loglev = LOGLEVELS[self.log.getEffectiveLevel()]
-
+        # print( f'\n{loglev}\n')
         
         # require runs have rdf.nreads > 1. Otherwise, unable to impute
         rdf = rdf [rdf.nreads > 1]
@@ -231,7 +253,7 @@ class Impute(object):
         runs = df.loc[ df.tech == '10x','run_id']
         if len(runs)  == 0:
             print('no runs imputable') 
-            return None
+            return pd.DataFrame(columns=['run_id' ,'tech_version','read1','read2','exp_id','proj_id', 'taxon'])
 
         allRows = []
         # TODO multithread?
@@ -287,13 +309,13 @@ class Impute(object):
         outdf = outdf.merge(tax, on='run_id', how='inner') 
         
         # make sure to return in order!
-        return outdf
-
+        return outdf[['run_id' ,'tech_version','read1','read2','exp_id','proj_id', 'taxon']]
 
 
     def parse_smartseq(self,idf,rdf):
         """
         For known smartseq, parse, build manifest
+        doesn't matter if multiple projects are included
         """
 
         log = logging.getLogger('sra')
@@ -307,7 +329,7 @@ class Impute(object):
         
         outdf=pd.DataFrame({'run_id' : runs ,'tech_version':'smartseq'})
 
-        # used to construct manifest and be consistent with 10x section
+        # used to construct manifest and to be consistent with 10x section
         outdf.loc[df.nreads > 1 ,'read1']  = outdf['run_id']+ '_1.fastq'
         outdf.loc[df.nreads > 1 ,'read2']  = outdf['run_id']+ '_2.fastq'
         outdf.loc[df.nreads == 1 ,'read1'] = outdf['run_id']+ '.fastq'
@@ -317,26 +339,124 @@ class Impute(object):
         outdf = outdf.merge(tax, on='run_id', how='inner') 
         
         # make sure to return in order!
-        return outdf
+        return outdf[['run_id' ,'tech_version','read1','read2','exp_id','proj_id', 'taxon']]
 
-
-    def impute_batch(sdf, rdf):
+    # sample attributes alone aren't enough to impute batch. use freq of ids
+    def impute_batch(self, sdf, rdf):
         '''
+        Uses the sample data to infer batch. If no batches are found, (i.e. everything 
+        gets assigned batch 0), use cell/runs > as batch predictor during `gatherstats.py`
+
         This should only be run at the project level dataframes, but just in case,
         Splits by project id first and assigns a set batches to each 
         project id 
         '''
         
         cols = rdf.columns.tolist()
-        new_rdf = pd.DataFrame(columns= cols.append('batch'))
+        cols.append('batch')
+        new_rdf = pd.DataFrame(columns=cols )
         for proj , df in sdf.groupby('proj_id') :
-
-            samp2batch = pd.DataFrame({ 'samp_id' : df.samp_id ,
-                            'batch': pd.factorize(df['attributes'])[0]})
+            
             tm_rdf = rdf.loc[ rdf.proj_id == proj ,:] 
+            
+            # factorize outputs a tuple (index, attribute)
+            samp2batch = pd.DataFrame({ 'samp_id' : df['samp_id'],
+                            'samp' : pd.factorize(df.samp_id)[0] ,
+                            'attr': pd.factorize(df['attributes'])[0],
+                            'exp_id': pd.factorize(df['samp_id'])[0]})
+            self.log.debug(f'sample to batch \n{samp2batch}')
+            # batches should  contain at least two runs
+            counts1 = samp2batch.iloc[:,1:].apply( lambda x: len(x.unique()) ,axis=0) > 1
+            # batches shouldn't include all cells
+            counts2 = samp2batch.iloc[:,1:].apply( lambda x: len(x.unique()) ,axis=0) < tm_rdf.shape[0]
+
+            batch = list(counts1 &counts2)    # which columns denote possible batches
+            # indicates that the 'samp_id' shouldn't be used for batch- only for merge
+            batch.insert(0,False)   
+            # batch not found at the sample level. Look at other levels.
+            # samples are either unique per run or there is only one sample
+            
+
+            if sum(batch) == 0 :
+                run2batch = pd.DataFrame({ 'run_id' : pd.factorize(tm_rdf['run_id'])[0] ,    
+                            'exp_id': pd.factorize(tm_rdf['exp_id'])[0]})
+                counts1 = run2batch.apply( lambda x: len(x.unique()) ,axis=0) > 1
+                # batches shouldn't include all cells
+                counts2 = run2batch.apply( lambda x: len(x.unique()) ,axis=0) < tm_rdf.shape[0]
+                batch = counts1 &counts2    # which columns denote possible batches
+                
+                # batch is still False for everything. No batch inferred. 
+                # If no batch inferred, need to align, get number of cells/run.
+                # if ncells/run > 1 -> assign runs as the batch (e.g. 10x samples)
+
+                if batch.sum() == 0:
+                    samp2batch['batch'] = 0 # everything gets the same batch id
+                else:
+                    samp2batch['batch'] = run2batch.loc[:,batch].iloc[:,-1]
+            else :
+                    samp2batch['batch'] = samp2batch.loc[:,batch].iloc[:,-1]
+
             # merge these batches with the runs 
-            tm_rdf=tm_rdf.merge(samp2batch, how ="left", on="samp_id")
+            tm_rdf=tm_rdf.merge(samp2batch[['samp_id','batch']], how ="left", on="samp_id")
 
             new_rdf = pd.concat([new_rdf, tm_rdf])
 
-        return new_rdf
+        return new_rdf[['run_id','batch']]
+
+
+if __name__ =="__main__":
+
+    FORMAT = '%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
+    logging.basicConfig(format=FORMAT)
+    # logging.getLogger().setLevel(logging.DEBUG)
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('-d', '--debug',
+                        action="store_true",
+                        dest='debug',
+                        help='debug logging')
+
+    parser.add_argument('-v', '--verbose',
+                        action="store_true",
+                        dest='verbose',
+                        help='verbose logging')
+
+            
+    parser.add_argument('-c', '--config',
+                            action="store",
+                            dest='conffile',
+                            default='~/git/scqc/etc/scqc.conf',
+                            help='Config file path [~/git/scqc/etc/scqc.conf]')
+
+    parser.add_argument('-i', '--impute',
+                        metavar='project_id',
+                        type=str,
+                        nargs='+',
+                        default=None,
+                        help='Perform tech and batch imputation on supplied projectid')
+
+
+    args = parser.parse_args()
+
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+    if args.verbose:
+        logging.getLogger().setLevel(logging.INFO)
+
+    if args.conffile is not None:
+        cp = ConfigParser()
+        cp.read(os.path.expanduser(args.conffile)) 
+    else:
+        cp = get_default_config()
+       
+    cs = get_configstr(cp)
+    logging.debug(f"got config: {cs}")
+
+    logging.debug(f"args: {args}")
+
+    if args.impute is not None:
+        q = Impute(cp)
+        # TODO args.impute is a list. Can be passed directly instead of looping.
+        for pid in args.impute:
+            q.execute(pid)

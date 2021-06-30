@@ -41,7 +41,7 @@ def get_configstr(cp):
         ss.seek(0)  # rewind
         return ss.read()
 
-
+#TODO given just proj_id, split to smart seq and 10x and proceed independently.
 class GetStats(object):
 
     def __init__(self, config, srpid, ):
