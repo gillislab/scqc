@@ -46,7 +46,7 @@ EXP_COLUMNS = ['exp_id', 'ext_ids',  'strategy',
 RUN_COLUMNS = ['run_id', 'ext_ids', 'tot_spots', 'tot_bases', 'size', 'publish_date',
                'taxon', 'organism', 'nreads',  'basecounts', 'exp_id', 'samp_id', 'proj_id', 'submission_id']
 
-IMPUTE_COLUMNS = ['run_id' ,'tech_version','read1','read2','exp_id','proj_id', 'taxon','batch']
+IMPUTE_COLUMNS = ['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon','batch']
 
 TECH_RES = {
     '10x'     : re.compile("10x Genomics|chromium|10X protocol|Chrominum|10X 3' gene|10X Single|10x 3'|Kit v1|PN-120233|10X V1", re.IGNORECASE),
@@ -139,17 +139,19 @@ class Impute(object):
             sdf = pd.read_csv(samplefile, sep='\t', index_col=0)
             sdf = sdf[sdf.proj_id==projectid].reset_index(drop=True)
 
+
             #impute batch
             bdf = self.impute_batch(sdf, rdf)
             outdf = outdf.merge(bdf, on='run_id',how='inner')
-
+            self.log.debug(f'batches inferred: \n{bdf}')
             # save to disk
-            outdf = outdf[['run_id' ,'tech_version','read1','read2','exp_id','proj_id', 'taxon','batch']]
+            outdf = outdf[['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon','batch']]
             outdf.columns = IMPUTE_COLUMNS  # renames the columns from global 
             if outdf.shape[0] > 0:
                 merge_write_df(outdf, f'{self.metadir}/impute.tsv')  
             else :
-                print('EMPTY DF NOT SAVING')        
+                self.log.warn(f'Unable to predict tech for:{projectid} ')
+                
             self.log.info(f'completed imputation for proj_id {projectid}')
             return projectid          
 
@@ -157,39 +159,6 @@ class Impute(object):
             self.log.error(f'problem with NCBI projectid {projectid}')
             logging.error(traceback.format_exc(None))
             raise ex
-
-    # old XXX
-    def __impute_tech(self, df):
-        ulcp = pd.DataFrame({"lcp": df.lcp.unique()})
-    
-        # search for the keywords
-        
-        for i in range(len(TECH_RES)):
-            key = list(TECH_RES)[i]
-            kw = TECH_RES[key]
-            ulcp[key] = ulcp.lcp.str.contains(kw)
-
-
-            ulcp[key] = ulcp.lcp.str.contains(
-                kw, case=False, regex=True)
-        self.log.debug(f'keyword hits: {ulcp.values}')
-        
-        tmpdf = ulcp.loc[:, list(TECH_RES.keys())]
-        tmpdf = tmpdf.fillna(False)
-        #unknownTechs = ulcp.loc[tmpdf.sum(axis=1) ==0,"LCP"]
-        tmpdf["some10x"] = tmpdf.loc[:, "is10x"]
-        # tmpdf["isMultiple"] = tmpdf.iloc[:,4:-1].sum(axis=1)  > 1
-        tmpdf["smartseq"] = tmpdf.loc[:, "ss"] & ~(
-            tmpdf.loc[:, "is10x"].astype('bool'))
-        tmpdf["method"] = "Unknown"
-        
-        for tech in tmpdf.columns.values[5:-1]:
-            tmpdf.loc[tmpdf.loc[:, tech], "method"] = tech
-        
-        ulcp['method'] = tmpdf.method
-        ulcp = ulcp.loc[:, ["lcp", "method"]]
-        df = df.merge(ulcp, on="lcp")
-        return df
 
     # updated 6/29 jlee. 
     # TODO deal with multiple tech finds
@@ -304,12 +273,12 @@ class Impute(object):
             allRows.append([srrid, tech, read_bio, read_tech])
 
         outdf = pd.DataFrame(allRows,columns=['run_id','tech_version','read1','read2'] )
-        tax = rdf[['run_id','exp_id','proj_id','taxon']]
+        tax = rdf[['run_id','samp_id','exp_id','proj_id','taxon']]
 
         outdf = outdf.merge(tax, on='run_id', how='inner') 
         
         # make sure to return in order!
-        return outdf[['run_id' ,'tech_version','read1','read2','exp_id','proj_id', 'taxon']]
+        return outdf[['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon']]
 
 
     def parse_smartseq(self,idf,rdf):
@@ -334,12 +303,12 @@ class Impute(object):
         outdf.loc[df.nreads > 1 ,'read2']  = outdf['run_id']+ '_2.fastq'
         outdf.loc[df.nreads == 1 ,'read1'] = outdf['run_id']+ '.fastq'
         outdf.loc[df.nreads == 1 ,'read1'] = '-'
-        tax = rdf[['run_id','exp_id','proj_id','taxon']]
+        tax = rdf[['run_id','exp_id','samp_id','proj_id','taxon']]
 
         outdf = outdf.merge(tax, on='run_id', how='inner') 
         
         # make sure to return in order!
-        return outdf[['run_id' ,'tech_version','read1','read2','exp_id','proj_id', 'taxon']]
+        return outdf[['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon']]
 
     # sample attributes alone aren't enough to impute batch. use freq of ids
     def impute_batch(self, sdf, rdf):
