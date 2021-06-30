@@ -69,7 +69,12 @@ TECH_RES = {
 }
 
 
-
+# to do in priority order
+# TODO done list
+# TODO filter srplist using donelist
+# TODO error handling - fastq dump
+# TODO multithread 10xversion imputation
+# TODO multiple technologies found in LCP for given experiment - currently ignores
 
 def get_default_config():
     cp = ConfigParser()
@@ -83,7 +88,6 @@ def get_configstr(cp):
         ss.seek(0)  # rewind
         return ss.read()
 
-# TODO output lists. imputation successful or not
 class Impute(object):
     """
     Imputes sequencing technology for all runs under a project. 
@@ -99,8 +103,6 @@ class Impute(object):
         # self.sra_efetch = self.config.get('sra', 'sra_efetch')
         # self.sleep = float(self.config.get('sra', 'sleep'))
 
-    # TODO input requested projects as a list instead of through a loop for speed
-    # change df.proj_id == projectid  -> df.proj_id.isin(projectid) 
     def execute(self, projectid):
         """
         XXX if tech is not supported, will return an empty dataframe
@@ -116,7 +118,7 @@ class Impute(object):
             expfile = f'{self.metadir}/experiments.tsv'
             edf = pd.read_csv(expfile, sep='\t', index_col=0)
             self.log.debug(f'opened experiments DF OK...')
-            edf = edf[edf.proj_id == projectid].reset_index(drop=True) # rename pdf -> edf 
+            edf = edf[edf.proj_id.isin(projectid)].reset_index(drop=True) # rename pdf -> edf 
             self.log.debug(f'got project-specific df: \n{edf}')
             # impute technology  -  exp_id|tech
             idf = self.impute_tech_from_lcp(edf)    
@@ -125,7 +127,7 @@ class Impute(object):
             # match run to tech
             runfile = f'{self.metadir}/runs.tsv'
             rdf = pd.read_csv(runfile, sep='\t', index_col=0)
-            rdf = rdf[rdf.proj_id==projectid].reset_index(drop=True)
+            rdf = rdf[rdf.proj_id.isin(projectid)].reset_index(drop=True)
             # impute 10x version
             outdf = self.impute_10x_version(idf, rdf)
             self.log.debug(f'got imputed 10x version df: \n{outdf}')
@@ -137,7 +139,7 @@ class Impute(object):
             # append the inferred batch from samples.tsv
             samplefile = f'{self.metadir}/samples.tsv'
             sdf = pd.read_csv(samplefile, sep='\t', index_col=0)
-            sdf = sdf[sdf.proj_id==projectid].reset_index(drop=True)
+            sdf = sdf[sdf.proj_id.isin(projectid)].reset_index(drop=True)
 
 
             #impute batch
@@ -200,7 +202,6 @@ class Impute(object):
 
 
 
-    # TODO include logging
     # TODO error handling
     def impute_10x_version(self,idf,rdf):
         """
@@ -426,6 +427,5 @@ if __name__ =="__main__":
 
     if args.impute is not None:
         q = Impute(cp)
-        # TODO args.impute is a list. Can be passed directly instead of looping.
-        for pid in args.impute:
-            q.execute(pid)
+        # for pid in args.impute:
+        q.execute(args.impute)
