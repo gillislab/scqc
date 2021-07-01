@@ -8,6 +8,8 @@ import urllib
 import numpy as np
 from scipy import sparse
 from ftplib import FTP
+from configparser import ConfigParser
+import io
 
 import pandas as pd
 
@@ -235,3 +237,16 @@ def spec_to_taxon(spec="mouse"):
             "human":"9606"}         
     return(d[spec])
 
+
+
+def get_default_config():
+    cp = ConfigParser()
+    cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
+    return cp
+
+
+def get_configstr(cp):
+    with io.StringIO() as ss:
+        cp.write(ss)
+        ss.seek(0)  # rewind
+        return ss.read()

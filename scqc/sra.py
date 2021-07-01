@@ -704,7 +704,7 @@ def get_runs_for_project(config, projectid):
     filepath = f"{metadir}/project_runs.tsv"
     if os.path.isfile(filepath):
         pdf = pd.read_csv(filepath, sep='\t', index_col=0, comment="#")
-        return list(pdf[pdf.project == 'SRP281950'].run_id)
+        return list(pdf[pdf.project == 'projectid'].run_id)
     else:
         return []
 
@@ -921,22 +921,6 @@ if __name__ == "__main__":
                         required=False,
                         default=None,
                         help='Download (Run) args with prefetch. e.g. SRR14584407')
-
-    parser.add_argument('-t', '--tenx',
-                        metavar='project_id',
-                        type=str,
-                        nargs='+',
-                        required=False,
-                        default=None,
-                        help='Align 10x args with STAR. e.g. SRR14584407')
-
-    parser.add_argument('-ss', '--smartseq',
-                        metavar='project_id',
-                        type=str,
-                        nargs='+',
-                        required=False,
-                        default=None,
-                        help='Align SmartSeq args with STAR. e.g. SRP308826')
 
     parser.add_argument('-m', '--metadata',
                         metavar='project_id',

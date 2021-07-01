@@ -9,7 +9,7 @@ import sys
 from configparser import ConfigParser
 from queue import Empty, Queue
 from threading import Thread
-
+import glob 
 import numpy as np
 import pandas as pd
 import scanpy as sc  # pip install
@@ -28,52 +28,71 @@ LOGLEVELS = {
     50: 'fatal',
 }
 
-
-def get_default_config():
-    cp = ConfigParser()
-    cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
-    return cp
-
-
-def get_configstr(cp):
-    with io.StringIO() as ss:
-        cp.write(ss)
-        ss.seek(0)  # rewind
-        return ss.read()
+TO_PLOT = ['reads']
 
 #TODO given just proj_id, split to smart seq and 10x and proceed independently.
+#TODO generate figures for the dataset
 class GetStats(object):
 
-    def __init__(self, config, srpid, ):
-        self.log = logging.getLogger('stats')
+    def __init__(self, config ):
+        self.log = logging.getLogger('statistics')
         self.config = config
-        self.solooutdir = srpid    # Solo.out/
-        self.staroutdir = os.path.expanduser(
-            self.config.get('stats', 'staroutdir'))
-        self.statdir = os.path.expanduser(self.config.get('stats', 'statdir'))
-        self.starindexdir = os.path.expanduser(
-            self.config.get('stats', 'starindexdir'))
-        self.metadir = os.path.expanduser(self.config.get('stats', 'metadir'))
+        self.outputdir = os.path.expanduser(
+            self.config.get('statistics', 'outputdir'))
+        self.resourcedir = os.path.expanduser(
+            self.config.get('statistics', 'resourcedir'))
+        self.metadir = os.path.expanduser(self.config.get('statistics', 'metadir'))
 
-    def _gather_stats_from_STAR(self):
+    def execute(self,srpid):
+        # outdir = "/home/johlee/scqc/stats"
+        solooutdirs = f'{self.outputdir}/{srpid}'
+        solooutdirs = glob.glob(f'{solooutdirs}/*Solo.out')
 
-        with open(f"{self.solooutdir}/Barcodes.stats", 'r') as f:
+        for solooutdir in solooutdirs :
+            # solooutdir = "/home/johlee/scqc/starout/SRP308826_smartseq_Solo.out"
+            barcode_stats, feature_stats, summary_stats = self._gather_stats_from_STAR(
+                solooutdir)
+
+            all_stats = summary_stats.append(barcode_stats).append(feature_stats)
+            # did we already save these?
+            acc = barcode_stats.accession.unique()[0]
+            fname = f'{self.outdir}/{acc}_starout_stats.tsv'
+            runs_done = pd.read_csv(
+                f'{self.solooutdir}/Gene/raw/barcodes.tsv', sep="\t", header=None)
+            projectout = f'{self.outdir}/{acc}_runs_done.tsv'
+
+            all_stats.to_csv(fname, sep="\t", index=None,
+                            header=not os.path.isfile(fname), mode='w')
+            runs_done.to_csv(projectout, sep="\t", index=None,
+                            header=False, mode='a')
+
+            adata = self._parse_STAR_mtx(self.solooutdir)
+            adata = self._get_stats_scanpy(adata)
+
+            # scanpy default is to overwrite existing file
+            h5file = f'{self.outdir}/{acc}.h5ad'
+            adata.write(h5file)
+
+
+    def _gather_stats_from_STAR(self,solooutdir):
+
+        with open(f"{solooutdir}/Barcodes.stats", 'r') as f:
             lines = f.readlines()
             lines = [" ".join(line.split()) for line in lines]
             lines = [line.split() for line in lines]
             barcode_stats = pd.DataFrame(lines, columns=["stat", "value"])
 
-        with open(f"{self.solooutdir}/Gene/Features.stats", 'r') as f:
+        with open(f"{solooutdir}/Gene/Features.stats", 'r') as f:
             lines = f.readlines()
             lines = [" ".join(line.split()) for line in lines]
             lines = [line.split() for line in lines]
             feature_stats = pd.DataFrame(lines, columns=["stat", "value"])
 
         summary_stats = pd.read_csv(
-            f"{self.solooutdir}/Gene/Summary.csv", sep=",", header=None)
+            f"{solooutdir}/Gene/Summary.csv", sep=",", header=None)
         summary_stats.columns = ["stat", "value"]
 
-        acc = self.solooutdir.split("/")[-1].split("Solo.out")[0][:-1]
+        acc = solooutdir.split("/")[-1].split("Solo.out")[0][:-1]
         barcode_stats['stat_source'] = 'barcode'
         feature_stats['stat_source'] = 'feature'
         summary_stats['stat_source'] = 'summary'
@@ -177,32 +196,69 @@ class GetStats(object):
 
         return adata
 
-    def execute(self):
-        # outdir = "/home/johlee/scqc/stats"
-        # solooutdir = "/home/johlee/scqc/starout/SRP308826_smartseq_Solo.out"
-        barcode_stats, feature_stats, summary_stats = self._gather_stats_from_STAR(
-            self.solooutdir)
 
-        all_stats = summary_stats.append(barcode_stats).append(feature_stats)
-        # did we already save these?
-        acc = barcode_stats.accession.unique()[0]
-        fname = f'{self.outdir}/{acc}_starout_stats.tsv'
-        runs_done = pd.read_csv(
-            f'{self.solooutdir}/Gene/raw/barcodes.tsv', sep="\t", header=None)
-        projectout = f'{self.outdir}/{acc}_runs_done.tsv'
+class BuildFigures(object):
+    def __init__():
+        pass
 
-        all_stats.to_csv(fname, sep="\t", index=None,
-                         header=not os.path.isfile(fname), mode='w')
-        runs_done.to_csv(projectout, sep="\t", index=None,
-                         header=False, mode='a')
+    
 
-        adata = self._parse_STAR_mtx(self.solooutdir)
-        adata = self._get_stats_scanpy(adata)
-
-        # scanpy default is to overwrite existing file
-        h5file = f'{self.outdir}/{acc}.h5ad'
-        adata.write(h5file)
-
-
-if __name__ == "__main__":
     pass
+
+if __name__ =="__main__":
+
+    FORMAT = '%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
+    logging.basicConfig(format=FORMAT)
+    # logging.getLogger().setLevel(logging.DEBUG)
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('-d', '--debug',
+                        action="store_true",
+                        dest='debug',
+                        help='debug logging')
+
+    parser.add_argument('-v', '--verbose',
+                        action="store_true",
+                        dest='verbose',
+                        help='verbose logging')
+
+            
+    parser.add_argument('-c', '--config',
+                            action="store",
+                            dest='conffile',
+                            default='~/git/scqc/etc/scqc.conf',
+                            help='Config file path [~/git/scqc/etc/scqc.conf]')
+
+    parser.add_argument('-p', '--projectids',
+                        metavar='projectids',
+                        type=str,
+                        nargs='+',
+                        default=None,
+                        help='Perform tech and batch imputation on supplied projectid')
+
+
+    args = parser.parse_args()
+
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+    if args.verbose:
+        logging.getLogger().setLevel(logging.INFO)
+
+    if args.conffile is not None:
+        cp = ConfigParser()
+        cp.read(os.path.expanduser(args.conffile)) 
+    else:
+        cp = get_default_config()
+       
+    cs = get_configstr(cp)
+    logging.debug(f"got config: {cs}")
+
+    logging.debug(f"args: {args}")
+
+    if args.projectids is not None:
+        q = GetStats(cp)
+        print(args.projectids)
+        for pid in args.projectids:
+        # args.projectid is a list of project ids
+            q.execute(args.projectids)

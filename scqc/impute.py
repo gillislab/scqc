@@ -73,8 +73,9 @@ TECH_RES = {
 # TODO done list
 # TODO filter srplist using donelist
 # TODO error handling - fastq dump
-# TODO multithread 10xversion imputation
 # TODO multiple technologies found in LCP for given experiment - currently ignores
+# TODO multithread 10xversion imputation
+# should 10x runs always be used as the batch?
 
 def get_default_config():
     cp = ConfigParser()
@@ -399,7 +400,7 @@ if __name__ =="__main__":
                             default='~/git/scqc/etc/scqc.conf',
                             help='Config file path [~/git/scqc/etc/scqc.conf]')
 
-    parser.add_argument('-i', '--impute',
+    parser.add_argument('-p', '--project_ids',
                         metavar='project_id',
                         type=str,
                         nargs='+',
@@ -417,15 +418,16 @@ if __name__ =="__main__":
     if args.conffile is not None:
         cp = ConfigParser()
         cp.read(os.path.expanduser(args.conffile)) 
+
     else:
         cp = get_default_config()
-       
-    cs = get_configstr(cp)
-    logging.debug(f"got config: {cs}")
 
+    cs = get_configstr(cp)
+
+    logging.debug(f"got config: {cs}")
     logging.debug(f"args: {args}")
 
     if args.impute is not None:
         q = Impute(cp)
-        # for pid in args.impute:
-        q.execute(args.impute)
+        # for pid in args.project_ids:
+        q.execute(args.project_ids)
