@@ -3,7 +3,7 @@ conda activate scqc
 
 conda install requests pandas ipython
 conda install -c bioconda star
-
+conda install -c conda-forge leidenalg
 pip install scanpy
 
 

@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import scanpy as sc  # pip install
 from scipy.io import mmread
+from scipy.sparse import base
 
 
 gitpath = os.path.expanduser("~/git/scqc")
@@ -42,36 +43,67 @@ class GetStats(object):
         self.resourcedir = os.path.expanduser(
             self.config.get('statistics', 'resourcedir'))
         self.metadir = os.path.expanduser(self.config.get('statistics', 'metadir'))
+        self.tempdir = os.path.expanduser(self.config.get('statistics', 'tempdir'))
+
+        # gene sets
+        self.cell_cycle_genes = os.path.expanduser(self.config.get('statistics', 'cell_cycle_genes'))
+        self.stable_housekeepinig = os.path.expanduser(self.config.get('statistics', 'stable_housekeepinig'))
+        self.essential_genes = os.path.expanduser(self.config.get('statistics', 'essential_genes'))
+        self.female_genes = os.path.expanduser(self.config.get('statistics', 'female_genes'))
+        self.male_genes = os.path.expanduser(self.config.get('statistics', 'male_genes'))
+
+        self.nPCA = self.config.get('statistics', 'nPCA')
 
     def execute(self,srpid):
         # outdir = "/home/johlee/scqc/stats"
         solooutdirs = f'{self.outputdir}/{srpid}'
         solooutdirs = glob.glob(f'{solooutdirs}/*Solo.out')
 
+        self.log.debug(f'starting with projectid {srpid}')
+
+        adata ={}
         for solooutdir in solooutdirs :
+            self.log.debug(f'looking at {solooutdir}')
             # solooutdir = "/home/johlee/scqc/starout/SRP308826_smartseq_Solo.out"
-            barcode_stats, feature_stats, summary_stats = self._gather_stats_from_STAR(
-                solooutdir)
 
-            all_stats = summary_stats.append(barcode_stats).append(feature_stats)
-            # did we already save these?
-            acc = barcode_stats.accession.unique()[0]
-            fname = f'{self.outdir}/{acc}_starout_stats.tsv'
-            runs_done = pd.read_csv(
-                f'{self.solooutdir}/Gene/raw/barcodes.tsv', sep="\t", header=None)
-            projectout = f'{self.outdir}/{acc}_runs_done.tsv'
+            # TODO fix this!  
+            # Dumps stats from STAR into one file and stores done list
 
-            all_stats.to_csv(fname, sep="\t", index=None,
-                            header=not os.path.isfile(fname), mode='w')
-            runs_done.to_csv(projectout, sep="\t", index=None,
-                            header=False, mode='a')
+            # barcode_stats, feature_stats, summary_stats = self._gather_stats_from_STAR(
+            #     solooutdir)
+            # all_stats = summary_stats.append(barcode_stats).append(feature_stats)
+            # # did we already save these?
+            # acc = barcode_stats.accession.unique()[0]
+            # fname = f'{self.metadata}/starout_stats.tsv'
+            # self.log.debug(f'read {fname}')
 
-            adata = self._parse_STAR_mtx(self.solooutdir)
-            adata = self._get_stats_scanpy(adata)
+            # runs_done = pd.read_csv(
+            #     f'{solooutdir}/Gene/raw/barcodes.tsv', sep="\t", header=None)
+            # projectout = f'{self.outputdir}/{acc}_runs_done.tsv'
+
+            # all_stats.to_csv(fname, sep="\t", index=None,
+            #                 header=not os.path.isfile(fname), mode='w')
+            # runs_done.to_csv(projectout, sep="\t", index=None,
+            #                 header=False, mode='a')
+
+            adata[solooutdir] = self._parse_STAR_mtx(solooutdir)
+            adata[solooutdir] = self._get_stats_scanpy(adata[solooutdir])
 
             # scanpy default is to overwrite existing file
-            h5file = f'{self.outdir}/{acc}.h5ad'
-            adata.write(h5file)
+            basename = os.path.basename(solooutdir)
+            basename =basename.replace('_Solo.out' ,'.h5ad')
+            h5file = f'{self.outputdir}/{srpid}/{basename}'
+            adata[solooutdir].var.index.name = None
+            self.log.debug(adata[solooutdir].obs.columns)
+            self.log.debug(adata[solooutdir].var.columns)
+            
+
+            # for testing...
+            adata[solooutdir].obs.to_csv(f'{self.tempdir}/obs.tsv',sep="\t")
+            adata[solooutdir].var.to_csv(f'{self.tempdir}/var.tsv',sep="\t")
+            # consolidate these... 
+            adata[solooutdir].write(h5file)
+
 
 
     def _gather_stats_from_STAR(self,solooutdir):
@@ -104,12 +136,12 @@ class GetStats(object):
 
     # need to pass in star index directory
 
-    def _parse_STAR_mtx(self):
+    def _parse_STAR_mtx(self,solooutdir):
         # note that scanpy uses cell x gene.
         # read into anndata
         # path should end with "Solo.out"
         # solooutdir = "/home/johlee/scqc/starout/SRP308826_smartseq_Solo.out"
-        path = f'{self.solooutdir}/Gene/filtered'
+        path = f'{solooutdir}/Gene/filtered'
 
         # mtx_files = os.listdir(path)
         adata = sc.read(f'{path}/matrix.mtx').T
@@ -134,6 +166,8 @@ class GetStats(object):
         adata.var = genenames
         adata.obs = cellids
 
+        # gather imputed data and append to obs
+
         return adata
 
     def _get_stats_scanpy(self, adata):
@@ -142,41 +176,49 @@ class GetStats(object):
 
         # consider different gene sets - ERCC  corresponds to spike ins
         adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')
-        adata.var['ERCC'] = adata.var.gene_symbol.str.startswith('ERCC')
+        # adata.var['ERCC'] = adata.var.gene_symbol.str.startswith('ERCC')
         adata.var['ribo'] = adata.var.type == "rRNA"
         adata.var['cytoplasm'] = None       # GO Term/kegg?
         adata.var['metabolism'] = None      # GO Term/kegg?
         adata.var['membrane'] = None        # GO Term/kegg?
 
-        qcvars = ['mt', 'ERCC', 'ribo', 'female', 'male',
+        qcvars = ['mt','ribo', 'female', 'male',
                   'essential', 'cell_cycle']
 
         # get housekeeping genes
-        hk_genes = pd.read_csv(self.housekeeping, sep=",")
+        self.log.debug(f"gathering marker sets:")
+        hk_genes = pd.read_csv(self.stable_housekeepinig, sep=",")
+        self.log.debug(f"housekeeping:{hk_genes}")
         adata.var['housekeeping'] = adata.var.gene_symbol.isin(
             hk_genes.gene)
 
+
         # get gender markers
-        female_genes = pd.read_csv(self.female_markers, sep=",")
+        female_genes = pd.read_csv(self.female_genes, sep=",")
+        self.log.debug(f"female:{female_genes}")
         adata.var['female'] = adata.var.gene_symbol.isin(
             female_genes.gene)
 
-        male_genes = pd.read_csv(self.male_markers, sep=",")
+        male_genes = pd.read_csv(self.male_genes, sep=",")
+        self.log.debug(f"male:{male_genes}")
         adata.var['male'] = adata.var.gene_symbol.isin(
             male_genes.gene)
 
         # get essential genes
-        essential = pd.read_csv(self.essential, sep=",")
+        essential = pd.read_csv(self.essential_genes, sep=",")
+        self.log.debug(f"ess:{essential}" )
         adata.var['essential'] = adata.var.gene_symbol.isin(
             essential.gene)
 
         # get cell cycle genes
-        cc = pd.read_csv(self.cc_marker_path, sep=",")
+        cc = pd.read_csv(self.cell_cycle_genes, sep=",")
+        self.log.debug(f"cc:{cc}")
         adata.var['cell_cycle'] = adata.var.gene_symbol.isin(cc.gene)
         for i in cc.cluster.unique():
-            adata.var[f'cc_cluster_{i}'] = adata.var.cluster == i
+            adata.var[f'cc_cluster_{i}'] = adata.var.cell_cycle == i
             qcvars.append(f'cc_cluster_{i}')
 
+        self.log.debug('calculating qc metrics')
         sc.pp.calculate_qc_metrics(
             adata,
             expr_type='counts', var_type='genes',
@@ -184,18 +226,42 @@ class GetStats(object):
             qc_vars=qcvars)
 
         # computes the N+M x N+M corrcoef matrix - extract off diagonal block
+        self.log.debug('calculating corrtomean')
         adata.obs['corr_to_mean'] = np.array(sparse_pairwise_corr(
             adata.var.mean_counts, adata.X)[0, 1:]).flatten()
 
         # this part is slow (~10-15 min) because of a for loop - can parallelize
+        self.log.debug('calculating gini for each cell')
+        # NOTE SLOW commented for testing
         adata.obs['gini'] = gini_coefficient_spmat(adata.X )
 
         # unstructured data - dataset specific
         adata.uns['gini_by_counts'] = gini_coefficient(
             adata.obs['total_counts'])
 
+        # highly variable genes - expects log data
+        sc.pp.log1p(adata) # natural log
+        sc.pp.highly_variable_genes( adata,
+                min_mean=self.hvg_min_mean,
+                max_mean=self.hvg_max_mean,
+                min_disp=self.hvg_min_disp,
+                max_disp=self.hvg_max_disp)
+
+
+        # XXX  does it make sense to have a umap for every run? Or one for the project? 
+        # we'll do both for now
+        # umap coords
+        sc.tl.pca(adata,
+             n_comps = self.nPCA, zero_center=False,use_highly_variable=self.use_hvg)
+        
+        sc.pp.neighbors(adata, n_neighbors=self.n_neighbors, n_pcs=self.n_pcs)
+        sc.tl.umap(adata)       # umap coords are in adata.obsm['X_umap']
+        
+
         return adata
 
+    # consolidate h5ads for the project.
+    
 
 class BuildFigures(object):
     def __init__():
@@ -261,4 +327,4 @@ if __name__ =="__main__":
         print(args.projectids)
         for pid in args.projectids:
         # args.projectid is a list of project ids
-            q.execute(args.projectids)
+            q.execute(pid)
