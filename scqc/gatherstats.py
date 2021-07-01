@@ -245,7 +245,8 @@ class GetStats(object):
                 min_mean=self.hvg_min_mean,
                 max_mean=self.hvg_max_mean,
                 min_disp=self.hvg_min_disp,
-                max_disp=self.hvg_max_disp)
+                max_disp=self.hvg_max_disp,
+                flavor=self.hvg_flavor)
 
 
         # XXX  does it make sense to have a umap for every run? Or one for the project? 
@@ -256,7 +257,7 @@ class GetStats(object):
         
         sc.pp.neighbors(adata, n_neighbors=self.n_neighbors, n_pcs=self.n_pcs)
         sc.tl.umap(adata)       # umap coords are in adata.obsm['X_umap']
-        
+
 
         return adata
 
