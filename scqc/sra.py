@@ -202,12 +202,21 @@ class Query(object):
         self.metadir = os.path.expanduser(self.config.get('query', 'metadir'))
         self.cachedir = os.path.expanduser(
             self.config.get('query', 'cachedir'))
+        self.species = self.config.get('sra','species')
+        self.tissue = self.config.get('sra','tissue')
         self.sra_esearch = self.config.get('sra', 'sra_esearch')
         self.sra_efetch = self.config.get('sra', 'sra_efetch')
-        self.search_term = self.config.get('sra', 'search_term')
+        self.search_term = self.config.get('sra', f'{self.species}_search_term')
         self.query_max = self.config.get('sra', 'query_max')
-        # self.uidfile = os.path.expanduser(self.config.get('sra', 'uidfile'))
+        self.expid_file = os.path.expanduser(self.config.get('sra', 'expid_file'))
+        self.expids = self.build_expidset()
         self.query_sleep = float(self.config.get('sra', 'query_sleep'))
+
+    def build_expidset(self):
+        self.log.debug(f'expid_file is {self.expid_file}')
+        expidset = set(readlist(self.expid_file))
+        self.log.debug(f'expidset len={len(expidset)}')
+        return expidset
 
     def execute(self, projectid):
         """
@@ -230,24 +239,26 @@ class Query(object):
             samp_rows = []
             exp_rows = []
             run_rows = []
-            ##  BATCH THIS... XXX
             for exp in explist:
-                exd = self.query_experiment_package_set(exp)
-                (projrows, samprows, exprows,
-                 runs) = self.parse_experiment_package_set(exd)
-                proj_rows = itertools.chain(proj_rows, projrows)
-                samp_rows = itertools.chain(samp_rows, samprows)
-                exp_rows = itertools.chain(exp_rows, exprows)
-                run_rows = itertools.chain(run_rows, runs)
+                if exp in self.expids:
+                    exd = self.query_experiment_package_set(exp)
+                    (projrows, samprows, exprows,
+                     runs) = self.parse_experiment_package_set(exd)
+                    proj_rows = itertools.chain(proj_rows, projrows)
+                    samp_rows = itertools.chain(samp_rows, samprows)
+                    exp_rows = itertools.chain(exp_rows, exprows)
+                    run_rows = itertools.chain(run_rows, runs)
+                else:
+                    self.log.debug(f'expid {exp} not in set of search expids.  ')
             proj_rows = list(proj_rows)
             samp_rows = list(samp_rows)
             exp_rows = list(exp_rows)
             run_rows = list(run_rows)
 
-            logging.debug(f'final proj_rows: {proj_rows}')
-            logging.debug(f'final samp_rows: {samp_rows}')
-            logging.debug(f'final exp_rows: {exp_rows}')
-            logging.debug(f'final run_rows: {run_rows}')
+            self.log.debug(f'final proj_rows: {proj_rows}')
+            self.log.debug(f'final samp_rows: {samp_rows}')
+            self.log.debug(f'final exp_rows: {exp_rows}')
+            self.log.debug(f'final run_rows: {run_rows}')
             
             # make dataframes
             pdf = pd.DataFrame(proj_rows, columns=PROJ_COLUMNS)
@@ -470,8 +481,11 @@ class Query(object):
             val = elem.text
             samp_ext_ids[tag] = val
         samp_ext_ids = str(samp_ext_ids)
-
-        samptitle = samp.find('TITLE').text
+        
+        try:
+            samptitle = samp.find('TITLE').text
+        except:
+            samptitle = samp_id
 
         sample_attributes = {}
         for elem in samp.find('SAMPLE_ATTRIBUTES').findall('SAMPLE_ATTRIBUTE'):

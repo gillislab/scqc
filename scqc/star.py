@@ -323,27 +323,26 @@ def get_whitelists(config,force=False):
 def get_genome_data(config,force=False):
     """
     Download required genome data
+    Assumes config is for one species only. 
+    
     """
     log = logging.getLogger('star')
     resourcedir = os.path.expanduser(config.get('star', 'resourcedir'))
-    speciesnames = config.get('star', 'species')
-    specieslist = [i.strip() for i in speciesnames.split(',')]
-    log.debug(f'got species {specieslist}')
+    species = config.get('star', 'species')
+    log.debug(f'got species {species}')
+    outdir = "/".join([resourcedir, species])
+    try:
+        os.makedirs(outdir)
+    except FileExistsError:
+        pass
 
-    for species in specieslist:
-        outdir = "/".join([resourcedir, species])
-        try:
-            os.makedirs(outdir)
-        except FileExistsError:
-            pass
+    fa_url = config.get('star', f'{species}_fa_url')
+    log.debug(f'{species} fa_url={fa_url}')
+    download_ftpurl(fa_url, outdir, 'genome.fa')
 
-        fa_url = config.get('star', f'{species}_fa')
-        log.debug(f'{species} fa_url={fa_url}')
-        download_ftpurl(fa_url, outdir, 'genome.fa')
-
-        gtf_url = config.get('star', f'{species}_gtf')
-        log.debug(f'{species} gtf_url={gtf_url}')
-        download_ftpurl(gtf_url, outdir, 'annotation.gtf')
+    gtf_url = config.get('star', f'{species}_gtf_url')
+    log.debug(f'{species} gtf_url={gtf_url}')
+    download_ftpurl(gtf_url, outdir, 'annotation.gtf')
 
 
 def build_genome_indices(config, force=False):
