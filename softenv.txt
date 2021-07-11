@@ -1,10 +1,9 @@
 conda create -n scqc python=3.8
 conda activate scqc
 
-conda install requests pandas ipython
+conda install requests pandas ipython scanpy
 conda install -c bioconda star
 conda install -c conda-forge leidenalg
-pip install scanpy
 
 
 cd  $CONDA_PREFIX
