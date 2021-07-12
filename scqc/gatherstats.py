@@ -20,6 +20,11 @@ import seaborn as sns       # inputs as dataframes
 # import matplotlib.cbook as cbook
 
 
+# SRP090110 - mouse brain SS (500 cells)    Not found in scbrain_pids_mouse!
+# SRP124513 - mouse brain SS (1700 cells)   Not found in scbrain_pids_mouse!
+# SRP110034 - mouse brain 10x (1700 cells)  Not found in scbrain_pids_mouse!
+# SRP106908 - mouse brain SS (35000 cells) (atlas)
+# SRP135960 - mouse brain 10x (509000 cells) (atlas)
 
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
