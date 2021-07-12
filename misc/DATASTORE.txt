@@ -10,7 +10,7 @@ as dictionaries with TAG as keys
 	TAG 
 	VALUE
 
-Study -> Sample -> Experiment -> Run 
+Study/Project -> Sample -> Experiment -> Run 
 # Note that this can be supplemented with the TRACES link for the SRP
 ===== projects.tsv =====
 STUDY

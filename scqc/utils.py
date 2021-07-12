@@ -17,6 +17,8 @@ import pandas as pd
 def readlist(filepath):
     '''
     Assumes file is a list of strings, one per line. 
+    Ignores lines beginning with a has '#'
+    Ignores characters in a line afeter a '#'
     '''
 
     if filepath is not None:
@@ -24,7 +26,11 @@ def readlist(filepath):
         flist = []
         try:
             with open(filepath, 'r') as f:
-                flist = [line.strip() for line in f]
+                flist = [line for line in f]
+                for line in flist:
+                    pass
+                    
+                
             logging.debug(f'got list with {len(flist)} items.')
             return flist
         except:
