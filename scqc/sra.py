@@ -1266,7 +1266,7 @@ if __name__ == "__main__":
     logging.debug(f"args: {args}")
 
     if args.setup:
-        s = SetUp(cp)
+        s = setup(cp)
         s.execute()
 
     if args.query is not None:
@@ -1277,7 +1277,7 @@ if __name__ == "__main__":
     if args.prefetch is not None:
         dq = Queue()
         for srr in args.prefetch:
-            fq = Prefetch(cp, srr)
+            fq = PrefetchRun(cp, srr)
             dq.put(fq)
         logging.debug(f'created queue of {dq.qsize()} items')
         md = int(cp.get('sra', 'max_downloads'))

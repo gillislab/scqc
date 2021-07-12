@@ -172,18 +172,19 @@ def gzip_decompress(filename):
 
 
 def gini_coefficient(x):
-    """Compute Gini coefficient of array of values. Memory efficient"""
+    """Compute Gini coefficient of array of values. Memory efficient. Slow"""
     diffsum = 0
     for i, xi in enumerate(x[:-1], 1):
         diffsum += np.sum(np.abs(xi - x[i:]))
     return diffsum / (len(x)**2 * np.mean(x))
 
-
+# deprecated
 def gini_coefficient_spmat(x):
     """ 
         Compute Gini coefficient for expression matrix
         Assumes x is a cell x gene matrix
-        expected time ~ 10 min for 55000 genes 
+        expected time ~ 10-15 min for 55000 genes 500 cells 
+                      ~ 120 min   for 55000 genes 4000 cells 
     """
     diffsum = 0
     # XXX loop is slow! Can be parallelized if speed is desired.
@@ -197,6 +198,39 @@ def gini_coefficient_spmat(x):
         #     print(i) 
        
     return diffsum / (x.shape[1]**2 * np.mean(x,axis=1))
+
+
+
+def gini_coefficient_fast(X):
+    """ 
+        expects a CSR sparse matrix
+        Sorting is O(n log n ) (here n is at most number of genes)
+        loops over cells (m) instead of gene pairs. 
+        Overall, at most O( m n log n)  but realistically, 
+        density of 10% -> `effective n` is 0.1 * n
+        
+        only looks at nonzero elements
+        Cells with no expression get a gini score of 0       
+    """    
+    # x = np.asarray(x)
+    g = np.zeros(X.shape[0])    # ncells
+    n = X.shape[1]          # ngenes
+    for i in range(X.shape[0]): # loops for all cells
+        # take the nonzero elements of the ith cell
+        x = X[i,:]  
+        x= x[:, x.indices].A.flatten()
+
+        sorted_x = np.sort(x)   
+        # print(x.shape)
+        cumx = np.cumsum(sorted_x, dtype=float)
+
+        if len(cumx) == 0 : # cell with zero expression - perfect equilibrium
+            g[i] = 0
+        else :
+            g[i] =(n + 1 - 2 * np.sum(cumx) / cumx[-1]) / n
+    return g
+
+
 
 
 def sparse_pairwise_corr(A, B=None):

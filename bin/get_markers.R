@@ -122,8 +122,19 @@ build_marker_sets_biccn <- function( rds_path='~/scqc/supplement_data/markersets
 
 
 ##### class annotate
+parse_h5ad <- function( h5path){
+    X = h5read(h5path, name ='X')
+    # list data | indices | indptr
+    var = h5read(h5path, name ='var/_index')    # genes
+    obs = h5read(h5path, name ='obs/_index')    # cells 
 
-# part 1 of annotate
+    mat = Matrix::sparseMatrix(i = as.numeric(X$indices), p = as.numeric(X$indptr) , x= as.numeric(X$data ) , dims = list(length(var),length(obs)))
+    rownames(mat) =  var    
+    colnames(mat) =  obs
+
+}
+
+# part 1 of annotate - deprecating - instead use the h5ad from gatherstats.py as input
 parse_STAR_output <- function(outpath ){
 
     # is there an mtx file in this directory? 
@@ -183,7 +194,7 @@ assign_cell_type <- function(dataset, top_markers, group_assignment = NULL ) {
 }
 
 
-annotate_execute <- function( solo_out_path, marker_dir="~/scqc/supplement_data/markersets/MoP",outprefix ="~/scqc/mm_assignment/MoP_", max_rank=100 ) {
+annotate_execute <- function( solo_out_path, marker_dir="~/scqc/resource",outprefix ="~/scqc/output/MoP_", max_rank=100 ) {
     # need to figure out a good max_rank for each of the three label sets
 
     # marker_dir = "~/scqc/supplement_data/markersets/MoP"

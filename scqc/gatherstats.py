@@ -20,6 +20,11 @@ import seaborn as sns       # inputs as dataframes
 # import matplotlib.cbook as cbook
 
 
+# SRP090110 - mouse brain SS (500 cells)    Not found in scbrain_pids_mouse!
+# SRP124513 - mouse brain SS (1700 cells)   Not found in scbrain_pids_mouse!
+# SRP110034 - mouse brain 10x (1700 cells)  Not found in scbrain_pids_mouse!
+# SRP106908 - mouse brain SS (35000 cells) (atlas)
+# SRP135960 - mouse brain 10x (509000 cells) (atlas)
 
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
@@ -42,6 +47,7 @@ class GetStats(object):
     def __init__(self, config):
         self.log = logging.getLogger('statistics')
         self.config = config
+        self.species = self.config.get('statistics', 'species')
         self.outputdir = os.path.expanduser(
             self.config.get('statistics', 'outputdir'))
         self.resourcedir = os.path.expanduser(
@@ -52,6 +58,7 @@ class GetStats(object):
             self.config.get('statistics', 'tempdir'))
 
         # gene sets
+
         self.cell_cycle_genes = os.path.expanduser(
             self.config.get('statistics', 'cell_cycle_genes'))
         self.stable_housekeepinig = os.path.expanduser(
@@ -63,7 +70,21 @@ class GetStats(object):
         self.male_genes = os.path.expanduser(
             self.config.get('statistics', 'male_genes'))
 
+
+        # hvg params 
+        self.hvg_min_mean = self.config.get('statistics', 'hvg_min_mean')
+        self.hvg_max_mean = self.config.get('statistics', 'hvg_max_mean')
+        self.hvg_min_disp = self.config.get('statistics', 'hvg_min_disp')
+        self.hvg_max_disp = self.config.get('statistics', 'hvg_max_disp')
+        self.hvg_flavor = self.config.get('statistics', 'hvg_flavor')
+        #pca params
         self.nPCA = self.config.get('statistics', 'nPCA')
+        self.use_hvg = self.config.get('statistics', 'use_hvg')
+        # neighbor graph params
+        self.n_neighbors = self.config.get('statistics', 'n_neighbors')
+        self.n_pcs = self.config.get('statistics', 'n_pcs')
+
+
 
     def execute(self, srpid):
         # outdir = "/home/johlee/scqc/stats"
@@ -72,28 +93,64 @@ class GetStats(object):
 
         self.log.debug(f'starting with projectid {srpid}')
 
-        adata = {}   # loops through all star runs in the project
+        adatas = []   # loops through all star runs in the project
         for solooutdir in solooutdirs:
+            self.log.debug(f'opening {solooutdir}')
+            # open one soloutdir, store as adata. 
+            adatas.append(self._parse_STAR_mtx(solooutdir))
 
-            self.log.debug(f'looking at {solooutdir}')
-            # solooutdir = "/home/johlee/scqc/starout/SRP308826_smartseq_Solo.out"
+        # merge all of the datasets 
+        batchnames = [ os.path.basename(solooutdirs[i]).replace('_Solo.out','') for i in range(len(solooutdirs)) ]
+        ids = pd.DataFrame([ batchname.split('_') for batchname in batchnames] )
 
-            adata[solooutdir] = self._parse_STAR_mtx(solooutdir)
-            adata[solooutdir] = self._get_stats_scanpy(adata[solooutdir])
+        ids.columns = ['id','tech']
+        # which are runs and which are projects? \
+        ids['run_id'] = ids.id[ids.id.str.contains('RR')]
+        ids['proj_id'] = ids.id[ids.id.str.contains('RP')]
+        
+        # fill in proj_id NaNs
+        ids.proj_id[ids.proj_id.isnull()] = srpid
 
-            # scanpy default is to overwrite existing file
-            basename = os.path.basename(solooutdir)
-            basename = basename.replace('_Solo.out', '.h5ad')
-            h5file = f'{self.outputdir}/{srpid}/{basename}'
-            adata[solooutdir].var.index.name = None
-            self.log.debug(adata[solooutdir].obs.columns)
-            self.log.debug(adata[solooutdir].var.columns)
+        self.log.debug(f'joining adatas for {srpid}')
+        adata = adatas[0].concatenate(adatas[1:], batch_categories = ids.id )
+        adata.obs.batch='id'
+        
+        tmpdf = pd.merge(adata.obs, ids, on= 'id')   # include technology in obs.
+        tmpdf.index = tmpdf.cell_id
+        tmpdf.index.name =None
+        adata.obs = tmpdf 
 
-            # for testing...
-            # adata[solooutdir].obs.to_csv(f'{self.tempdir}/obs.tsv',sep="\t")
-            # adata[solooutdir].var.to_csv(f'{self.tempdir}/var.tsv',sep="\t")
-            # consolidate these...
-            adata[solooutdir].write(h5file)
+        # fill in missing run_ids with the cell_id. (typically smart seq experiments)
+        adata.obs.run_id[adata.obs.run_id.isnull()] = adata.obs.cell_id[adata.obs.run_id.isnull()]
+
+        # get batch information
+        self.log.debug(f'getting batch info for {srpid}')
+
+        impute = pd.read_csv(f'{self.metadir}/impute.tsv', sep='\t',index_col=0)
+        impute = impute.loc[impute.proj_id == srpid,: ]
+
+        tmpdf =  pd.merge(adata.obs, impute )[['cell_id','run_id','exp_id', 'samp_id','proj_id','tech', 'batch' ]]
+        tmpdf.index = tmpdf.cell_id
+        tmpdf.index.name =None
+        adata.obs = tmpdf
+
+        adata = self._get_stats_scanpy(adata)
+
+        # XXX scanpy default is to overwrite existing file
+        # basename = os.path.basename(solooutdir)
+        # basename = basename.replace('_Solo.out', '.h5ad')
+        h5file = f'{self.outputdir}/{srpid}.h5ad'
+        adata.var.index.name = None
+        self.log.debug(adata.obs)
+        self.log.debug(adata.var)
+
+        # for testing...
+        # adata[solooutdir].obs.to_csv(f'{self.tempdir}/obs.tsv',sep="\t")
+        # adata[solooutdir].var.to_csv(f'{self.tempdir}/var.tsv',sep="\t")
+        # consolidate these...
+        self.log.debug(f'saving to {self.outputdir}/{srpid}.h5ad ')
+
+        adata.write(h5file)
 
     def _gather_stats_from_STAR(self, solooutdir):
 
@@ -123,8 +180,6 @@ class GetStats(object):
 
         return(barcode_stats, feature_stats, summary_stats)
 
-    # need to pass in star index directory
-
     def _parse_STAR_mtx(self, solooutdir):
         # note that scanpy uses cell x gene.
         # read into anndata
@@ -135,11 +190,11 @@ class GetStats(object):
         # mtx_files = os.listdir(path)
         adata = sc.read(f'{path}/matrix.mtx').T
 
-        geneinfo = pd.read_csv(
-            '~/scqc/supplement_data/genomes/mouse/STAR_index/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
+        
+        geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
         geneinfo.columns = ['gene_accession', 'gene_symbol', 'type']
         # geneinfo.index = geneinfo.gene_accession
-
+        # geneinfo.index.name =None
         genenames = pd.read_csv(f'{path}/features.tsv',
                                 sep="\t", header=None, dtype=str)
         genenames.columns = ['gene_accession', 'gene_symbol', 'source']
@@ -147,10 +202,12 @@ class GetStats(object):
         genenames = genenames.merge(geneinfo, how='left', on=[
             "gene_accession", 'gene_symbol'], indicator=True)
         genenames.index = genenames.gene_accession
-
+        genenames.index.name =None
         cellids = pd.read_csv(f'{path}/barcodes.tsv', sep="\t", header=None)
         cellids.columns = ["cell_id"]
-        # cellids.index = cellids.cell_id
+
+        cellids.index = cellids.cell_id
+        cellids.index.name =None
 
         adata.var = genenames
         adata.obs = cellids
@@ -220,35 +277,42 @@ class GetStats(object):
         # this part is slow (~10-15 min) because of a for loop - can parallelize
         self.log.debug('calculating gini for each cell')
         # NOTE SLOW commented for testing
-        adata.obs['gini'] = gini_coefficient_spmat(adata.X)
+        
+        # natural log thge data
+        sc.pp.log1p(adata)  
 
+        # batch this.
+        # X = np.random.normal(size=(10, 3))
+        # F = np.zeros((10, ))
+
+        # import multiprocessing
+        # pool = multiprocessing.Pool(processes=16)
+        # if number of processes is not specified, it uses the number of core
+        # F[:] = pool.map(my_function, (X[i,:] for i in range(10)) )
+        tmp = gini_coefficient_fast(adata.X)
+
+        adata.obs['gini']  = tmp
         # unstructured data - dataset specific
         adata.uns['gini_by_counts'] = gini_coefficient(
             adata.obs['total_counts'])
 
+        self.log.debug('computing hvg')
         # highly variable genes - expects log data
-        sc.pp.log1p(adata)  # natural log
         sc.pp.highly_variable_genes(adata,
-                                    min_mean=self.hvg_min_mean,
-                                    max_mean=self.hvg_max_mean,
-                                    min_disp=self.hvg_min_disp,
-                                    max_disp=self.hvg_max_disp,
+                                    min_mean=float(self.hvg_min_mean),
+                                    max_mean=float(self.hvg_max_mean),
+                                    min_disp=float(self.hvg_min_disp),
+                                    max_disp=float(self.hvg_max_disp),
                                     flavor=self.hvg_flavor)
 
-        # XXX  does it make sense to have a umap for every run? Or one for the project?
-        # we'll do both for now
         # umap coords
         sc.tl.pca(adata,
-                  n_comps=self.nPCA, zero_center=False, use_highly_variable=self.use_hvg)
+                  n_comps=int(self.nPCA), zero_center=False, use_highly_variable=self.use_hvg)
 
-        sc.pp.neighbors(adata, n_neighbors=self.n_neighbors, n_pcs=self.n_pcs)
+        sc.pp.neighbors(adata, n_neighbors=int(self.n_neighbors), n_pcs=int(self.n_pcs))
         sc.tl.umap(adata)       # umap coords are in adata.obsm['X_umap']
 
         return adata
-
-    def _consolidate_adata(self, adata_dict):
-        pass
-    # consolidate h5ads for the project.
 
 
 if __name__ == "__main__":

@@ -78,14 +78,14 @@ class AlignReads(object):
             # smartseq runs
             if tech =="smartseq":
                 # build the manifest
-                (manipath, manifest) = self._make_manifest(df) 
+                (manipath, manifest) = self._make_manifest(srpid,df) 
                 # run star
                 if manifest is not None :   # redundant ish
                     self.log.debug(f'Starting smartseq alignment for {srpid}')
-                    self._run_star_smartseq(manipath)
+                    self._run_star_smartseq(srpid,manipath)
             
             # 10x runs
-            if tech.startswith('10xv'): 
+            elif tech.startswith('10xv'): 
 
                 #    run star for each run
                 for row in range(df.shape[0]):
@@ -130,13 +130,13 @@ class AlignReads(object):
 
     # smart seq scripts
     #TODO test smartseq
-    def _make_manifest(self,run_data):
+    def _make_manifest(self,srpid,run_data):
         # search for all fastq files with <run>_[0-9].fastq
-        manipath = f"{self.tempdir}/{self.srpid}_smartseq_manifest.tsv"
+        manipath = f"{self.tempdir}/{srpid}_smartseq_manifest.tsv"
 
         # runid = runlist[1]
         manifest = run_data[['read1','read2','run_id','tech_version']]
-        manifest = manifest[manifest.tech_version == 'smartseq',['read1','read2','run_id']]
+        manifest = manifest.loc[manifest.tech_version == 'smartseq',['read1','read2','run_id']]
         
         # XXX gives a warning - can't figure out how to fix....
         manifest['read1'] =  self.tempdir+'/'+manifest['read1'].astype(str)
