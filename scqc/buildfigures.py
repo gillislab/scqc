@@ -50,8 +50,8 @@ class BuildFigures(object):
         # get the srpid
 
         # get the h5ad paths for the project
-        h5paths = f'{self.outputdir}/{srpid}'
-        h5paths = glob.glob(f'{h5paths}/*h5ad')
+        
+        h5paths = glob.glob(f'{self.outputdir}/{srpid}.h5ad')
 
         try:
             os.makedirs(f'{self.figuredir}/{srpid}')
@@ -81,8 +81,13 @@ class BuildFigures(object):
                     # 'Batch':adata.obs['batch'],
                     'Cell_Cycle':adata.obs['log1p_total_counts_cell_cycle'],
                     'Essential':adata.obs['log1p_total_counts_essential'],
-                    'Ribosome':adata.obs['log1p_total_counts_ribo']
+                    'Ribosome':adata.obs['log1p_total_counts_ribo'],
+                    'Run_ID':adata.obs['run_id'],
+                    'Experiment_ID':adata.obs['exp_id'],
+                    'Sample_ID':adata.obs['samp_id'],
+                    'Cell_ID':adata.obs['cell_id']
                     })
+
             for kw in umapdf.columns[2:] :
                 figurepath = basename.replace('.h5ad', f'_umap_{kw}.png')
                 plot_scatter(data=umapdf, x_column='x', y_column='y',  figsize=(4,3),
@@ -91,16 +96,28 @@ class BuildFigures(object):
                             regression_line=False, hlines = [], vlines =[], 
                             save_it=True, outfile=f'{self.figuredir}/{srpid}/{figurepath}')
 
+            # plot pairplots 
+            cols= [ 'log1p_n_genes_by_counts','log1p_total_counts', 'log1p_total_counts_mt',
+                    'log1p_total_counts_essential', 
+                    'log1p_total_counts_cell_cycle','corr_to_mean', 'gini']
+            sns.pairplot(adata.obs[cols])
+            plt.savefig(f'{self.figuredir}/{srpid}_pairplot.png'  , dpi=300, transparent=False )
+
 
             # plot histograms 
             figurepath = basename.replace('.h5ad',f'_gini.png')
-            plot_histogram(adata.obs.gini    , xlab='Gini coefficient', ylab='Frequency', title=None, save_it=True, outfile= f'{figuredir}/{srpid}/{figurepath}',
-                  bins=None, orientation='vertical', vlines=['mean'], fig_size=(4, 3), rotate_xlabel=False, alpha=0.75)
+            plot_histogram(adata.obs.gini    , xlab='Gini coefficient', ylab='Frequency', title=None, save_it=True, outfile= f'{self.figuredir}/{srpid}/{figurepath}',
+                  bins=None, orientation='vertical', vlines=['mean'], figsize=(4, 3), rotate_xlabel=False)
             figurepath = basename.replace('.h5ad',f'_Corr_to_Mean.png')
-            plot_histogram(adata.obs.corr_to_mean    , xlab='Correlation to Mean', ylab='Frequency', title=None, save_it=True, outfile= f'{figuredir}/{srpid}/{figurepath}',
-                  bins=None, orientation='vertical', vlines=['mean'], fig_size=(4, 3), rotate_xlabel=False, alpha=0.75)
+            plot_histogram(adata.obs.corr_to_mean    , xlab='Correlation to Mean', ylab='Frequency', title=None, save_it=True, outfile= f'{self.figuredir}/{srpid}/{figurepath}',
+                  bins=None, orientation='vertical', vlines=['mean'], figsize=(4, 3), rotate_xlabel=False)
 
-            
+
+# sns.pairplot(adata.obs[['log1p_n_genes_by_counts', 'log1p_total_counts',
+#              'log1p_total_counts_mt',
+#              'log1p_total_counts_ribo', 'log1p_total_counts_essential',
+#              'log1p_total_counts_cell_cycle']] , height = 6, aspect=1)
+
 def plot_scatter(data, x_column, y_column, xlab=None, ylab=None, title =None, figsize=(4,3), 
                 marker='.',markersize = 1, color_by=None, cbar_title=None,
                 regression_line=True,  hlines = [], vlines =[],
@@ -110,18 +127,29 @@ def plot_scatter(data, x_column, y_column, xlab=None, ylab=None, title =None, fi
     cmap =None
     fig, ax = plt.subplots(figsize=figsize)
 
-    if color_by  is not None :
-        colors = data[color_by]
-        cmap = sns.color_palette("mako_r", as_cmap=True)
-
-        
-
-    scat = ax.scatter(x=data[x_column], y=data[y_column],  c= colors, marker=marker,s = markersize, cmap = cmap)
 
     if color_by  is not None :
-        cb = plt.colorbar(scat)
-        cb.set_label(cbar_title)
+        print(color_by)
+        colors = list(data[color_by])
+        cmap = sns.color_palette("mako_r", as_cmap=True)    # for continuous data
 
+
+        ty = type(colors[0])
+        if  ty == str:
+            if len(set(colors)) ==  len(colors) or len(set(colors))> 20 :    # categorical - all unique or too many cats
+                scat = ax.scatter(x=data[x_column], y=data[y_column],  marker=marker,s = markersize )
+            else :  
+                for name, group in data.groupby(color_by):
+                    print(name)
+                    scat = ax.scatter(x=group[x_column], y=group[y_column],  marker=marker,s = markersize, label=name )
+                    ax.legend(bbox_to_anchor=(1, 1),fontsize='xx-small',title=color_by)
+
+        else :
+            scat = ax.scatter(x=data[x_column], y=data[y_column],  c= colors, marker=marker,s = markersize, cmap = cmap)
+
+            cb = plt.colorbar(scat)
+            cb.set_label(cbar_title)
+    
     scat = ax.set(xlabel=xlab, ylabel=ylab,
            title=title)
 
@@ -132,11 +160,11 @@ def plot_scatter(data, x_column, y_column, xlab=None, ylab=None, title =None, fi
 
     for vline in list(vlines):
         if vline == 'mean':
-            m = x.mean()
+            m = data[x_column].mean()
             ax.text(m, 0, 'Mean', fontsize=10, horizontalalignment='center')
             ax.axvline(m, ls='--', color='r',linewidth=markersize-.5)
         elif vline == 'median':
-            m = x.median()
+            m = data[x_column].median()
             ax.text(m, 0, 'Median', fontsize=10, horizontalalignment='center')
             ax.axvline(m, ls='--', color='r',linewidth=markersize-.5)
         elif type(vline) == int or type(vline) == float:
@@ -145,11 +173,11 @@ def plot_scatter(data, x_column, y_column, xlab=None, ylab=None, title =None, fi
 
     for hline in list(hlines):
         if hline == 'mean':
-            m = y.mean()
+            m = data[y_column].mean()
             ax.text(m, 0, 'Mean', fontsize=10)
             ax.axyline(m, ls='--', color='r',linewidth=markersize-.5)
         elif vline == 'median':
-            m = x.median()
+            m = data[y_column].median()
             ax.text(m, 0, 'Median', fontsize=10)
             ax.axhline(m, ls='--', color='r',linewidth=markersize-.5)
         elif type(hline) == int or type(vline) == float:
@@ -162,7 +190,7 @@ def plot_scatter(data, x_column, y_column, xlab=None, ylab=None, title =None, fi
     return( fig, ax )
 
 def plot_histogram(x, xlab=None, ylab=None, title=None, save_it=False, outfile='/home/johlee/scqc/figures/temp_hist.png',
-                  bins=None, orientation='vertical', vlines=['mean', 'median'], fig_size=(8, 6), rotate_xlabel=False, alpha=0.75):
+                  bins=None, orientation='vertical', vlines=['mean', 'median'], figsize=(8, 6), rotate_xlabel=False ):
     fig, ax = plt.subplots(figsize=figsize)
 
     ax.hist(x, bins=bins, orientation=orientation)
@@ -207,8 +235,6 @@ def plot_histogram(x, xlab=None, ylab=None, title=None, save_it=False, outfile='
 
 def plot_boxplots(data): 
     # primarily for cell cycle phases
-
-    # 
     pass
 
 if __name__ == "__main__":
