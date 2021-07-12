@@ -26,11 +26,13 @@ def readlist(filepath):
         flist = []
         try:
             with open(filepath, 'r') as f:
-                flist = [line for line in f]
-                for line in flist:
-                    pass
-                    
-                
+                for line in f:
+                    idx = line.find('#')
+                    if idx == -1:
+                        flist.append(line.strip())
+                    elif idx > 0:
+                        flist.append(line[:idx].strip())
+                        
             logging.debug(f'got list with {len(flist)} items.')
             return flist
         except:
