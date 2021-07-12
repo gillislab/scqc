@@ -145,8 +145,13 @@ time to download 5 run .sra files.
 
 
 FLOW/ CONVENTIONS
--- 'query' produce IDs and XML gives RUNIDs and other exp info.
+-- 'query' takes project IDs and XML gives RUNIDs and other exp info.
+	-- projects include experiments without uids. these are filtered from 
+	
 	-- impute technology   
+	
+
+
 -- 'download' uses runids to download .sra files
 	-- extract fastq from .sra files. 
 -- 'analysis' runs STAR. 
