@@ -39,6 +39,7 @@ class Stage(object):
         self.log.info(f'{self.name} init...')
         self.config = config
         self.todofile = self.config.get(f'{self.name}', 'todofile')
+        self.seenfile = self.config.get(f'{self.name}', 'seenfile')
         if self.todofile.lower().strip() == "none":
             self.todofile = None
         else:
@@ -49,6 +50,13 @@ class Stage(object):
             self.donefile = None
         else:
             self.donefile = os.path.expanduser(self.donefile)
+        self.seenfile = self.config.get(f'{self.name}', 'seenfile')
+        if self.seenfile.lower().strip() == "none":
+            self.seenfile = None
+        else:
+            self.seenfile = os.path.expanduser(self.seenfile)
+        
+        
         self.shutdown = False
         self.sleep = int(self.config.get(f'{self.name}', 'sleep'))
         self.batchsize = int(self.config.get(f'{self.name}', 'batchsize'))
@@ -76,7 +84,7 @@ class Stage(object):
                     dobatch = self.dolist[curid:curid + self.batchsize]
                     logging.debug(f'made dobatch length={len(dobatch)}')
                     logging.debug(f'made dobatch: {dobatch}')
-                    finished = self.execute(dobatch)
+                    (finished, seen) = self.execute(dobatch)
                     try:
                         finished.remove(None)
                     except:
@@ -90,10 +98,22 @@ class Stage(object):
                         alldone = listmerge(finished, donelist)
                         writelist(self.donefile, alldone)
                         self.log.debug(
-                            f"done writing donelist: {self.donefile}. sleeping {self.batchsleep} ...")
+                            f"done writing donelist: {self.donefile}.")
                     else:
                         logging.info(
                             'donefile is None or no new processing. No output.')
+                    
+                    if self.seenfile is not None and len(seen) > 0:
+                        logging.info('reading current seen.')
+                        seenlist = readlist(self.seenfile)
+                        logging.info('adding just seen.')
+                        allseen = listmerge(seen, seenlist)
+                        writelist(self.seenfile, allseen)
+                        self.log.debug(
+                            f"done writing seenlist: {self.seenfile}. sleeping {self.batchsleep} ...")
+                    else:
+                        logging.info(
+                            'seenfile is None or no new processing. No output.')
                         
                     curid += self.batchsize
                     time.sleep(self.batchsleep)
@@ -137,18 +157,20 @@ class Query(Stage):
         '''
         self.log.debug(f'got dolist len={len(dolist)}. executing...')
         outlist = []
+        seenlist = []
         for projectid in dolist:
             self.log.debug(f'handling id {projectid}...')
             try:
                 sq = sra.Query(self.config)
-                out = sq.execute(projectid)
+                (out, seen) = sq.execute(projectid)
                 self.log.debug(f'done with {projectid}')
                 outlist.append(out)
+                seenlist.append(seen)
             except Exception as ex:
                 self.log.warning(f"exception raised during project query: {projectid}")
                 self.log.error(traceback.format_exc(None))
         self.log.debug(f"returning outlist len={len(outlist)}")
-        return outlist
+        return (outlist, seenlist)
 
     def setup(self):
         sra.setup(self.config)

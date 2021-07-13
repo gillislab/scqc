@@ -1,9 +1,15 @@
+
+brew install automake libtool libevent autoconf
+
 conda create -n scqc python=3.8
 conda activate scqc
 
-conda install requests pandas ipython scanpy scipy
+conda install requests pandas ipython  scipy 
+# conda install autoconf automake libtool libevent   # for compiling trickle
 conda install -c bioconda star
 conda install -c conda-forge leidenalg
+
+pip install scanpy
 
 
 cd  $CONDA_PREFIX
@@ -21,8 +27,6 @@ ln -s ../sratoolkit.2.11.0-centos_linux64/bin/* ./
 #ln -s ../sratoolkit.2.11.0-mac64/bin/* ./
 
 cd -
-
-
 
 
 # wget https://github.com/alexdobin/STAR/archive/2.7.8a.tar.gz
@@ -45,4 +49,7 @@ chmod 755 fastqc
 # 	30915637776 bases 
 #     10930204446 bytes (10 gb)
 #     73 GB file
+
+# tickle for traffic shaping of prefetch: https://github.com/AndreasKoelbl/trickle
+
 
