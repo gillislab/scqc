@@ -78,17 +78,17 @@ TECH_RES = {
 # TODO multithread 10xversion imputation
 # should 10x runs always be used as the batch?
 
-def get_default_config():
-    cp = ConfigParser()
-    cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
-    return cp
+# def get_default_config():
+#     cp = ConfigParser()
+#     cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
+#     return cp
 
 
-def get_configstr(cp):
-    with io.StringIO() as ss:
-        cp.write(ss)
-        ss.seek(0)  # rewind
-        return ss.read()
+# def get_configstr(cp):
+#     with io.StringIO() as ss:
+#         cp.write(ss)
+#         ss.seek(0)  # rewind
+#         return ss.read()
 
 class Impute(object):
     """

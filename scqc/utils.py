@@ -10,7 +10,7 @@ from scipy import sparse, stats
 from ftplib import FTP
 from configparser import ConfigParser
 import io
-
+import bottleneck
 import pandas as pd
 
 
@@ -73,7 +73,7 @@ def merge_write_df(newdf, filepath):
     log = logging.getLogger('utils')
     log.debug(f'inbound new df: {newdf}')
     if os.path.isfile(filepath):
-        df = pd.read_csv(filepath, sep='\t', index_col=0, comment="#")
+        df = pd.read_csv(filepath, sep='\t', index_col=0) #, comment="#"
         log.debug(f'read df: {df}')
         df = df.append(newdf, ignore_index=True)
         log.debug(f'appended df: {df}')
@@ -186,35 +186,6 @@ def gzip_decompress(filename):
             f'tried to gunzip file without .gz extension {filename}. doing nothing.')
 
 
-def gini_coefficient(x):
-    """Compute Gini coefficient of array of values. Memory efficient. Slow"""
-    diffsum = 0
-    for i, xi in enumerate(x[:-1], 1):
-        diffsum += np.sum(np.abs(xi - x[i:]))
-    return diffsum / (len(x)**2 * np.mean(x))
-
-# deprecated
-def gini_coefficient_spmat(x):
-    """ 
-        Compute Gini coefficient for expression matrix
-        Assumes x is a cell x gene matrix
-        expected time ~ 10-15 min for 55000 genes 500 cells 
-                      ~ 120 min   for 55000 genes 4000 cells 
-    """
-    diffsum = 0
-    # XXX loop is slow! Can be parallelized if speed is desired.
-    for i in range(x.shape[1]):
-        xi = x[:,i]
-        rem = x[:,i:]
-        # make xi the correct size. Broadcasting doesn't work for sparse matrices
-        n = rem.shape[1]
-        diffsum += np.sum(np.abs(xi[:,np.zeros(n)] - rem) ,axis=1)
-        # if i%1000 ==0 :
-        #     print(i) 
-       
-    return diffsum / (x.shape[1]**2 * np.mean(x,axis=1))
-
-
 
 def gini_coefficient_fast(X):
     """ 
@@ -236,7 +207,6 @@ def gini_coefficient_fast(X):
         x= x[:, x.indices].A.flatten()
 
         sorted_x = np.sort(x)   
-        # print(x.shape)
         cumx = np.cumsum(sorted_x, dtype=float)
 
         if len(cumx) == 0 : # cell with zero expression - perfect equilibrium
@@ -291,6 +261,30 @@ def spec_to_taxon(spec="mouse"):
     d = {   "mouse":"10090",
             "human":"9606"}         
     return(d[spec])
+
+
+# EGAD functions compliments of Ben
+def rank(data, nan_val=.5):
+    """Rank normalize data
+    
+    Rank standardize inplace 
+    Ignores Nans and replace with .5
+    
+    Does not return 
+    Arguments:
+        data {np.array} -- Array of data
+    
+    """
+    finite = np.isfinite(data)
+    ranks = bottleneck.rankdata(data[finite]).astype(data.dtype)
+
+    ranks -= 1
+    top = np.max(ranks)
+    ranks /= top
+    data[...] = nan_val
+    data[np.where(finite)] = ranks
+
+    return(data)
 
 
 def run_egad(go, nw, **kwargs):
@@ -391,7 +385,6 @@ def _new_egad(go, nw, nFold):
     #Number of negatives
     #Number of GO terms - number of postiive
     n_n = filtering.shape[0] - np.sum(filtering, axis=0)
-
     roc = (p / n_p - (n_p + 1) / 2) / n_n
     U = roc * n_p * n_n
     Z = (np.abs(U - (n_p * n_n / 2))) / np.sqrt(n_p * n_n *
