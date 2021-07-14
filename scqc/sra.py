@@ -52,8 +52,9 @@ SAMP_COLUMNS = ['samp_id', 'ext_ids',  'taxon',
 EXP_COLUMNS = ['exp_id', 'ext_ids',  'strategy',
                'source', 'lcp', 'samp_id', 'proj_id', 'submission_id']
 
-RUN_COLUMNS = ['run_id', 'ext_ids', 'tot_spots', 'tot_bases', 'size', 'publish_date',
-               'taxon', 'organism', 'nreads',  'basecounts', 'exp_id', 'samp_id', 'proj_id', 'submission_id', ]
+RUN_COLUMNS = ['run_id', 'ext_ids', 'tot_spots', 'tot_bases', 'run_size', 'publish_date',
+               'taxon', 'organism', 'nreads',  'basecounts', 'exp_id', 'samp_id', 'proj_id', 
+               'submission_id','file_url','file_size' ]
 
 IMPUTE_COLUMNS = ['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon','batch']
 
@@ -416,7 +417,7 @@ class Query(object):
 
         total_spots = run.get('total_spots')
         total_bases = run.get('total_bases')
-        size = run.get('size')
+        run_size = run.get('size')
         pdate = run.get('published')
 
         expid = run.find('EXPERIMENT_REF').get('accession')
@@ -427,6 +428,10 @@ class Query(object):
 
         nreads = run.find('Statistics').get('nreads')
 
+        srafiles = run.find('SRAFiles')
+
+        (file_url, file_size) = self.parse_srafiles(srafiles, run_id)
+
         bases = run.find('Bases')
         basecounts = {}
         for base in bases:
@@ -436,10 +441,29 @@ class Query(object):
 
         basecounts = str(basecounts)
 
-        runrow = [run_id, run_ext_ids, total_spots, total_bases, size, pdate,
-                  taxon, organism, nreads,  basecounts, expid, sampleid]
+        runrow = [run_id, run_ext_ids, total_spots, total_bases, run_size, pdate,
+                  taxon, organism, nreads,  basecounts, expid, sampleid, file_url, file_size  ]
 
         return runrow
+
+    def parse_srafiles(self, srafiles, runid):
+        """
+        Get file info. Choose Amazon URL if available. 
+        
+        """
+        file_url = None
+        file_size = None
+        for srafile in srafiles.findall('SRAFile'):
+            if srafile.get('filename') == runid:
+                file_size = srafile.get('size')
+                file_url = srafile.get('url')
+                for altern in srafile.findall('Alternatives'):
+                    url = altern.get('url')
+                    if 'amazonaws.com' in url:
+                        self.log.debug(f'found AWS alternate: {url}  Using...')
+                        file_url = url
+        self.log.info(f'got info for {runid}: {file_size} {file_url}')
+        return (file_url, file_size)
 
     def parse_exp(self, exp):
 
