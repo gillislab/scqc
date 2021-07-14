@@ -122,37 +122,50 @@ def listmerge(list1, list2):
 
 def download_ftpurl(srcurl, destpath, finalname=None, overwrite=True, decompress=True):
     """
+    destpath is directory
+    
     Downloads via FTP from ftp src url to local destpath, 
     If finalname is specified, renames final output. 
     overwrite: won't re-download if filename already exists. 
     decompress: if filename ends with .gz , will gunzip  
     """
     log = logging.getLogger('star')
+    # source FTP info
     (scheme, host, fullpath, p, q, f) = urllib.parse.urlparse(srcurl)
     filename = os.path.basename(fullpath)
     dirname = os.path.dirname(fullpath)
-    log.info(
-        f"Downloading file {filename} at path {dirname}/ on host {host} via FTP.")
-    ftp = FTP(host)
-    ftp.login('anonymous', 'hover@cshl.edu')
-    ftp.cwd(dirname)
-    log.debug(f'opening file {destpath}/{filename}. transferring...')
-    with open(f'{destpath}/{filename}', 'wb') as fp:
-        ftp.retrbinary(f'RETR {filename}', fp.write)
-    log.debug(f"done retrieving {destpath}/{filename}")
-    ftp.quit()
-
-    if decompress and filename.endswith('.gz'):
-        log.debug(f'decompressing gzip file {destpath}/{filename}')
-        gzip_decompress(f'{destpath}/{filename}')
-        os.remove(f'{destpath}/{filename}')
-        filename = filename[:-3]
-
-    if finalname is not None:
-        src = "/".join([destpath, filename])
-        dest = "/".join([destpath, finalname])
-        log.info(f'renaming {src} -> {dest}')
-        os.rename(src, dest)
+    
+    # local files?
+    localfile = f'{destpath}/{filename}'
+    localfinal = f'{destpath}/{finalname}'
+    destexists = os.path.exists(localfile) or os.path.exists(localfinal)
+    log.debug(f'checking if {localfile} or {localfinal} exist -> {destexists}')
+    
+    if destexists and not overwrite:
+        log.info(f"Destination files already exist and overwrite=false. Skipping.")
+    else:
+        log.info(
+            f"Downloading file {filename} at path {dirname}/ on host {host} via FTP.")
+        ftp = FTP(host)
+        ftp.login('anonymous', 'hover@cshl.edu')
+        ftp.cwd(dirname)
+        log.debug(f'opening file {destpath}/{filename}. transferring...')
+        with open(f'{destpath}/{filename}', 'wb') as fp:
+            ftp.retrbinary(f'RETR {filename}', fp.write)
+        log.debug(f"done retrieving {destpath}/{filename}")
+        ftp.quit()
+    
+        if decompress and filename.endswith('.gz'):
+            log.debug(f'decompressing gzip file {destpath}/{filename}')
+            gzip_decompress(f'{destpath}/{filename}')
+            os.remove(f'{destpath}/{filename}')
+            filename = filename[:-3]
+    
+        if finalname is not None:
+            src = "/".join([destpath, filename])
+            dest = "/".join([destpath, finalname])
+            log.info(f'renaming {src} -> {dest}')
+            os.rename(src, dest)
 
 
 def gzip_decompress(filename):

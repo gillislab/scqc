@@ -53,7 +53,7 @@ EXP_COLUMNS = ['exp_id', 'ext_ids',  'strategy',
                'source', 'lcp', 'samp_id', 'proj_id', 'submission_id']
 
 RUN_COLUMNS = ['run_id', 'ext_ids', 'tot_spots', 'tot_bases', 'size', 'publish_date',
-               'taxon', 'organism', 'nreads',  'basecounts', 'exp_id', 'samp_id', 'proj_id', 'submission_id']
+               'taxon', 'organism', 'nreads',  'basecounts', 'exp_id', 'samp_id', 'proj_id', 'submission_id', ]
 
 IMPUTE_COLUMNS = ['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon','batch']
 
@@ -274,12 +274,13 @@ class Query(object):
 
             self.log.info(f'successfully processed project {projectid}')
             # return projectid only if it has completed successfully.
-            return projectid
+            return (projectid, projectid)
 
         except Exception as ex:
             self.log.error(f'problem with NCBI projectid {projectid}')
             logging.error(traceback.format_exc(None))
-            raise ex
+            return(None, projectid)
+
 
     def query_experiment_package_set(self, xid):
         """
@@ -609,15 +610,16 @@ class Impute(object):
                 merge_write_df(outdf, f'{self.metadir}/impute.tsv')  
             else :
                 self.log.warn(f'Unable to predict tech for:{projectid} ')
-                
+                return (None, projectid)
+            
             self.log.info(f'completed imputation for proj_id {projectid}')
-            return projectid          
+            return (projectid, projectid)          
 
         except Exception as ex:
             self.log.error(f'problem with NCBI projectid {projectid}')
             logging.error(traceback.format_exc(None))
-            raise ex
-
+            return (None, projectid)
+            
     # updated 6/29 jlee. 
     # TODO deal with multiple tech finds
     def impute_tech_from_lcp(self, df):

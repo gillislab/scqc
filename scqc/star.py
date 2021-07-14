@@ -272,7 +272,7 @@ class AlignReads(object):
         # os.remove ... Log.final.out ... Log.progress.out ...SJ.out.tab
 
 ### setup scripts
-def setup(config, force=False):
+def setup(config, overwrite=False):
     '''
     Builds directories in config file 
     Download the appropriate supplement data.
@@ -292,9 +292,9 @@ def setup(config, force=False):
         except FileExistsError:
             pass
 
-    get_whitelists(config, force)
-    get_genome_data(config, force)
-    build_genome_indices(config, force)
+    get_whitelists(config, overwrite)
+    get_genome_data(config, overwrite)
+    build_genome_indices(config, overwrite)
 
 
 def get_whitelists(config,force=False):
@@ -320,7 +320,7 @@ def get_whitelists(config,force=False):
                 f"Retrieving {url} failed with status_code: {str(r.status_code)}")
 
 
-def get_genome_data(config,force=False):
+def get_genome_data(config, overwrite=False):
     """
     Download required genome data
     Assumes config is for one species only. 
@@ -338,11 +338,11 @@ def get_genome_data(config,force=False):
 
     fa_url = config.get('star', f'{species}_fa_url')
     log.debug(f'{species} fa_url={fa_url}')
-    download_ftpurl(fa_url, outdir, 'genome.fa')
+    download_ftpurl(fa_url, outdir, 'genome.fa', overwrite)
 
     gtf_url = config.get('star', f'{species}_gtf_url')
     log.debug(f'{species} gtf_url={gtf_url}')
-    download_ftpurl(gtf_url, outdir, 'annotation.gtf')
+    download_ftpurl(gtf_url, outdir, 'annotation.gtf', overwrite)
 
 
 def build_genome_indices(config, force=False):
@@ -359,8 +359,8 @@ def build_genome_indices(config, force=False):
         # NOTE do we care about low memory here? Only done once and we have the RAM
         cmd = ["STAR",
                "--runMode", "genomeGenerate",
-            #    "--genomeSAsparseD", "3",   # for low memory (RAM)
-            #    "--genomeSAindexNbases", "12"  # for low memory
+               "--genomeSAsparseD", "3",   # for low memory (RAM)
+               "--genomeSAindexNbases", "12"  # for low memory
                "--runThreadN", f'{n_core}',
                "--genomeDir", f'{outdir}',
                "--genomeFastaFiles", f'{outdir}/genome.fa',
@@ -377,7 +377,8 @@ def build_genome_indices(config, force=False):
 
     logging.debug(
         f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
-    if str(cp.returncode) == "0":
+    
+    if str(cp.returncode) != "0":
         log.warning(f"non-zero return code from STAR. See Log.out...")
 
 
