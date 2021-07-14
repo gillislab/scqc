@@ -240,6 +240,7 @@ class Query(object):
             exp_rows = []
             run_rows = []
             for exp in explist:
+                
                 if exp in self.expids:
                     exd = self.query_experiment_package_set(exp)
                     (projrows, samprows, exprows,

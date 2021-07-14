@@ -30,36 +30,36 @@ LOGLEVELS = {
 }
 
 
-def get_default_config():
-    cp = ConfigParser()
-    cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
-    return cp
+# def get_default_config():
+#     cp = ConfigParser()
+#     cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
+#     return cp
 
 
-def get_configstr(cp):
-    with io.StringIO() as ss:
-        cp.write(ss)
-        ss.seek(0)  # rewind
-        return ss.read()
+# def get_configstr(cp):
+#     with io.StringIO() as ss:
+#         cp.write(ss)
+#         ss.seek(0)  # rewind
+#         return ss.read()
 
 
-class Worker(Thread):
-    '''
-    '''
+# class Worker(Thread):
+#     '''
+#     '''
 
-    def __init__(self, q):
-        self.q = q
-        super(Worker, self).__init__()
+#     def __init__(self, q):
+#         self.q = q
+#         super(Worker, self).__init__()
 
-    def run(self):
-        # Race condition, just try!
-        while True:
-            try:
-                job = self.q.get_nowait()
-                job.execute()
-                self.q.task_done()
-            except Empty:
-                return
+#     def run(self):
+#         # Race condition, just try!
+#         while True:
+#             try:
+#                 job = self.q.get_nowait()
+#                 job.execute()
+#                 self.q.task_done()
+#             except Empty:
+#                 return
 
 
 class SetUp(object):

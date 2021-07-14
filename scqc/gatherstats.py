@@ -17,13 +17,14 @@ from scipy.io import mmread
 from scipy.sparse import base
 import matplotlib.pyplot as plt
 import seaborn as sns       # inputs as dataframes
+import sklearn
 # import matplotlib.cbook as cbook
 
 
 # SRP090110 - mouse brain SS (500 cells)    Not found in scbrain_pids_mouse!
 # SRP124513 - mouse brain SS (1700 cells)   Not found in scbrain_pids_mouse!
 # SRP110034 - mouse brain 10x (1700 cells)  Not found in scbrain_pids_mouse!
-# SRP106908 - mouse brain SS (35000 cells) (atlas)
+# SRP106908 - mouse brain SS (3186 cells) (atlas)
 # SRP135960 - mouse brain 10x (509000 cells) (atlas)
 
 gitpath = os.path.expanduser("~/git/scqc")
@@ -37,10 +38,6 @@ LOGLEVELS = {
     40: 'err',
     50: 'fatal',
 }
-
-# TODO given just proj_id, split to smart seq and 10x and proceed independently.
-# TODO generate figures for the dataset
-
 
 class GetStats(object):
 
@@ -314,6 +311,26 @@ class GetStats(object):
 
         return adata
 
+    def run_EGAD_by_batch(self,adata):
+
+        # XXX memory intensive for datasets with large number of cells.
+        # build the pairwise distance matrix
+        nw = sklearn.metrics.pairwise.euclidean_distances(adata.X)
+        nw = pd.DataFrame(1- nw / nw.max() )
+    
+        
+        # convert to a cell x batch binary df
+        go = pd.DataFrame( )
+        # for exp_id in adata.obs.exp_id.unique() :
+        #     go[exp_id] = adata.obs.exp_id == exp_id
+        for samp_id in adata.obs.samp_id.unique() :
+            go[samp_id] = adata.obs.samp_id == samp_id
+        for run_id in adata.obs.run_id.unique() :
+            go[run_id] = adata.obs.run_id == run_id
+        # batches should contain as least 10 cells
+        # and no more that 75%  of all cells 
+        res = run_egad(go, nw,  nFold=3, min_count=10, max_count=np.ceil(adata.shape[0] * .75 ) )
+        
 
 if __name__ == "__main__":
 
