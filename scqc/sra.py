@@ -211,6 +211,8 @@ class Query(object):
         self.expid_file = os.path.expanduser(self.config.get('sra', 'expid_file'))
         self.expids = self.build_expidset()
         self.query_sleep = float(self.config.get('sra', 'query_sleep'))
+        self.xid_batchsize = int(self.config.get('sra', 'xid_batchsize'))
+
 
     def build_expidset(self):
         self.log.debug(f'expid_file is {self.expid_file}')
@@ -239,18 +241,25 @@ class Query(object):
             samp_rows = []
             exp_rows = []
             run_rows = []
-            for exp in explist:
-                
-                if exp in self.expids:
-                    exd = self.query_experiment_package_set(exp)
-                    (projrows, samprows, exprows,
-                     runs) = self.parse_experiment_package_set(exd)
-                    proj_rows = itertools.chain(proj_rows, projrows)
-                    samp_rows = itertools.chain(samp_rows, samprows)
-                    exp_rows = itertools.chain(exp_rows, exprows)
-                    run_rows = itertools.chain(run_rows, runs)
-                else:
-                    self.log.debug(f'expid {exp} not in set of search expids.  ')
+            
+            # XXX batched this - JL
+            # intersect explist (project specific) and global expids 
+            explist = list(set(explist) & self.expids)
+            nexps = len(explist)
+            nbatches = int(np.ceil(nexps / self.xid_batchsize ))
+            for i in range(nbatches): 
+                exps = explist[ i*self.xid_batchsize: (i+1)*self.xid_batchsize  ]
+                exps = ",".join(exps)
+                # if exp in self.expids:
+                exd = self.query_experiment_package_set(exps)
+                (projrows, samprows, exprows,
+                    runs) = self.parse_experiment_package_set(exd)
+                proj_rows = itertools.chain(proj_rows, projrows)
+                samp_rows = itertools.chain(samp_rows, samprows)
+                exp_rows = itertools.chain(exp_rows, exprows)
+                run_rows = itertools.chain(run_rows, runs)
+                # else:
+                #     self.log.debug(f'expid {exp} not in set of search expids.  ')
             proj_rows = list(proj_rows)
             samp_rows = list(samp_rows)
             exp_rows = list(exp_rows)
@@ -293,6 +302,7 @@ class Query(object):
             url = f"{self.sra_efetch}&id={xid}"
             self.log.debug(f"fetch url={url}")
 
+            # XXX could run infinitely???
             while True:
                 r = requests.post(url)
                 if r.status_code == 200:
@@ -587,7 +597,7 @@ class Impute(object):
     def execute(self, projectid):
         """
         XXX if tech is not supported, will return an empty dataframe
-         For projectid:
+        For projectid:
             Impute technology where possible. 
             Put completed project ids into query-donelist.txt
             examples    - SRP114926 - contains both 10x and smartseq
@@ -644,7 +654,6 @@ class Impute(object):
             logging.error(traceback.format_exc(None))
             return (None, projectid)
             
-    # updated 6/29 jlee. 
     # TODO deal with multiple tech finds
     def impute_tech_from_lcp(self, df):
         '''

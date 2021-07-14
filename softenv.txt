@@ -4,7 +4,7 @@ brew install automake libtool libevent autoconf
 conda create -n scqc python=3.8
 conda activate scqc
 
-conda install requests pandas ipython  scipy 
+conda install requests pandas ipython scipy botttleneck
 # conda install autoconf automake libtool libevent   # for compiling trickle
 conda install -c bioconda star
 conda install -c conda-forge leidenalg
