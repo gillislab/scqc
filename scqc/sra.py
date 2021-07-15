@@ -64,7 +64,7 @@ TECH_RES = {
     #'10xv1' : re.compile("", re.IGNORECASE),
     #'10xv2' : re.compile("v2 chemistry|v2 reagent|V2 protocol|P/N 120230|Single Cell 3' v2|Reagent Kits v2|10X V2", re.IGNORECASE),
     #'10xv3' : re.compile("v3 chemistry|v3 reagent|V3 protocol|CG000206|Single Cell 3' Reagent Kit v3|10X V3|1000078", re.IGNORECASE),
-    'ss'    : re.compile("Smart-Seq|SmartSeq|Picelli|SMART Seq", re.IGNORECASE),
+    'smartseq' : re.compile("Smart-Seq|SmartSeq|Picelli|SMART Seq", re.IGNORECASE),
     'smarter' : re.compile("SMARTer", re.IGNORECASE),
     'dropseq' : re.compile("Cell 161, 1202-1214|Macosko|dropseq|drop-seq", re.IGNORECASE),
     'celseq'  : re.compile("CEL-Seq2|Muraro|Cell Syst 3, 385|Celseq2|Celseq1|Celseq|Cel-seq", re.IGNORECASE),
