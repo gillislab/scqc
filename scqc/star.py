@@ -161,7 +161,7 @@ class AlignReads(object):
         cmd = ['STAR',
                '--runMode', 'alignReads',
                '--runThreadN', f'{self.ncore_align}',
-               '--genomeDir', f'{self.resourcedir}/genomes/{self.species}',
+               '--genomeDir', f'{self.resourcedir}/{self.species}',
                '--outFileNamePrefix', out_file_prefix,
                '--soloType', ss_params["solo_type"],
                '--soloFeatures', 'Gene',
@@ -446,7 +446,7 @@ if __name__ == "__main__":
     logging.debug(f"got config: {cs}")
 
     if args.setup:
-        s = setup(cp, force=args.force)
+        s = setup(cp, overwrite=args.force)
         # s.execute()
 
     
