@@ -237,28 +237,27 @@ class Download(Stage):
     def execute(self, dolist):
         '''
         Perform one run for stage.  
+        
         '''
-        self.log.debug(f'executing {self.name}')
+        self.log.debug(f'performing custom execute for {self.name}')
+        self.log.debug(f'got dolist len={len(dolist)}. executing...')
         outlist = []
-        runlist = []
-        dq = Queue()
+        seenlist = []
         for projectid in dolist:
-            runids = sra.get_runs_for_project(self.config, projectid)
-            self.log.debug(f'got runids to prefetch: {runids}')
-            for runid in runids:
-                projfetch = sra.ProjectPrefetch(self.config, projid, outlist)
-                #pf = sra.Prefetch(self.config, runid, outlist)
-                dq.put(pf)
-            outlist.append(projectid)
-        logging.debug(f'created queue of {dq.qsize()} items')
-        md = int(self.config.get('sra', 'max_downloads'))
-        for n in range(md):
-            sra.Worker(dq).start()
-        logging.debug('waiting to join threads...')
-        dq.join()
-        logging.debug('all workers done...')
-        logging.info(f'prefetched runs: {runlist}')
-        return outlist
+            self.log.debug(f'handling id {projectid}...')
+            try:
+                sd = sra.Download(self.config)
+                (done, seen) = sd.execute(projectid)
+                self.log.debug(f'done with {projectid}')
+                if done is not None:
+                    outlist.append(done)
+                if seenlist is not None:
+                    seenlist.append(seen)
+            except Exception as ex:
+                self.log.warning(f"exception raised during project query: {projectid}")
+                self.log.error(traceback.format_exc(None))
+        self.log.debug(f"returning outlist len={len(outlist)} seenlist len={len(seenlist)}")
+        return (outlist, seenlist)
 
 
     def setup(self):

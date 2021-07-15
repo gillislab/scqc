@@ -9,8 +9,20 @@
 import argparse
 import requests
 import logging
+import os
+import sys
 import time
 import traceback
+
+gitpath = os.path.expanduser("~/git/scqc")
+sys.path.append(gitpath)
+
+from scqc.utils import *
+from scqc.sra import *
+
+
+
+
 
 
 if __name__ == "__main__":
@@ -29,15 +41,19 @@ if __name__ == "__main__":
                         action="store_true",
                         dest='verbose',
                         help='verbose logging')
-    
-    parser.add_argument('exp_ids',
-                        nargs='+'
-                        )
-    
+
+    parser.add_argument('-i', '--infile', 
+                        metavar='infile', 
+                        type=str, 
+                        help='a flat file of run urls. ')   
+
     args = parser.parse_args()
+
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+    if args.verbose:
+        logging.getLogger().setLevel(logging.INFO)
+
+    urllist = readlist(args.infile)
+    logging.info(f'got list of {len(urllist)} file_urls.')
     
-    for exp in args.exp_ids:
-        xmlstr = query_experiment_package_set(exp)
-        #root = et.fromstring(xmlstr)
-        #print(et.tostring(root, encoding='unicode', pretty_print=True))
-        print(bs(xmlstr, "xml").prettify())

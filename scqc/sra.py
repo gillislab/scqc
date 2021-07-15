@@ -867,53 +867,66 @@ class Impute(object):
         return new_rdf[['run_id','batch']]
 
 # do this in __main__ to allow for multiple threads 
-class PrefetchProject(object):
+class Download(object):
     """
-    Handles all runid Prefetches for a project. 
+    Handles all runid SRA file downloads for a project. 
+    For the SRA case, that means getting SRR id for each project, and downloading them. 
+
 
     """
 
-    def __init__(self, config, proj_id): #, outlist
+    def __init__(self, config): #, outlist
         self.log = logging.getLogger('sra')
         self.config = config
-        self.proj_id = proj_id
-        # self.outlist = outlist
         self.metadir = os.path.expanduser(self.config.get('sra', 'metadir'))
-        self.sracache = os.path.expanduser(self.config.get('sra', 'cachedir'))
-        self.log.debug(f'prefetch for {proj_id}')
+        self.cachedir = os.path.expanduser(self.config.get('sra', 'cachedir'))
+        self.dltool = os.path.expanduser(self.config.get('download', 'dltool'))
 
-    def execute(self):
         rdf_file = f'{self.metadir}/runs.tsv'
-        rdf = pd.read_csv(rdf_file, sep="\t",index_col=0)
-        rdf = rdf[rdf.proj_id == self.proj_id ]
-        runlist = rdf.run_id
-        totaldiskspace = rdf.file_size.sum() * 1e-9
-        self.log.debug(f'Expected disk space for SRA files for {self.proj_id} is {totaldiskspace} GB')
-        # should probably move prefetch run as a function under prefetchproj
+        self.rdf = load_df(rdf_file)        
+        self.log.info(f'Download initialized. ')
+
+
+    def execute(self, proj_id):
+        ddf = self.rdf[self.rdf.proj_id == proj_id ]
+        runlist = list(ddf.run_id)
+        self.log.debug(f'{len(runlist)} runs in project {proj_id}')
+        totaldiskspace = ddf.file_size.sum() * 1e-9
+        self.log.debug(f'Expected disk space for SRA files for {proj_id} is {totaldiskspace} GB')
+        donelist = []        
+        triedlist = []
+        
         for runid in runlist:
-            self.prefetch_run(runid)
+            self.log.debug(f'handling runid {runid}')
+            if self.dltool == 'sra':
+                self.log.debug(f'tool is prefetch. handling runid {runid}')
+                pf = Prefetch(self.config, runid)
+                res = pf.execute()
+                if res is not None:
+                    self.log.debug(f'runid {runid} handled successfully.')
+                    donelist.append(res)
+                    triedlist.append(res)
+                else:
+                    self.log.debug(f'runid {runid} failed.')
+                    triedlist.append(res)
+            elif self.dltool == 'pywget':
+                pass
             
-    def prefetch_run(self,srrid):
-        self.log.debug(f'prefetch id {srrid}')
-        loglev = LOGLEVELS[self.log.getEffectiveLevel()]
-        cmd = ['prefetch',
-               '-X', '100G',
-               '--resume', 'yes',
-               '-O', f'{self.sracache}/',
-               '--log-level', f'{loglev}',
-               f'{srrid}']
-        cmdstr = " ".join(cmd)
-        logging.debug(f"prefetch command: {cmdstr} running...")
-        cp = subprocess.run(cmd)
-        logging.debug(
-            f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
-        if str(cp.returncode) == "0":
-            self.outlist.append(srrid)
+            
+        diffset = set(donelist).difference(set(runlist))
+        self.log.debug(f'diffset is {diffset}')
+        if len(diffset) > 0:
+            self.log.error(f'{len(donelist)} of {len(runlist)} downloaded for proj_id {proj_id} ')
+            return (None, proj_id)
+        else:
+            self.log.info(f'download successful for proj_id {proj_id}')
+            return (proj_id, proj_id)    
 
+                    
 
-class PrefetchRun(object):
+class Prefetch(object):
     '''
-        Simple wrapper for NCBI prefetch
+    Simple wrapper for NCBI prefetch
     Usage: prefetch [ options ] [ accessions(s)... ]
     Parameters:  
         accessions(s)    list of accessions to process
@@ -965,9 +978,9 @@ class PrefetchRun(object):
         self.log = logging.getLogger('sra')
         self.config = config
         self.runid = runid
-        # self.outlist = outlist
-        self.sracache = os.path.expanduser(self.config.get('sra', 'cachedir'))
-        self.log.debug(f'prefetch id {runid}')
+        self.cachedir = os.path.expanduser(self.config.get('sra', 'cachedir'))
+        self.log.debug(f'Prefetch runid {runid} initted.')
+
 
     def execute(self):
         self.log.debug(f'prefetch id {self.runid}')
@@ -975,16 +988,19 @@ class PrefetchRun(object):
         cmd = ['prefetch',
                '-X', '100G',
                '--resume', 'yes',
-               '-O', f'{self.sracache}/',
+               '-O', f'{self.cachedir}/',
                '--log-level', f'{loglev}',
                f'{self.runid}']
         cmdstr = " ".join(cmd)
         logging.debug(f"prefetch command: {cmdstr} running...")
         cp = subprocess.run(cmd)
-        logging.debug(
+        self.log.debug(
             f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
-        # if str(cp.returncode) == "0":
-        #     self.outlist.append(self.runid)
+        if str(cp.returncode) == "0":
+            return self.runid
+        else:
+            self.log.error(f'non-zero return code for runid {self.runid}')
+            return None
 
 
 # inputs are the runs completed by prefetch
@@ -1062,6 +1078,8 @@ class FasterqDump(object):
         # successful runs - append to outlist.
         # if str(cp.returncode) == "0":
         #     self.outlist.append(self.srrid)
+
+
 
 
 def get_runs_for_project(config, projectid):
