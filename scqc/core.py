@@ -29,7 +29,11 @@ class Stage(object):
     Handles stage in pipeline. 
     Reads donelist. Reads todolist. Calculates diff. 
     Executes all for difflist. 
-    Writes updated donelist. 
+    Writes updated donelist, seenlist. 
+
+    .run() should not be overriden. 
+    .execute() can be overriden, but doesn't need to be for normal case. 
+
 
     '''
 
@@ -91,7 +95,7 @@ class Stage(object):
                         self.log.warn('Got None in finished list from an execute. Removed.')
                     self.log.debug(f"got finished list len={len(finished)}. writing...")
                     
-                    if self.donefile is not None and len(finished) > 0:
+                    if self.donefile is not None:
                         logging.info('reading current done.')
                         donelist = readlist(self.donefile)
                         logging.info('adding just finished.')
@@ -136,6 +140,7 @@ class Stage(object):
         logging.info(f'Shutdown set. Exitting {self.name}')
 
 
+
     def stop(self):
         self.log.info('stopping...')
 
@@ -155,6 +160,7 @@ class Query(Stage):
         '''
         Perform one run for stage.  
         '''
+        self.log.debug(f'performing custom execute for {self.name}')
         self.log.debug(f'got dolist len={len(dolist)}. executing...')
         outlist = []
         seenlist = []
@@ -164,13 +170,16 @@ class Query(Stage):
                 sq = sra.Query(self.config)
                 (out, seen) = sq.execute(projectid)
                 self.log.debug(f'done with {projectid}')
-                outlist.append(out)
-                seenlist.append(seen)
+                if out is not None:
+                    outlist.append(out)
+                if seenlist is not None:
+                    seenlist.append(seen)
             except Exception as ex:
                 self.log.warning(f"exception raised during project query: {projectid}")
                 self.log.error(traceback.format_exc(None))
-        self.log.debug(f"returning outlist len={len(outlist)}")
+        self.log.debug(f"returning outlist len={len(outlist)} seenlist len={len(seenlist)}")
         return (outlist, seenlist)
+
 
     def setup(self):
         sra.setup(self.config)
@@ -192,22 +201,26 @@ class Impute(Stage):
         '''
         Perform one run for stage.  
         '''
+        self.log.debug(f'performing custom execute for {self.name}')
         self.log.debug(f'got dolist len={len(dolist)}. executing...')
         outlist = []
+        seenlist = []
         for projectid in dolist:
             self.log.debug(f'handling id {projectid}...')
             try:
                 si = sra.Impute(self.config)
-                out = si.execute(projectid)
+                (out, seen) = si.execute(projectid)
                 self.log.debug(f'done with {projectid}')
                 if out is not None:
                     outlist.append(out)
-            
+                if seenlist is not None:
+                    seenlist.append(seen)
             except Exception as ex:
                 self.log.warning(f"exception raised during project query: {projectid}")
                 self.log.error(traceback.format_exc(None))
-        self.log.debug(f"returning outlist len={len(outlist)}")
-        return outlist
+        self.log.debug(f"returning outlist len={len(outlist)} seenlist len={len(seenlist)}")
+        return (outlist, seenlist)
+
 
     def setup(self):
         sra.setup(self.config)

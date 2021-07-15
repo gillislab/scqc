@@ -231,9 +231,6 @@ class Query(object):
         self.log.info(f'handling projectid {projectid}')
         try:
             pdf = query_project_metadata(projectid)
-            #self.log.debug(f'info: {pdf}')
-            #
-
             explist = list(pdf.Experiment)
             self.log.info(
                 f'projectid {projectid} has {len(explist)} experiments.')
@@ -607,7 +604,7 @@ class Impute(object):
         try:
             # read in experiment file
             expfile = f'{self.metadir}/experiments.tsv'
-            edf = pd.read_csv(expfile, sep='\t', index_col=0)
+            edf = load_df(expfile)
             self.log.debug(f'opened experiments DF OK...')
             edf = edf[edf.proj_id == projectid].reset_index(drop=True) # rename pdf -> edf 
             self.log.debug(f'got project-specific df: \n{edf}')
@@ -617,11 +614,12 @@ class Impute(object):
 
             # match run to tech
             runfile = f'{self.metadir}/runs.tsv'
-            rdf = pd.read_csv(runfile, sep='\t', index_col=0)
+            rdf = load_df(runfile)
             rdf = rdf[rdf.proj_id == projectid].reset_index(drop=True)
             # impute 10x version
             outdf = self.impute_10x_version(idf, rdf)
             self.log.debug(f'got imputed 10x version df: \n{outdf}')
+            
             ssdf = self.parse_smartseq(idf, rdf)
             self.log.debug(f'parsed smartseq df: \n{ssdf}')
             # save to disk
@@ -629,9 +627,8 @@ class Impute(object):
 
             # append the inferred batch from samples.tsv
             samplefile = f'{self.metadir}/samples.tsv'
-            sdf = pd.read_csv(samplefile, sep='\t', index_col=0)
+            sdf = load_df(samplefile)
             sdf = sdf[sdf.proj_id == projectid].reset_index(drop=True)
-
 
             #impute batch
             bdf = self.impute_batch(sdf, rdf)
@@ -640,6 +637,7 @@ class Impute(object):
             # save to disk
             outdf = outdf[['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon','batch']]
             outdf.columns = IMPUTE_COLUMNS  # renames the columns from global 
+            
             if outdf.shape[0] > 0:
                 merge_write_df(outdf, f'{self.metadir}/impute.tsv')  
             else :
@@ -713,7 +711,7 @@ class Impute(object):
         # get all runs associated with the 10x inferred experiments
         runs = df.loc[ df.tech == '10x','run_id']
         if len(runs)  == 0:
-            print('no runs imputable') 
+            self.log.debug('no runs imputable') 
             return pd.DataFrame(columns=['run_id' ,'tech_version','read1','read2','exp_id','proj_id', 'taxon'])
 
         allRows = []
@@ -1042,7 +1040,7 @@ def get_runs_for_project(config, projectid):
     metadir = os.path.expanduser(config.get('sra', 'metadir'))
     filepath = f"{metadir}/project_runs.tsv"
     if os.path.isfile(filepath):
-        pdf = pd.read_csv(filepath, sep='\t', index_col=0, comment="#")
+        pdf = load_df(filepath)
         return list(pdf[pdf.project == 'projectid'].run_id)
     else:
         return []
