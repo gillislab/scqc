@@ -53,8 +53,8 @@ EXP_COLUMNS = ['exp_id', 'ext_ids',  'strategy',
                'source', 'lcp', 'samp_id', 'proj_id', 'submission_id']
 
 RUN_COLUMNS = ['run_id', 'ext_ids', 'tot_spots', 'tot_bases', 'run_size', 'publish_date',
-               'taxon', 'organism', 'nreads',  'basecounts', 'exp_id', 'samp_id', 'proj_id', 
-               'submission_id','file_url','file_size' ]
+               'taxon', 'organism', 'nreads',  'basecounts', 'file_url','file_size','exp_id', 'samp_id', 'proj_id', 
+               'submission_id' ]
 
 IMPUTE_COLUMNS = ['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon','batch']
 
@@ -450,7 +450,7 @@ class Query(object):
         basecounts = str(basecounts)
 
         runrow = [run_id, run_ext_ids, total_spots, total_bases, run_size, pdate,
-                  taxon, organism, nreads,  basecounts, expid, sampleid, file_url, file_size  ]
+                  taxon, organism, nreads,  basecounts, file_url, file_size , expid, sampleid ]
 
         return runrow
 

@@ -17,7 +17,7 @@ from scipy.io import mmread
 from scipy.sparse import base
 import matplotlib.pyplot as plt
 import seaborn as sns       # inputs as dataframes
-import sklearn
+from sklearn.metrics.pairwise import euclidean_distances
 # import matplotlib.cbook as cbook
 
 
@@ -81,11 +81,25 @@ class GetStats(object):
         self.n_neighbors = self.config.get('statistics', 'n_neighbors')
         self.n_pcs = self.config.get('statistics', 'n_pcs')
 
+        # metamarker params
+        self.class_markerset =  os.path.expanduser(
+            self.config.get('metamarker', 'class_markerset'))
+        self.class_markerset =  os.path.expanduser(
+            self.config.get('metamarker', 'subclass_markerset'))
+        self.max_rank = self.config.get('metamarker', 'max_rank')
 
 
     def execute(self, srpid):
+        '''
+        STAR outputs should be placed in the temp directory 
+        Look through all of the solo out directories for the project,
+        aggregate them, and run stats collectively
+
+        '''
+
+
         # outdir = "/home/johlee/scqc/stats"
-        solooutdirs = f'{self.outputdir}/{srpid}'
+        solooutdirs = f'{self.tempdir}/{srpid}'
         solooutdirs = glob.glob(f'{solooutdirs}/*Solo.out')
 
         self.log.debug(f'starting with projectid {srpid}')
@@ -97,11 +111,12 @@ class GetStats(object):
             adatas.append(self._parse_STAR_mtx(solooutdir))
 
         # merge all of the datasets 
+        # technology is obtained from the soloout dir name
         batchnames = [ os.path.basename(solooutdirs[i]).replace('_Solo.out','') for i in range(len(solooutdirs)) ]
         ids = pd.DataFrame([ batchname.split('_') for batchname in batchnames] )
 
         ids.columns = ['id','tech']
-        # which are runs and which are projects? \
+        # which are runs and which are projects? 
         ids['run_id'] = ids.id[ids.id.str.contains('RR')]
         ids['proj_id'] = ids.id[ids.id.str.contains('RP')]
         
@@ -110,7 +125,8 @@ class GetStats(object):
 
         self.log.debug(f'joining adatas for {srpid}')
         adata = adatas[0].concatenate(adatas[1:], batch_categories = ids.id )
-        adata.obs.batch='id'
+
+        adata.obs.columns = ['cell_id','id']
         
         tmpdf = pd.merge(adata.obs, ids, on= 'id')   # include technology in obs.
         tmpdf.index = tmpdf.cell_id
@@ -311,25 +327,54 @@ class GetStats(object):
 
         return adata
 
-    def run_EGAD_by_batch(self,adata):
+    def _run_EGAD_by_batch(self, adata, rank_standardized = False, 
+        batch_column = ['run_id','exp_id','samp_id','proj_id','batch'] ):
 
         # XXX memory intensive for datasets with large number of cells.
         # build the pairwise distance matrix
-        nw = sklearn.metrics.pairwise.euclidean_distances(adata.X)
-        nw = pd.DataFrame(1- nw / nw.max() )
+
+        nw = euclidean_distances(adata.X)
+        if rank_standardized:
+            nw = rank(nw.max()-nw )
+        else :
+            nw = 1- nw / nw.max()
+
+        nw = pd.DataFrame( nw )
     
         
         # convert to a cell x batch binary df
         go = pd.DataFrame( )
+        
         # for exp_id in adata.obs.exp_id.unique() :
         #     go[exp_id] = adata.obs.exp_id == exp_id
-        for samp_id in adata.obs.samp_id.unique() :
-            go[samp_id] = adata.obs.samp_id == samp_id
-        for run_id in adata.obs.run_id.unique() :
-            go[run_id] = adata.obs.run_id == run_id
+        for col in batch_column:
+            for id in adata.obs[col].unique() :
+                go[id] = adata.obs[col] == id
+        go = go.reset_index(drop=True)   
         # batches should contain as least 10 cells
         # and no more that 75%  of all cells 
+        go = go.T.drop_duplicates().T
         res = run_egad(go, nw,  nFold=3, min_count=10, max_count=np.ceil(adata.shape[0] * .75 ) )
+        
+        adata.uns['EGAD'] = res
+        return( adata)
+
+    def _run_MetaMarkers(self, h5path):
+        '''
+        h5path should be saved in the temp directory before this stage. 
+        After MetaMarkers, move completed h5ad file to output/
+        '''
+
+        scriptpath = 'get_markers.R'    # should already be in path
+        # should have only one outpath per dataset. 
+        # TODO verify file does not already exist. Think about what to do if it does
+        outpath = f'{self.outputdir}/{os.path.basename(h5path)}'
+        cmd = ['Rscript', f'{scriptpath}',
+               '--marker_direc', f'{self.resourcedir}',
+               '--solo_out_dir', f'{h5path}',
+               '--max_rank', f'{self.max_rank}',
+               '--outprefix', f'{outpath}']
+        subprocess.run(cmd)
         
 
 if __name__ == "__main__":
