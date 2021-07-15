@@ -95,7 +95,10 @@ class AlignReads(object):
                     # saves to disk
                     solooutdir = self._run_star_10x(srrid, tech, read1,read2)
                     # move solo out directories
-                    
+                    if os.path.isdir( solooutdir ):
+                        os.remove(read1)
+                        os.remove(read2)
+
                     self._clean_up_tempdir(srpid, solooutdir )
 
             else :
@@ -103,6 +106,8 @@ class AlignReads(object):
                     f'{tech} is not yet supported for STAR alignment.')
                 # log... technology not yet supported
                 pass
+            
+            # finally, clean up fastq files 
 
 
     # run|tech|read1|read2|exp|samp|proj|taxon|batch  dataframe in impute. 
@@ -157,7 +162,7 @@ class AlignReads(object):
                      "soloUMIdedup": "Exact",
                      "soloStrand": "Unstranded"}
 
-        out_file_prefix = f'{self.outputdir}/{srpid}_smartseq_'
+        out_file_prefix = f'{self.tempdir}/{srpid}_smartseq_'
         cmd = ['STAR',
                '--runMode', 'alignReads',
                '--runThreadN', f'{self.ncore_align}',
