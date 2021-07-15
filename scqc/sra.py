@@ -864,28 +864,50 @@ class Impute(object):
 
         return new_rdf[['run_id','batch']]
 
-
-
-
+# do this in __main__ to allow for multiple threads 
 class PrefetchProject(object):
     """
     Handles all runid Prefetches for a project. 
 
     """
 
-    def __init__(self, config, proj_id, outlist):
+    def __init__(self, config, proj_id): #, outlist
         self.log = logging.getLogger('sra')
         self.config = config
         self.proj_id = proj_id
-        self.outlist = outlist
+        # self.outlist = outlist
+        self.metadir = os.path.expanduser(self.config.get('sra', 'metadir'))
         self.sracache = os.path.expanduser(self.config.get('sra', 'cachedir'))
         self.log.debug(f'prefetch for {proj_id}')
 
-#    def
+    def execute(self):
+        rdf_file = f'{self.metadir}/runs.tsv'
+        rdf = pd.read_csv(rdf_file, sep="\t",index_col=0)
+        rdf = rdf[rdf.proj_id == self.proj_id ]
+        runlist = rdf.run_id
+        totaldiskspace = rdf.file_size.sum() * 1e-9
+        self.log.debug(f'Expected disk space for SRA files for {self.proj_id} is {totaldiskspace} GB')
+        # should probably move prefetch run as a function under prefetchproj
+        for runid in runlist:
+            self.prefetch_run(runid)
+            
+    def prefetch_run(self,srrid):
+        self.log.debug(f'prefetch id {srrid}')
+        loglev = LOGLEVELS[self.log.getEffectiveLevel()]
+        cmd = ['prefetch',
+               '-X', '100G',
+               '--resume', 'yes',
+               '-O', f'{self.sracache}/',
+               '--log-level', f'{loglev}',
+               f'{srrid}']
+        cmdstr = " ".join(cmd)
+        logging.debug(f"prefetch command: {cmdstr} running...")
+        cp = subprocess.run(cmd)
+        logging.debug(
+            f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
+        if str(cp.returncode) == "0":
 
-# John Lee is satisfied with this class 6/03/2021
-# inputs are runs i.e. SRR
-# downloads .sra
+            self.outlist.append(srrid)
 
 
 class PrefetchRun(object):
@@ -938,11 +960,11 @@ class PrefetchRun(object):
 
     '''
 
-    def __init__(self, config, runid, outlist):
+    def __init__(self, config, runid):
         self.log = logging.getLogger('sra')
         self.config = config
         self.runid = runid
-        self.outlist = outlist
+        # self.outlist = outlist
         self.sracache = os.path.expanduser(self.config.get('sra', 'cachedir'))
         self.log.debug(f'prefetch id {runid}')
 
@@ -966,7 +988,6 @@ class PrefetchRun(object):
 
 # inputs are the runs completed by prefetch
 # assumes path is cachedir/<run>.sra
-# JL is satisfied with this 6/4/2021
 class FasterqDump(object):
     '''
         Simple wrapper for NCBI fasterq-dump
@@ -999,31 +1020,38 @@ class FasterqDump(object):
 
     '''
 
-    def __init__(self, config, srrid, outlist):
+    def __init__(self, config, srrid): #, outlist
         self.log = logging.getLogger('sra')
         self.srrid = srrid
 
         self.log.debug(f'downloading id {srrid}')
         self.config = config
+
         self.cachedir = os.path.expanduser(
             self.config.get('download', 'cachedir'))
-        self.num_streams = self.config.get('download', 'num_streams')
+        self.metadir = os.path.expanduser(
+            self.config.get('download', 'metadir'))
+        self.tempdir = os.path.expanduser(
+            self.config.get('download', 'tempdir'))
 
-        self.outlist = outlist
+        self.threads = self.config.get('download', 'fq_nthreads')
+
+        # self.outlist = outlist
 
     def execute(self):
-        self.log.debug(f'downloading id {self.srrid}')
+        self.log.debug(f'downloading id  {self.srrid}')
 
         loglev = LOGLEVELS[self.log.getEffectiveLevel()]
         # os.system("    + " -O "+fastqdirec+ " "+ fastqprefix +".sra" )
 
-        cmd = ['fasterq-dump',
-               '--split-files',
-               '--include-technical',
-               '--threads', f'{self.num_streams}',
-               '--outdir', f'{self.cachedir}/',
-               '--log-level', f'{loglev}',
-               f'{self.cachedir}/{self.srrid}.sra']
+        cmd = ['fasterq-dump', 
+            '--split-files',
+            '--include-technical',
+            '--threads', f'{self.threads}',
+            '--outdir', f'{self.tempdir}/',
+            '--log-level', f'{loglev}',
+            f'{self.cachedir}/{self.srrid}.sra']
+
 
         cmdstr = " ".join(cmd)
         logging.debug(f"Fasterq-dump command: {cmdstr} running...")
@@ -1031,19 +1059,20 @@ class FasterqDump(object):
         logging.debug(
             f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
         # successful runs - append to outlist.
-        if str(cp.returncode) == "0":
-            self.outlist.append(self.srrid)
+        # if str(cp.returncode) == "0":
+        #     self.outlist.append(self.srrid)
 
 
 def get_runs_for_project(config, projectid):
     """
-
+    
     """
+    
     metadir = os.path.expanduser(config.get('sra', 'metadir'))
-    filepath = f"{metadir}/project_runs.tsv"
+    filepath = f"{metadir}/runs.tsv"
     if os.path.isfile(filepath):
-        pdf = pd.read_csv(filepath, sep='\t', index_col=0, comment="#")
-        return list(pdf[pdf.project == 'projectid'].run_id)
+        pdf = pd.read_csv(filepath, sep='\t', index_col=0)
+        return list(pdf[pdf.proj_id == projectid].run_id)
     else:
         return []
 
@@ -1311,12 +1340,21 @@ if __name__ == "__main__":
             q.execute(pid)
 
     if args.prefetch is not None:
-        dq = Queue()
-        for srr in args.prefetch:
-            fq = PrefetchRun(cp, srr)
-            dq.put(fq)
+        # start a queue
+        dq = Queue() 
+        # loop through each project id 
+        for srpid in args.prefetch:
+            # get the runs associated with that project
+            srrids = get_runs_for_project(cp, srpid)
+            for srr in srrids:
+                # download the SRA binary file for the run
+                fq = PrefetchRun(cp, srr)
+                dq.put(fq)
+
         logging.debug(f'created queue of {dq.qsize()} items')
-        md = int(cp.get('sra', 'max_downloads'))
+        md = int(cp.get('download', 'pf_max_downloads'))
+
+        # limit number of jobs 
         for n in range(md):
             Worker(dq).start()
         logging.debug('waiting to join threads...')
@@ -1325,11 +1363,14 @@ if __name__ == "__main__":
 
     if args.fasterq is not None:
         dq = Queue()
-        for srr in args.fasterq:
-            fq = FasterqDump(cp, srr)
-            dq.put(fq)
-        logging.debug(f'created queue of {dq.qsize()} items')
-        md = int(cp.get('sra', 'max_downloads'))
+        for srpid in args.fasterq:
+            srr_ids = get_runs_for_project(cp, srpid)
+            for srr in srr_ids:
+                fq = FasterqDump(cp, srr)
+                dq.put(fq)
+            logging.debug(f'created queue of {dq.qsize()} items')
+            md = int(cp.get('sra', 'max_downloads'))
+
         for n in range(md):
             Worker(dq).start()
         logging.debug('waiting to join threads...')
