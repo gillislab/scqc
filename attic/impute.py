@@ -218,6 +218,9 @@ class Impute(object):
         # print( f'\n{loglev}\n')
         
         # require runs have rdf.nreads > 1. Otherwise, unable to impute
+        ind = rdf.nreads > 1
+        self.log.debug(f'number of runs where nreads > 1:  {ind.sum()}') 
+
         rdf = rdf [rdf.nreads > 1]
         df = rdf.merge(idf, on = 'exp_id',how='left')
 

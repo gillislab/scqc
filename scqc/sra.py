@@ -5,6 +5,7 @@
 # http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=
 #
 # Could use  SRR14584407 SRR14584408 in example..
+# John Lee's working examples - SRP126648 for Smartseq and SRP243446 for 10xv2
 
 import argparse
 import glob
@@ -704,14 +705,17 @@ class Impute(object):
         loglev = LOGLEVELS[self.log.getEffectiveLevel()]
         # print( f'\n{loglev}\n')
         
-        # require runs have rdf.nreads > 1. Otherwise, unable to impute
-        rdf = rdf [rdf.nreads > 1]
+        # XXX require runs have rdf.nreads > 1. Otherwise, unable to impute
+        ind = rdf.nreads > 1
+        self.log.debug(f'nnumber of runs where nreads <= 1 {sum(ind)}') 
+        rdf = rdf [ind]
         df = rdf.merge(idf, on = 'exp_id',how='left')
 
         # get all runs associated with the 10x inferred experiments
         runs = df.loc[ df.tech == '10x','run_id']
         if len(runs)  == 0:
-            self.log.debug('no runs imputable') 
+            self.log.debug('no 10x runs imputable') 
+            
             return pd.DataFrame(columns=['run_id' ,'tech_version','read1','read2','exp_id','proj_id', 'taxon'])
 
         allRows = []
