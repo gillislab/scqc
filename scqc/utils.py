@@ -169,6 +169,7 @@ def download_wget(srcurl, destpath, finalname=None, overwrite=True, decompress=T
     logging.debug(f'wget file {srcurl}')
     cmd = ['wget',
            '--no-verbose',
+           '--no-use-server-timestamps',
            '--limit-rate', rate,
            '--continue', 
            '-O', f'{destpath}',
