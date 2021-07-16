@@ -168,6 +168,7 @@ def download_wget(srcurl, destpath, finalname=None, overwrite=True, decompress=T
     """
     logging.debug(f'wget file {srcurl}')
     cmd = ['wget',
+           '--no-verbose',
            '--limit-rate', rate,
            '--continue', 
            '-O', f'{destpath}',
@@ -179,7 +180,7 @@ def download_wget(srcurl, destpath, finalname=None, overwrite=True, decompress=T
     if str(cp.returncode) == '0':
         logging.info(f'downloaded {destpath} successfully.')
     else:
-        self.log.error(f'non-zero return code for src {srcurl}')
+        logging.error(f'non-zero return code for src {srcurl}')
     return cp.returncode
     
 
