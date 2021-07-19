@@ -1051,7 +1051,7 @@ class FasterqDump(object):
         self.tempdir = os.path.expanduser(
             self.config.get('download', 'tempdir'))
 
-        self.threads = self.config.get('download', 'fq_nthreads')
+        self.threads = self.config.get('analysis', 'fq_nthreads')
 
         # self.outlist = outlist
 
@@ -1388,7 +1388,7 @@ if __name__ == "__main__":
                 fq = FasterqDump(cp, srr)
                 dq.put(fq)
             logging.debug(f'created queue of {dq.qsize()} items')
-            md = int(cp.get('sra', 'max_downloads'))
+            md = int(cp.get('analysis', 'fq_max_jobs'))
 
         for n in range(md):
             Worker(dq).start()
