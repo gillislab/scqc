@@ -20,13 +20,22 @@ option_list = list(
         c("-r", "--max_rank"), type="integer", default=100, 
         help="Maximum rank of marker genes. Ignored if setup.", metavar="max_rank"),
 
-    optparse::make_option(
-        c("-p", "--rds_path"), type="character", default="~/scqc/supplement_data/markersets/biccn_MoP.rds", 
-        help="rds path to SingleCellExperiment of merged data.", metavar="rds_path"),
+    # optparse::make_option(
+    #     c("-p", "--rds_path"), type="character", default="~/scqc/supplement_data/markersets/biccn_MoP.rds", 
+    #     help="rds path to SingleCellExperiment of merged data.", metavar="rds_path"),
 
     optparse::make_option(
-        c("-s", "--solo_out_dir"), type="character", default=NULL, 
+        c("-s", "--subclass_markerset"), type="character", default=NULL, 
+        help=" ", metavar="subclass_markerset"),
+
+    optparse::make_option(
+        c("-c", "--class_markerset"), type="character", default=NULL, 
+        help=" ", metavar="class_markerset"),
+
+    optparse::make_option(
+        c("-p", "--h5path"), type="character", default=NULL, 
         help="STARsolo Gene output directory (required if annotate, ignored otherwise).", metavar="solo_out_dir")
+
 
 )
 
@@ -123,17 +132,22 @@ build_marker_sets_biccn <- function( rds_path='~/scqc/supplement_data/markersets
 
 ##### class annotate
 parse_h5ad <- function( h5path){
-    X = h5read(h5path, name ='X')
+    X = rhdf5::h5read(h5path, name ='X')
     # list data | indices | indptr
-    var = h5read(h5path, name ='var/_index')    # genes
-    obs = h5read(h5path, name ='obs/_index')    # cells 
+    var = rhdf5::h5read(h5path,'var/__categories/gene_symbol')    # genes
+    ind = rhdf5::h5read(h5path,'var/gene_symbol')
+    var = var[ind+1]
+    obs = rhdf5::h5read(h5path, name ='obs/_index')    # cells 
 
-    mat = Matrix::sparseMatrix(i = as.numeric(X$indices), p = as.numeric(X$indptr) , x= as.numeric(X$data ) , dims = list(length(var),length(obs)))
+    mat = Matrix::sparseMatrix(i = as.numeric(X$indices)+1, p = as.numeric(X$indptr) , x= as.numeric(X$data ) , dims = list(length(var),length(obs)))
     rownames(mat) =  var    
     colnames(mat) =  obs
-
+    # outputs a gene x cell matrix
+    # note that scanpy outputs a cell x gene matrix 
+    return(mat)
 }
 
+#deprecated
 # part 1 of annotate - deprecating - instead use the h5ad from gatherstats.py as input
 parse_STAR_output <- function(outpath ){
 
@@ -194,22 +208,25 @@ assign_cell_type <- function(dataset, top_markers, group_assignment = NULL ) {
 }
 
 
-annotate_execute <- function( solo_out_path, marker_dir="~/scqc/resource",outprefix ="~/scqc/output/MoP_", max_rank=100 ) {
-    # need to figure out a good max_rank for each of the three label sets
+annotate_execute <- function( h5path, class_ms ='class_marker_set.csv.gz',
+    subclass_ms='subclass_marker_set.csv.gz', max_rank=100 ) {
+        # need to figure out a good max_rank for each of the three label sets
 
     # marker_dir = "~/scqc/supplement_data/markersets/MoP"
-    if (dir.exists(marker_dir)) {
-        dataset = parse_STAR_output(solo_out_path)   
-
-        marker_sets = list(class='class_marker_set.csv.gz' ,
-                        subclass= 'subclass_marker_set.csv.gz')
-
-        top_markers = lapply( paste(marker_dir,marker_sets,sep="/"),get_top_markers, max_rank =max_rank)
+    dataset = parse_h5ad(h5path)   
+    # dataset should already be log-ed
+    marker_sets = list(class=class_ms, subclass=subclass_ms)
+    # marker_sets = list(class='class_marker_set.csv.gz' ,
+    #                 subclass= 'subclass_marker_set.csv.gz')
+    
+    #require that the marker sets exist
+    if (all(unlist(lapply(marker_sets, file.exists)))) {
+        top_markers = lapply(marker_sets, get_top_markers, max_rank =max_rank)
         names(top_markers) = names(marker_sets)
-        logcounts = log1p(MetaMarkers::convert_to_cpm(dataset))
+        cpmcounts = MetaMarkers::convert_to_cpm(dataset) 
 
-        class_pred = assign_cell_type(logcounts,top_markers$class,  group_assignment = NULL)
-        subclass_pred = assign_cell_type(logcounts,top_markers$subclass,  group_assignment=class_pred$predicted)
+        class_pred = assign_cell_type(cpmcounts,top_markers$class,  group_assignment = NULL)
+        subclass_pred = assign_cell_type(cpmcounts,top_markers$subclass,  group_assignment=class_pred$predicted)
         # cluster_pred = assign_cell_type(logcounts,top_markers$cluster,  group_assignment=subclass_pred$predicted)
 
         colnames(class_pred) = paste0('class_',colnames(class_pred))
@@ -217,18 +234,26 @@ annotate_execute <- function( solo_out_path, marker_dir="~/scqc/resource",outpre
         colnames(subclass_pred) = paste0('subclass_',colnames(subclass_pred))
         subclass_pred$cell = rownames(subclass_pred)
         
-        preds = merge(class_pred, subclass_pred ,by='cell')
+        preds = merge(class_pred, subclass_pred ,by='cell',sort=FALSE)
         
-        # save results
-        fname = paste0(outprefix,"_MM_assignments.csv")
-        tmp = strsplit(fname,"/")
-        tmp = paste(tmp[[1]][1:(length(tmp[[1]])-1)],collapse ="/")
-        dir.create(tmp, recursive = TRUE )
-        # append if file exists
-        write.table(preds, fname ,append=TRUE,row.names=FALSE, col.names = !file.exists(fname))
-    } else {
-        warning( 'No marker set found' )
+
+        # tried to save directly to h5ad file, but sc.read_h5ad doesn't recognize the type
+        # save results to a temp file
+        tmp_path = sub('.h5ad','.tsv',h5path)
+        write.table(preds, file=tmp_path,sep="\t" )
+        # for (cn in colnames(preds)[2:ncol(preds)]){
+        #     tryCatch({
+        #         rhdf5::h5write(obj = preds[,cn] , file = h5path, name = paste0('obs/',cn) )
+        #     }, error = function(e){warning(e)})
+        # }
     }
+        # fname = paste0(outprefix,"_MM_assignments.csv")
+        # tmp = strsplit(fname,"/")
+        # tmp = paste(tmp[[1]][1:(length(tmp[[1]])-1)],collapse ="/")
+        # dir.create(tmp, recursive = TRUE )
+        # # append if file exists
+        # write.table(preds, fname ,append=TRUE,row.names=FALSE, col.names = !file.exists(fname))
+
 
 }
 
@@ -240,14 +265,12 @@ annotate_execute <- function( solo_out_path, marker_dir="~/scqc/resource",outpre
 if (is.null(opt$mode)) {
     optparse::print_help(opt_parser)
 } else if (opt$mode=="annotate"){
-    print(opt$mode)
     # need to make sure I have a solo out directory
-    if (is.null(opt$solo_out_dir)  ) {
+    if (is.null(opt$h5path)  ) {
         # no directory given, print help statement
-        optparse::print_help(opt_parser)
-    } else if (   file.exists(opt$solo_out_dir) ){
-        annotate_execute(opt$solo_out_dir, opt$markerdir, opt$outprefix, opt$max_rank) 
-    } else if ( ! file.exists(opt$solo_out_dir) ){
+    } else if (   file.exists(opt$h5path) ){
+        annotate_execute(opt$h5path, opt$class_markerset, opt$subclass_markerset, opt$max_rank) 
+    } else if ( ! file.exists(opt$h5path) ){
         # cant find directory 
         warning("no star output directory found. doing nothing")
     }

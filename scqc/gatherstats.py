@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+
+
 # aggregates statistics.
 
 import argparse
@@ -84,7 +87,7 @@ class GetStats(object):
         # metamarker params
         self.class_markerset =  os.path.expanduser(
             self.config.get('metamarker', 'class_markerset'))
-        self.class_markerset =  os.path.expanduser(
+        self.subclass_markerset =  os.path.expanduser(
             self.config.get('metamarker', 'subclass_markerset'))
         self.max_rank = self.config.get('metamarker', 'max_rank')
 
@@ -112,8 +115,9 @@ class GetStats(object):
 
         # merge all of the datasets 
         # technology is obtained from the soloout dir name
-        batchnames = [ os.path.basename(solooutdirs[i]).replace('_Solo.out','') for i in range(len(solooutdirs)) ]
+        batchnames = [ os.path.basename(solooutdir).replace('_Solo.out','') for i in range(len(solooutdirs)) ]
         ids = pd.DataFrame([ batchname.split('_') for batchname in batchnames] )
+        self.log.debug(f'starting with projectid {ids}')
 
         ids.columns = ['id','tech']
         # which are runs and which are projects? 
@@ -162,9 +166,22 @@ class GetStats(object):
         # adata[solooutdir].var.to_csv(f'{self.tempdir}/var.tsv',sep="\t")
         # consolidate these...
         self.log.debug(f'saving to {self.outputdir}/{srpid}.h5ad ')
-
         adata.write(h5file)
 
+        self.log.debug(f'assinging cell types using metamarkers for {srpid}')
+        tmp_path = self._run_MetaMarkers(h5file)
+        self.log.debug(f'done with metamarkers for {srpid} - saving to h5file')
+        
+        tmpdf = pd.read_csv(tmp_path ,sep="\t", index_col =0)
+        self.log.debug(f'read df')
+
+
+        tmp =  adata.obs.merge(tmpdf, left_on = 'cell_id' ,right_on = 'cell')
+        tmp.index = tmp.cell_id
+        tmp.index.name = None
+        adata.obs = tmp
+        adata.write(h5file)
+        
     def _gather_stats_from_STAR(self, solooutdir):
 
         with open(f"{solooutdir}/Barcodes.stats", 'r') as f:
@@ -306,8 +323,8 @@ class GetStats(object):
 
         adata.obs['gini']  = tmp
         # unstructured data - dataset specific
-        adata.uns['gini_by_counts'] = gini_coefficient(
-            adata.obs['total_counts'])
+        # adata.uns['gini_by_counts'] = gini_coefficient(
+        #     adata.obs['total_counts'])
 
         self.log.debug('computing hvg')
         # highly variable genes - expects log data
@@ -328,7 +345,7 @@ class GetStats(object):
         return adata
 
     def _run_EGAD_by_batch(self, adata, rank_standardized = False, 
-        batch_column = ['run_id','exp_id','samp_id','proj_id','batch'] ):
+        batch_column = ['run_id','exp_id','samp_id','proj_id','batch','class_predicted','subclass_predicted'] ):
 
         # XXX memory intensive for datasets with large number of cells.
         # build the pairwise distance matrix
@@ -352,30 +369,57 @@ class GetStats(object):
                 go[id] = adata.obs[col] == id
         go = go.reset_index(drop=True)   
         # batches should contain as least 10 cells
-        # and no more that 75%  of all cells 
+        # and no more that 90%  of all cells 
         go = go.T.drop_duplicates().T
-        res = run_egad(go, nw,  nFold=3, min_count=10, max_count=np.ceil(adata.shape[0] * .75 ) )
+        res = run_egad(go, nw,  nFold=3, min_count=5, max_count=np.ceil(adata.shape[0] * .95 ) )
         
         adata.uns['EGAD'] = res
         return( adata)
-
+    
     def _run_MetaMarkers(self, h5path):
         '''
         h5path should be saved in the temp directory before this stage. 
         After MetaMarkers, move completed h5ad file to output/
         '''
 
-        scriptpath = 'get_markers.R'    # should already be in path
+        scriptpath = '/home/johlee/git/scqc/scqc/get_markers.R'    # should already be in path
         # should have only one outpath per dataset. 
         # TODO verify file does not already exist. Think about what to do if it does
-        outpath = f'{self.outputdir}/{os.path.basename(h5path)}'
+        # outpath = f'{self.outputdir}/{os.path.basename(h5path)}'
         cmd = ['Rscript', f'{scriptpath}',
-               '--marker_direc', f'{self.resourcedir}',
-               '--solo_out_dir', f'{h5path}',
-               '--max_rank', f'{self.max_rank}',
-               '--outprefix', f'{outpath}']
+               '--class_markerset', f'{self.class_markerset}',
+               '--subclass_markerset', f'{self.subclass_markerset}',
+               '--h5path', f'{h5path}',
+               '--max_rank', f'{self.max_rank}'
+               ] #'--outprefix', f'{outpath}'
         subprocess.run(cmd)
-        
+
+        tmp_path = h5path.replace('.h5ad','.tsv')
+        return(tmp_path)
+    
+
+# class MetaMarker(object):
+    
+#     def __init__(self, config):
+#         self.log = logging.getLogger('statistics')
+#         self.config = config
+#         self.species = self.config.get('statistics', 'species')
+#         self.outputdir = os.path.expanduser(
+#             self.config.get('statistics', 'outputdir'))
+#         self.resourcedir = os.path.expanduser(
+#             self.config.get('statistics', 'resourcedir'))
+#         self.metadir = os.path.expanduser(
+#             self.config.get('statistics', 'metadir'))
+#         self.tempdir = os.path.expanduser(
+#             self.config.get('statistics', 'tempdir'))
+
+#         # metamarker params
+#         self.class_markerset =  os.path.expanduser(
+#             self.config.get('metamarker', 'class_markerset'))
+#         self.subclass_markerset =  os.path.expanduser(
+#             self.config.get('metamarker', 'subclass_markerset'))
+#         self.max_rank = self.config.get('metamarker', 'max_rank')
+
 
 if __name__ == "__main__":
 

@@ -178,7 +178,7 @@ if __name__ == "__main__":
     if args.assign:
         dq = Queue()
         for solooutdir in args.soloutdirs:
-            fq = AssignCellType(cp, solooutdir, outlist)
+            fq = AssignCellType(cp, solooutdir)
             dq.put(fq)
         logging.debug(f'created queue of {dq.qsize()} items')
         md = int(cp.get('sra', 'max_downloads'))

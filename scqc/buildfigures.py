@@ -85,7 +85,13 @@ class BuildFigures(object):
                     'Run_ID':adata.obs['run_id'],
                     'Experiment_ID':adata.obs['exp_id'],
                     'Sample_ID':adata.obs['samp_id'],
-                    'Cell_ID':adata.obs['cell_id']
+                    'Cell_ID':adata.obs['cell_id'],
+                    'Class_enrichment':adata.obs['class_enrichment'],
+                    'Class_predicted':adata.obs['class_predicted'],
+                    'Class_score':adata.obs['class_score'],
+                    'Subclass_enrichment':adata.obs['subclass_enrichment'],
+                    'Subclass_predicted':adata.obs['subclass_predicted'],
+                    'Subclass_score':adata.obs['subclass_score']
                     })
 
             for kw in umapdf.columns[2:] :
