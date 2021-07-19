@@ -203,7 +203,7 @@ assign_cell_type <- function(dataset, top_markers, group_assignment = NULL ) {
     ct_enrichment = MetaMarkers::compute_marker_enrichment(ct_scores)
     ct_pred = MetaMarkers::assign_cells(ct_scores , group_assignment = group_assignment ) 
 
-    return(ct_pred)
+    return(list(ct_pred , ct_scores, ct_enrichment))
 
 }
 
@@ -225,9 +225,32 @@ annotate_execute <- function( h5path, class_ms ='class_marker_set.csv.gz',
         names(top_markers) = names(marker_sets)
         cpmcounts = MetaMarkers::convert_to_cpm(dataset) 
 
-        class_pred = assign_cell_type(cpmcounts,top_markers$class,  group_assignment = NULL)
-        subclass_pred = assign_cell_type(cpmcounts,top_markers$subclass,  group_assignment=class_pred$predicted)
-        # cluster_pred = assign_cell_type(logcounts,top_markers$cluster,  group_assignment=subclass_pred$predicted)
+        class_stats = assign_cell_type(cpmcounts,top_markers$class,  group_assignment = NULL)
+        class_pred = class_stats[[1]]
+        class_scores = class_stats[[2]]
+        class_enrichment = class_stats[[3]]
+
+        subclass_stats = assign_cell_type(cpmcounts,top_markers$subclass,  group_assignment=class_pred$predicted)
+        subclass_pred = subclass_stats[[1]]
+        subclass_scores = subclass_stats[[2]]
+        subclass_enrichment = subclass_stats[[3]]
+        
+
+        dfs2merge = list(class_scores_=class_scores,class_enrichment_=class_enrichment,
+                subclass_scores_=subclass_scores,subclass_enrichment_=subclass_enrichment )
+        i=1
+        for (df in dfs2merge) {
+            
+            tmp = as.data.frame(t(df))
+            colnames(tmp) = paste0(names(dfs2merge)[i] , colnames(tmp) )
+            tmp['cell'] = rownames(tmp)
+            if (i ==1){
+                mergeddf = tmp
+            } else{
+                mergeddf = merge(mergeddf, tmp, by ='cell'  )
+            }
+            i = i+1 
+        }
 
         colnames(class_pred) = paste0('class_',colnames(class_pred))
         class_pred$cell = rownames(class_pred)
@@ -235,25 +258,18 @@ annotate_execute <- function( h5path, class_ms ='class_marker_set.csv.gz',
         subclass_pred$cell = rownames(subclass_pred)
         
         preds = merge(class_pred, subclass_pred ,by='cell',sort=FALSE)
-        
+        mergeddf = merge(mergeddf, preds ,by='cell',sort=FALSE)
 
         # tried to save directly to h5ad file, but sc.read_h5ad doesn't recognize the type
         # save results to a temp file
         tmp_path = sub('.h5ad','.tsv',h5path)
-        write.table(preds, file=tmp_path,sep="\t" )
+        write.table(mergeddf, file=tmp_path,sep="\t" )
         # for (cn in colnames(preds)[2:ncol(preds)]){
         #     tryCatch({
         #         rhdf5::h5write(obj = preds[,cn] , file = h5path, name = paste0('obs/',cn) )
         #     }, error = function(e){warning(e)})
         # }
     }
-        # fname = paste0(outprefix,"_MM_assignments.csv")
-        # tmp = strsplit(fname,"/")
-        # tmp = paste(tmp[[1]][1:(length(tmp[[1]])-1)],collapse ="/")
-        # dir.create(tmp, recursive = TRUE )
-        # # append if file exists
-        # write.table(preds, fname ,append=TRUE,row.names=FALSE, col.names = !file.exists(fname))
-
 
 }
 
