@@ -2,6 +2,7 @@ import gzip
 import os
 import logging
 import shutil
+import subprocess
 import tempfile
 import traceback
 import urllib
@@ -127,6 +128,62 @@ def listmerge(list1, list2):
     dl.sort()
     logging.debug(f"merged has length {len(dl)}")
     return dl
+
+def download_wget(srcurl, destpath, finalname=None, overwrite=True, decompress=True, rate='1M'):
+    """
+    GNU Wget 1.20.1, a non-interactive network retriever.
+    Usage: wget [OPTION]... [URL]...
+    
+    Startup:
+      -V,  --version                   display the version of Wget and exit
+      -h,  --help                      print this help
+      -v,  --verbose                   be verbose (this is the default)
+      -nv, --no-verbose                turn off verboseness, without being quiet
+           --report-speed=TYPE         output bandwidth as TYPE.  TYPE can be bits
+      -t,  --tries=NUMBER              set number of retries to NUMBER (0 unlimits)
+           --retry-connrefused         retry even if connection is refused
+           --retry-on-http-error=ERRORS    comma-separated list of HTTP errors to retry
+      -O,  --output-document=FILE      write documents to FILE
+      -nc, --no-clobber                skip downloads that would download to
+                                         existing files (overwriting them)
+    
+      -c,  --continue                  resume getting a partially-downloaded file
+           --progress=TYPE             select progress gauge type
+           --show-progress             display the progress bar in any verbosity mode
+      -N,  --timestamping              don't re-retrieve files unless newer than
+                                         local
+           --no-if-modified-since      don't use conditional if-modified-since get
+                                         requests in timestamping mode
+           --no-use-server-timestamps  don't set the local file's timestamp by
+                                         the one on the server
+       -T,  --timeout=SECONDS           set all timeout values to SECONDS
+           --dns-timeout=SECS          set the DNS lookup timeout to SECS
+           --connect-timeout=SECS      set the connect timeout to SECS
+           --read-timeout=SECS         set the read timeout to SECS
+      -w,  --wait=SECONDS              wait SECONDS between retrievals
+           --waitretry=SECONDS         wait 1..SECONDS between retries of a retrieval
+           --random-wait               wait from 0.5*WAIT...1.5*WAIT secs between retrievals
+    
+           --limit-rate=RATE           limit download rate e.g. 1M  1 MB/s      
+    """
+    logging.debug(f'wget file {srcurl}')
+    cmd = ['wget',
+           '--no-verbose',
+           '--no-use-server-timestamps',
+           '--limit-rate', rate,
+           '--continue', 
+           '-O', f'{destpath}',
+           f'{srcurl}']
+    cmdstr = " ".join(cmd)
+    logging.debug(f"wget command: {cmdstr} running...")
+    cp = subprocess.run(cmd)
+    logging.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {type(cp.returncode)} ")
+    if str(cp.returncode) == '0':
+        logging.info(f'downloaded {destpath} successfully.')
+    else:
+        logging.error(f'non-zero return code for src {srcurl}')
+    return cp.returncode
+    
 
 
 def download_ftpurl(srcurl, destpath, finalname=None, overwrite=True, decompress=True):

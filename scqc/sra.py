@@ -881,7 +881,7 @@ class Download(object):
         self.metadir = os.path.expanduser(self.config.get('sra', 'metadir'))
         self.cachedir = os.path.expanduser(self.config.get('sra', 'cachedir'))
         self.dltool = os.path.expanduser(self.config.get('download', 'dltool'))
-
+        self.max_rate = os.path.expanduser(self.config.get('download', 'max_rate'))
         rdf_file = f'{self.metadir}/runs.tsv'
         self.rdf = load_df(rdf_file)        
         self.log.info(f'Download initialized. ')
@@ -889,30 +889,43 @@ class Download(object):
 
     def execute(self, proj_id):
         ddf = self.rdf[self.rdf.proj_id == proj_id ]
+        rundict = dict(zip(ddf.run_id, ddf.file_url))
         runlist = list(ddf.run_id)
         self.log.debug(f'{len(runlist)} runs in project {proj_id}')
         totaldiskspace = ddf.file_size.sum() * 1e-9
         self.log.debug(f'Expected disk space for SRA files for {proj_id} is {totaldiskspace} GB')
         donelist = []        
         triedlist = []
+
         
-        for runid in runlist:
-            self.log.debug(f'handling runid {runid}')
-            if self.dltool == 'sra':
-                self.log.debug(f'tool is prefetch. handling runid {runid}')
+        for i, (runid, srcurl) in enumerate(rundict.items()): 
+            if self.dltool == 'sra':        
+                self.log.info(f'tool is sra/prefetch. handling runids')
+                self.log.debug(f'handling runid {runid}')
                 pf = Prefetch(self.config, runid)
                 res = pf.execute()
                 if res is not None:
                     self.log.debug(f'runid {runid} handled successfully.')
-                    donelist.append(res)
-                    triedlist.append(res)
+                    donelist.append(runid)
                 else:
                     self.log.debug(f'runid {runid} failed.')
-                    triedlist.append(res)
-            elif self.dltool == 'pywget':
-                pass
-            
-            
+                triedlist.append(runid)
+    
+            elif self.dltool == 'wget':
+                self.log.info(f'tool is wget. handling file_urls')
+                self.log.debug(f'handling runid {runid} srcurl {srcurl}')
+                destpath = f'{self.cachedir}/{runid}.sra'
+                rc = download_wget(srcurl, destpath, 
+                                   finalname=None, overwrite=True, decompress=True, 
+                                   rate=f'{self.max_rate}')
+                if str(rc) == '0' :
+                    self.log.debug(f'runid {runid} handled successfully.')
+                    donelist.append(runid)
+                else:
+                    self.log.debug(f'runid {runid} failed. rc={rc}')
+                triedlist.append(runid)
+                
+        # determine if we succesfully completed all runs for project.
         diffset = set(donelist).difference(set(runlist))
         self.log.debug(f'diffset is {diffset}')
         if len(diffset) > 0:
