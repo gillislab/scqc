@@ -38,6 +38,7 @@ def summarize(imputepath):
             tech_projnum[tech] = numproj
             
             for proj_id in projlist:
+                pass
                 
             
             

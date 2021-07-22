@@ -1,15 +1,8 @@
-# install brew and add to path - not needed - only for trickle
-# /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-# brew install automake libtool libevent autoconf
-# echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/johlee/.bash_profile
-# eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-
 
 # install conda
 wget https://repo.anaconda.com/miniconda/Miniconda3-py39_4.9.2-Linux-x86_64.sh
 bash Miniconda3-latest-Linux-x86_64.sh
 bash ~/.bash_profile 
-
 
 conda create -n scqc python=3.8
 conda activate scqc
@@ -27,12 +20,9 @@ pip install scanpy
 # install R packages on conda
 conda install -c conda-forge r-base r-essentials r-cairo r-uwot
 
-
 R -e "install.packages('devtools',repos='http://cran.us.r-project.org')"
 R -e "install.packages('BiocManager',repos='http://cran.us.r-project.org')"
 R -e "devtools::install_github('gillislab/MetaMarkers')"
-
-
 
 cd  $CONDA_PREFIX
 
@@ -56,20 +46,5 @@ vdb-config --interactive
 cd -
 
 
-# wget https://github.com/alexdobin/STAR/archive/2.7.8a.tar.gz
-# tar -xzf 2.7.8a.tar.gz
-# cd STAR-2.7.8a/source
-# make STAR
-# export PATH=$PATH:$PWD/STAR-2.7.8a/bin/Linux_x86_64
-
-
-# FastQC - not doing
-# wget https://www.bioinformatics.babraham.ac.uk/projects/fastqc/fastqc_v0.11.9.zip
-# unzip fastqc_v0.11.9.zip
-# cd FastQC
-# chmod 755 fastqc
-# ./fastqc -t 30  SRR14633482.fastq 
-
-# tickle for traffic shaping of prefetch: https://github.com/AndreasKoelbl/trickle
 
 
