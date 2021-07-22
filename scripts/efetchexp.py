@@ -18,30 +18,32 @@ from bs4 import BeautifulSoup as bs
 sra_efetch='https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=sra'
 query_sleep = 0.5
 
-def query_experiment_package_set( xid):
+def query_experiment_package_set(exp_id, max_retries = 4):
     """
     Query XML data for this experiment ID. 
 
     """
     log = logging.getLogger()
     xmldata = None
+    tries = 0
     try:
-        url = f"{sra_efetch}&id={xid}"
+        url = f"{sra_efetch}&id={exp_id}"
         log.debug(f"fetch url={url}")
 
-        while True:
+        while tries < max_retries:
             r = requests.post(url)
             if r.status_code == 200:
                 xmldata = r.content.decode()
-                log.debug(f'good HTTP response for {xid}')
+                log.debug(f'good HTTP response for {exp_id}')
                 break
             else:
-                log.warn(
-                    f'bad HTTP response for id {xid}. retry in 10s')
+                log.warning(
+                    f'bad HTTP response for id {exp_id}. retry in 10s')
+                tries += 1
                 time.sleep(10)
 
     except Exception as ex:
-        log.error(f'problem with NCBI id {xid}')
+        log.error(f'problem with NCBI id {exp_id}')
         logging.error(traceback.format_exc(None))
 
     finally:

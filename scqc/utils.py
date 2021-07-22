@@ -30,11 +30,15 @@ def readlist(filepath):
         try:
             with open(filepath, 'r') as f:
                 for line in f:
-                    idx = line.find('#')
-                    if idx == -1:
-                        flist.append(line.strip())
-                    elif idx > 0:
-                        flist.append(line[:idx].strip())
+                    line = line.strip()
+                    if len(line) > 0:
+                        idx = line.find('#')
+                        if idx == -1:
+                            flist.append(line.strip())
+                        elif idx > 0:
+                            flist.append(line[:idx].strip())
+                    else:
+                        pass   # empty line
                         
             logging.debug(f'got list with {len(flist)} items.')
             return flist
