@@ -731,6 +731,8 @@ class Impute(object):
                 srrid]      # don't assume that sra file exists. most likely wont
 
             # TODO suppress messages from cmd
+            cmdstr = " ".join(cmd)
+            logging.debug(f"fastq-dump command: {cmdstr} running...")
             cp = subprocess.Popen(cmd, stdout=subprocess.PIPE)
             dat = cp.stdout.read().decode("utf-8").split('\n')[:-1]
 
