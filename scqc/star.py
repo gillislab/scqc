@@ -76,9 +76,6 @@ class AlignReads(object):
         
         self.species = self.config.get('star', 'species')
         
-        self.outputdir= os.path.expanduser(
-            self.config.get('star', 'outputdir'))
-        # self.outlist = outlist
         self.ncore_align = self.config.get('star', 'ncore_align')
 
 
@@ -123,13 +120,12 @@ class AlignReads(object):
                         read1 = f'{self.tempdir}/{df.read1[row]}' # biological cDNA
                         read2 = f'{self.tempdir}/{df.read2[row]}' # technical CBarcode + UMI
                         # saves to disk
-                        solooutdir = self._run_star_10x(srrid, tech, read1, read2)
+                        (solooutdir, finallog) = self._run_star_10x(srrid, tech, read1, read2)
                         # move solo out directories
                         if os.path.isdir( solooutdir ):
                             os.remove(read1)
                             os.remove(read2)   
                         self._clean_up_tempdir(proj_id, solooutdir )
-    
                 else :
                     self.log.warning(
                         f'{tech} is not yet supported for STAR alignment.')
@@ -301,13 +297,13 @@ class AlignReads(object):
 
     def _clean_up_tempdir(self, proj_id,solooutdir):
         try:    # make project specific solo out directories. 
-            os.makedirs(f'{self.outputdir}/{proj_id}')
+            os.makedirs(f'{self.metadir}/{proj_id}')
         except FileExistsError:
             pass
         
         base = os.path.basename(solooutdir)
         dirname = os.path.dirname(solooutdir)
-        newdirname = f'{self.outputdir}/{proj_id}/{base}'
+        newdirname = f'{self.metadir}/{proj_id}/{base}'
         try :
             os.rename(solooutdir,newdirname)
         except FileNotFoundError :
@@ -315,7 +311,7 @@ class AlignReads(object):
 
         
         starlog = base.replace('Solo.out','Log.final.out')
-        newdirname = f'{self.outputdir}/{proj_id}/{starlog}'
+        newdirname = f'{self.metadir}/{proj_id}/{starlog}'
         try:
             os.rename(f'{dirname}/{starlog}',newdirname)     
         except FileNotFoundError :

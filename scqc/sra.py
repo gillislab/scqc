@@ -591,11 +591,7 @@ class Impute(object):
         self.log = logging.getLogger('impute')
         self.config = config
         self.metadir = os.path.expanduser(self.config.get('impute', 'metadir'))
-        # self.cachedir = os.path.expanduser(
-        #     self.config.get('impute', 'cachedir'))
-        # self.sra_esearch = self.config.get('sra', 'sra_esearch')
-        # self.sra_efetch = self.config.get('sra', 'sra_efetch')
-        # self.sleep = float(self.config.get('sra', 'sleep'))
+
 
     def execute(self, proj_id):
         """
@@ -720,7 +716,7 @@ class Impute(object):
         runs = df.loc[ df.tech == '10x','run_id']
         if len(runs)  == 0:
             self.log.debug('no 10x runs imputable') 
-            
+           
             return pd.DataFrame(columns=['run_id' ,'tech_version','read1','read2','exp_id','proj_id', 'taxon'])
 
         allRows = []
@@ -731,12 +727,6 @@ class Impute(object):
                 '--columns', 'READ_LEN',
                 srrid]
 
-            # cmd = ['fastq-dump',
-            #     '--maxSpotId', '1',
-            #     '--split-spot',
-            #     '--stdout',
-            #     '--log-level', f'{loglev}',
-            #     srrid]      # don't assume that sra file exists. most likely wont
 
             # TODO suppress messages from cmd
             cmdstr = " ".join(cmd)
@@ -941,86 +931,6 @@ class Download(object):
         else:
             self.log.info(f'download successful for proj_id {proj_id}')
             return (proj_id, proj_id)    
-
-                    
-
-class Prefetch(object):
-    '''
-    Simple wrapper for NCBI prefetch
-    Usage: prefetch [ options ] [ accessions(s)... ]
-    Parameters:  
-        accessions(s)    list of accessions to process
-    Options:
-      -T|--type <file-type>            Specify file type to download. Default: sra
-      -N|--min-size <size>             Minimum file size to download in KB
-                                        (inclusive).
-      -X|--max-size <size>             Maximum file size to download in KB
-                                         (exclusive). Default: 20G
-      -f|--force <no|yes|all|ALL>      Force object download - one of: no, yes,
-                                         all, ALL. no [default]: skip download if
-                                         the object if found and complete; yes:
-                                         download it even if it is found and is
-                                         complete; all: ignore lock files (stale
-                                         locks or it is being downloaded by
-                                         another process - use at your own
-                                         risk!); ALL: ignore lock files, restart
-                                         download from beginning
-      -p|--progress                    Show progress
-      -r|--resume <yes|no>             Resume partial downloads - one of: no, yes
-                                         [default]
-      -C|--verify <yes|no>             Verify after download - one of: no, yes
-                                         [default]
-      -c|--check-all                   Double-check all refseqs
-      -o|--output-file <file>          Write file to <file> when downloading
-                                         single file
-      -O|--output-directory <directory>
-                                       Save files to <directory>/
-         --ngc <path>                  <path> to ngc file
-         --perm <path>                 <path> to permission file
-         --location <location>         location in cloud
-         --cart <path>                 <path> to cart file
-      -V|--version                     Display the version of the program
-      -v|--verbose                     Increase the verbosity of the program
-                                         status messages. Use multiple times for
-                                         more verbosity.
-      -L|--log-level <level>           Logging level as number or enum string.
-                                         One of
-                                         (fatal|sys|int|err|warn|info|debug) or
-                                         (0-6) Current/default is warn
-         --option-file file            Read more options and parameters from the
-                                         file.
-      -h|--help                        print this message
-
-
-    '''
-
-    def __init__(self, config, runid):
-        self.log = logging.getLogger('sra')
-        self.config = config
-        self.runid = runid
-        self.cachedir = os.path.expanduser(self.config.get('sra', 'cachedir'))
-        self.log.debug(f'Prefetch runid {runid} initted.')
-
-
-    def execute(self):
-        self.log.debug(f'prefetch id {self.runid}')
-        loglev = LOGLEVELS[self.log.getEffectiveLevel()]
-        cmd = ['prefetch',
-               '-X', '100G',
-               '--resume', 'yes',
-               '-O', f'{self.cachedir}/',
-               '--log-level', f'{loglev}',
-               f'{self.runid}']
-        cmdstr = " ".join(cmd)
-        logging.debug(f"prefetch command: {cmdstr} running...")
-        cp = subprocess.run(cmd)
-        self.log.debug(
-            f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
-        if str(cp.returncode) == "0":
-            return self.runid
-        else:
-            self.log.error(f'non-zero return code for runid {self.runid}')
-            return None
 
 
 # inputs are the runs completed by prefetch
