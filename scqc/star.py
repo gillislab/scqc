@@ -31,14 +31,26 @@ gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 
 from scqc.utils import *
+from scqc.sra import FasterqDump
+
 # inputs should be runs  identified as 'some10x'
-# fastq files should already downloaded.
+# .sra files should already downloaded.
 # srrid and species needs to be passed in from the dataframe
 # can pass star parameters from config
 
 
 # TODO queue 
-# TODO outlists
+
+class UnsupportedTechnologyException(Exception):
+    """
+    Thrown when run technology is neither 10x nor SmartSeq
+    """
+class FasterqFailureException(Exception):
+    """
+    Thrown when run technology is neither 10x nor SmartSeq
+    """
+
+
 
 class AlignReads(object):
     '''
@@ -55,11 +67,13 @@ class AlignReads(object):
 
         self.tempdir = os.path.expanduser(
             self.config.get('star', 'tempdir'))
-    
+  
         self.metadir= os.path.expanduser(
             self.config.get('star', 'metadir'))
+        
         self.resourcedir = os.path.expanduser(
             self.config.get('star', 'resourcedir'))
+        
         self.species = self.config.get('star', 'species')
         
         self.outputdir= os.path.expanduser(
@@ -68,47 +82,79 @@ class AlignReads(object):
         self.ncore_align = self.config.get('star', 'ncore_align')
 
 
-    def execute(self,srpid):
+    def execute(self, proj_id):
         # get relevant metadata
-        rdf = self._get_meta_data(srpid)
-        self.log.debug(f'initializing STAR alignment for {srpid}')
-
-        # split by technology and parses independently based on tech
-        for tech, df in rdf.groupby(by = "tech_version") :
-            # smartseq runs
-            if tech =="smartseq":
-                # build the manifest
-                (manipath, manifest) = self._make_manifest(srpid,df) 
-                # run star
-                if manifest is not None :   # redundant ish
-                    self.log.debug(f'Starting smartseq alignment for {srpid}')
-                    self._run_star_smartseq(srpid,manipath)
+        rdf = self._get_meta_data(proj_id)
+        self.log.debug(f'initializing STAR alignment for {proj_id}')
+        done = None
+        seen = proj_id
+        try:
+            # stage in all runs for proj_id
+            runlist  = list( rdf[ rdf.proj_id==proj_id ].run_id.unique()  ) 
+            runlength = len(runlist)
+            i = 0
+            for run_id in runlist:
+                i += 1
+                fqd = FasterqDump(self.config, run_id)
+                rc = fqd.execute()
+                if str(rc)!= '0':
+                    raise FasterqFailureException(f'runid {run_id}')
+                else:
+                    self.log.info(f'runid {run_id}  [{i}/{runlength}] handled successfully.')
+            self.log.info(f'successfully extracted all {runlength} fastqs for project {proj_id}.')
             
-            # 10x runs
-            elif tech.startswith('10xv'): 
-
-                #    run star for each run
-                for row in range(df.shape[0]):
-                    srrid = df.run_id[row]
-                    read1 = f'{self.tempdir}/{df.read1[row]}'
-                    read2 = f'{self.tempdir}/{df.read2[row]}'
-                    # saves to disk
-                    solooutdir = self._run_star_10x(srrid, tech, read1,read2)
-                    # move solo out directories
-                    if os.path.isdir( solooutdir ):
-                        os.remove(read1)
-                        os.remove(read2)
-
-                    self._clean_up_tempdir(srpid, solooutdir )
-
-            else :
-                self.log.debug(
-                    f'{tech} is not yet supported for STAR alignment.')
-                # log... technology not yet supported
-                pass
+            # split by technology and parses independently based on tech
+            for tech, df in rdf.groupby(by = "tech_version") :
+                # smartseq runs
+                if tech =="smartseq":
+                    # build the manifest
+                    (manipath, manifest) = self._make_manifest(proj_id, df) 
+                    # run star
+                    if manifest is not None :   # redundant ish
+                        self.log.debug(f'Starting smartseq alignment for {proj_id}')
+                        self._run_star_smartseq(proj_id, manipath)
+                
+                # 10x runs
+                elif tech.startswith('10xv'): 
+    
+                    #    run star for each run
+                    for row in range(df.shape[0]):
+                        srrid = df.run_id[row]
+                        read1 = f'{self.tempdir}/{df.read1[row]}' # biological cDNA
+                        read2 = f'{self.tempdir}/{df.read2[row]}' # technical CBarcode + UMI
+                        # saves to disk
+                        solooutdir = self._run_star_10x(srrid, tech, read1, read2)
+                        # move solo out directories
+                        if os.path.isdir( solooutdir ):
+                            os.remove(read1)
+                            os.remove(read2)   
+                        self._clean_up_tempdir(proj_id, solooutdir )
+    
+                else :
+                    self.log.warning(
+                        f'{tech} is not yet supported for STAR alignment.')
+                    # log... technology not yet supported
+                    raise UnsupportedTechnologyException(f'For project {proj_id}')
+                
+                # finally, clean up fastq files 
             
-            # finally, clean up fastq files 
+            done = proj_id
+        
+        except Exception as ex:
+            self.log.error(f'problem with NCBI proj_id {proj_id}')
+            logging.error(traceback.format_exc(None))
+            
+        finally:
+            return (done, seen)
 
+
+     
+        
+        
+        
+        
+        
+        
 
     # run|tech|read1|read2|exp|samp|proj|taxon|batch  dataframe in impute. 
     #       taxon to filter
@@ -118,26 +164,26 @@ class AlignReads(object):
     #           read2 should be technical (umi+cb)
     #       or for Smartseq manifest. order of reads is irrelevent.
     #       batch will be used by stats
-    def _get_meta_data(self,srpid ):
+    def _get_meta_data(self,proj_id ):
         '''
-        example srpid="SRP114926"
+        example proj_id="SRP114926"
         '''
 
         impute = pd.read_csv(f'{self.metadir}/impute.tsv',sep="\t" ,index_col=0)
 
         # filter to include only requested project id
-        impute = impute.loc[ impute.proj_id==srpid ,:]
+        impute = impute.loc[ impute.proj_id==proj_id ,:]
 
         # filter to include only requested species and only keep run ids
         impute = impute.loc[ impute.taxon == int(spec_to_taxon(self.species)) ,:].reset_index(drop=True)
 
-        return (impute)
+        return(impute)
 
     # smart seq scripts
     #TODO test smartseq
-    def _make_manifest(self,srpid,run_data):
+    def _make_manifest(self, proj_id, run_data):
         # search for all fastq files with <run>_[0-9].fastq
-        manipath = f"{self.tempdir}/{srpid}_smartseq_manifest.tsv"
+        manipath = f"{self.tempdir}/{proj_id}_smartseq_manifest.tsv"
 
         # runid = runlist[1]
         manifest = run_data[['read1','read2','run_id','tech_version']]
@@ -147,7 +193,6 @@ class AlignReads(object):
         manifest['read1'] =  self.tempdir+'/'+manifest['read1'].astype(str)
         manifest['read2'] =  self.tempdir+'/'+manifest['read2'].astype(str)
         
-        
         # overwrite
         if len(manifest) > 0 :
             manifest.to_csv(manipath, sep="\t", header=None, index=False, mode="w")
@@ -156,13 +201,14 @@ class AlignReads(object):
 
         return(manipath, manifest)
 
-    def _run_star_smartseq(self,srpid,manipath):
+
+    def _run_star_smartseq(self, proj_id, manipath):
 
         ss_params = {"solo_type": "SmartSeq",
                      "soloUMIdedup": "Exact",
                      "soloStrand": "Unstranded"}
 
-        out_file_prefix = f'{self.tempdir}/{srpid}_smartseq_'
+        out_file_prefix = f'{self.tempdir}/{proj_id}_smartseq_'
         cmd = ['STAR',
                '--runMode', 'alignReads',
                '--runThreadN', f'{self.ncore_align}',
@@ -185,6 +231,7 @@ class AlignReads(object):
 
         return( f'{out_file_prefix}Solo.out', 
                 f'{out_file_prefix}Log.final.out')
+    
     # 10x scripts
     def _get_10x_STAR_parameters(self, tech):
         d = {
@@ -252,15 +299,15 @@ class AlignReads(object):
         return( f'{self.tempdir}/{srrid}_{tech}_Solo.out', 
                 f'{self.tempdir}/{srrid}_{tech}_Log.final.out')
 
-    def _clean_up_tempdir(self, srpid,solooutdir):
+    def _clean_up_tempdir(self, proj_id,solooutdir):
         try:    # make project specific solo out directories. 
-            os.makedirs(f'{self.outputdir}/{srpid}')
+            os.makedirs(f'{self.outputdir}/{proj_id}')
         except FileExistsError:
             pass
         
         base = os.path.basename(solooutdir)
         dirname = os.path.dirname(solooutdir)
-        newdirname = f'{self.outputdir}/{srpid}/{base}'
+        newdirname = f'{self.outputdir}/{proj_id}/{base}'
         try :
             os.rename(solooutdir,newdirname)
         except FileNotFoundError :
@@ -268,7 +315,7 @@ class AlignReads(object):
 
         
         starlog = base.replace('Solo.out','Log.final.out')
-        newdirname = f'{self.outputdir}/{srpid}/{starlog}'
+        newdirname = f'{self.outputdir}/{proj_id}/{starlog}'
         try:
             os.rename(f'{dirname}/{starlog}',newdirname)     
         except FileNotFoundError :

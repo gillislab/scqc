@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 import traceback
 import urllib
+import datetime as dt
+
 import numpy as np
 from scipy import sparse, stats
 from ftplib import FTP
@@ -43,7 +45,7 @@ def readlist(filepath):
         return []
 
 
-def writelist(filepath, dlist):
+def writelist(filepath, dlist, mode=0o644):
     logging.info(f"writing list length={len(dlist)} to file='{filepath}'")
     rootpath = os.path.dirname(filepath)
     basename = os.path.basename(filepath)
@@ -59,6 +61,7 @@ def writelist(filepath, dlist):
                 f.write(f"{item}\n")
                 nlines += 1
         os.rename(tfname, filepath)
+        os.chmod(filepath, mode)
         logging.info(f"wrote {nlines} to {filepath}")
     except Exception as ex:
         logging.error(traceback.format_exc(None))
@@ -76,7 +79,7 @@ def load_df(filepath):
 
 
 
-def merge_write_df(newdf, filepath):
+def merge_write_df(newdf, filepath,  mode=0o644):
     """
     Reads existing, merges new, drops duplicates, writes to temp, renames temp. 
     """
@@ -100,8 +103,8 @@ def merge_write_df(newdf, filepath):
                                          text=True)
         logging.debug(f"made temp {tfname}")
         df.to_csv(tfname, sep='\t')
-
         os.rename(tfname, filepath)
+        os.chmod(filepath, mode)
         logging.info(f"wrote df to {filepath}")
 
     except Exception as ex:
@@ -131,6 +134,9 @@ def listmerge(list1, list2):
 
 def download_wget(srcurl, destpath, finalname=None, overwrite=True, decompress=True, rate='1M'):
     """
+    
+    
+    
     GNU Wget 1.20.1, a non-interactive network retriever.
     Usage: wget [OPTION]... [URL]...
     
@@ -176,15 +182,36 @@ def download_wget(srcurl, destpath, finalname=None, overwrite=True, decompress=T
            f'{srcurl}']
     cmdstr = " ".join(cmd)
     logging.debug(f"wget command: {cmdstr} running...")
-    cp = subprocess.run(cmd)
+    
+    start = dt.datetime.now()
+    cp = subprocess.run(cmd, 
+                        universal_newlines=True, 
+                        stdout=subprocess.PIPE, 
+                        stderr=subprocess.PIPE)
+    end = dt.datetime.now()
+    elapsed =  end - start
     logging.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {type(cp.returncode)} ")
     if str(cp.returncode) == '0':
-        logging.info(f'downloaded {destpath} successfully.')
+        logging.debug(f"got stderr: {cp.stderr}")
+        logging.debug(f"got stdout: {cp.stdout}")
+        if len(cp.stderr) > 10:
+            dlbytes = parse_wget_output_bytes(cp.stderr)
+            logging.info(f'downloaded {dlbytes} bytes {destpath} successfully, in {elapsed.seconds} seconds. ')
+        else:
+            logging.info(f'file already downloaded.')
     else:
         logging.error(f'non-zero return code for src {srcurl}')
     return cp.returncode
-    
 
+def parse_wget_output_bytes(outstr):
+    """
+    E.g. 2021-07-20 14:33:09 URL:https://sra-pub-run-odp.s3.amazonaws.com/sra/SRR5529542/SRR5529542 [17019750/17019750] -> "SRR5529542.sra" [1]
+    """
+    logging.debug(f'handling stderr string {outstr}')    
+    fields = outstr.split()
+    bstr = fields[3][1:-1]
+    dlbytes = int(bstr.split('/')[0])
+    return dlbytes
 
 def download_ftpurl(srcurl, destpath, finalname=None, overwrite=True, decompress=True):
     """

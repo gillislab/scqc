@@ -27,6 +27,7 @@ from queue import Queue, Empty
 from requests.exceptions import ChunkedEncodingError
 
 import xml.etree.ElementTree as et
+import datetime as dt
 import pandas as pd
 import numpy as np
 
@@ -221,20 +222,20 @@ class Query(object):
         self.log.debug(f'expidset len={len(expidset)}')
         return expidset
 
-    def execute(self, projectid):
+    def execute(self, proj_id):
         """
-        For projectid:
+        For proj_id:
             Perform query, get ids, fetch for each id, parse XML response. 
             Put project and run info in project_metadata.tsv and project_runs.tsv
             Put completed project ids into query-donelist.txt
 
         """
-        self.log.info(f'handling projectid {projectid}')
+        self.log.info(f'handling proj_id {proj_id}')
         try:
-            pdf = query_project_metadata(projectid)
+            pdf = query_project_metadata(proj_id)
             explist = list(pdf.Experiment)
             self.log.info(
-                f'projectid {projectid} has {len(explist)} experiments.')
+                f'proj_id {proj_id} has {len(explist)} experiments.')
             proj_rows = []
             samp_rows = []
             exp_rows = []
@@ -280,14 +281,14 @@ class Query(object):
             merge_write_df(edf, f'{self.metadir}/experiments.tsv')
             merge_write_df(rdf, f'{self.metadir}/runs.tsv')
 
-            self.log.info(f'successfully processed project {projectid}')
-            # return projectid only if it has completed successfully.
-            return (projectid, projectid)
+            self.log.info(f'successfully processed project {proj_id}')
+            # return proj_id only if it has completed successfully.
+            return (proj_id, proj_id)
 
         except Exception as ex:
-            self.log.error(f'problem with NCBI projectid {projectid}')
+            self.log.error(f'problem with NCBI proj_id {proj_id}')
             logging.error(traceback.format_exc(None))
-            return(None, projectid)
+            return(None, proj_id)
 
 
     def query_experiment_package_set(self, xid):
@@ -592,22 +593,22 @@ class Impute(object):
         # self.sra_efetch = self.config.get('sra', 'sra_efetch')
         # self.sleep = float(self.config.get('sra', 'sleep'))
 
-    def execute(self, projectid):
+    def execute(self, proj_id):
         """
         XXX if tech is not supported, will return an empty dataframe
-        For projectid:
+        For proj_id:
             Impute technology where possible. 
             Put completed project ids into query-donelist.txt
             examples    - SRP114926 - contains both 10x and smartseq
                         - SRP122508 - contains just 10xv2. 192 runs, 10 exp, 10 samples
         """
-        self.log.info(f'handling projectid {projectid}')
+        self.log.info(f'handling proj_id {proj_id}')
         try:
             # read in experiment file
             expfile = f'{self.metadir}/experiments.tsv'
             edf = load_df(expfile)
             self.log.debug(f'opened experiments DF OK...')
-            edf = edf[edf.proj_id == projectid].reset_index(drop=True) # rename pdf -> edf 
+            edf = edf[edf.proj_id == proj_id].reset_index(drop=True) # rename pdf -> edf 
             self.log.debug(f'got project-specific df: \n{edf}')
             # impute technology  -  exp_id|tech
             idf = self.impute_tech_from_lcp(edf)    
@@ -616,7 +617,7 @@ class Impute(object):
             # match run to tech
             runfile = f'{self.metadir}/runs.tsv'
             rdf = load_df(runfile)
-            rdf = rdf[rdf.proj_id == projectid].reset_index(drop=True)
+            rdf = rdf[rdf.proj_id == proj_id].reset_index(drop=True)
             # impute 10x version
             outdf = self.impute_10x_version(idf, rdf)
             self.log.debug(f'got imputed 10x version df: \n{outdf}')
@@ -629,7 +630,7 @@ class Impute(object):
             # append the inferred batch from samples.tsv
             samplefile = f'{self.metadir}/samples.tsv'
             sdf = load_df(samplefile)
-            sdf = sdf[sdf.proj_id == projectid].reset_index(drop=True)
+            sdf = sdf[sdf.proj_id == proj_id].reset_index(drop=True)
 
             #impute batch
             bdf = self.impute_batch(sdf, rdf)
@@ -642,16 +643,16 @@ class Impute(object):
             if outdf.shape[0] > 0:
                 merge_write_df(outdf, f'{self.metadir}/impute.tsv')  
             else :
-                self.log.warn(f'Unable to predict tech for:{projectid} ')
-                return (None, projectid)
+                self.log.warn(f'Unable to predict tech for:{proj_id} ')
+                return (None, proj_id)
             
-            self.log.info(f'completed imputation for proj_id {projectid}')
-            return (projectid, projectid)          
+            self.log.info(f'completed imputation for proj_id {proj_id}')
+            return (proj_id, proj_id)          
 
         except Exception as ex:
-            self.log.error(f'problem with NCBI projectid {projectid}')
+            self.log.error(f'problem with NCBI proj_id {proj_id}')
             logging.error(traceback.format_exc(None))
-            return (None, projectid)
+            return (None, proj_id)
             
     # TODO deal with multiple tech finds
     def impute_tech_from_lcp(self, df):
@@ -896,7 +897,7 @@ class Download(object):
         self.log.debug(f'Expected disk space for SRA files for {proj_id} is {totaldiskspace} GB')
         donelist = []        
         triedlist = []
-
+        runlength = len(runlist)
         
         for i, (runid, srcurl) in enumerate(rundict.items()): 
             if self.dltool == 'sra':        
@@ -905,7 +906,7 @@ class Download(object):
                 pf = Prefetch(self.config, runid)
                 res = pf.execute()
                 if res is not None:
-                    self.log.debug(f'runid {runid} handled successfully.')
+                    self.log.debug(f'runid {runid}  [{i+1}/{runlength}] handled successfully.')
                     donelist.append(runid)
                 else:
                     self.log.debug(f'runid {runid} failed.')
@@ -919,7 +920,7 @@ class Download(object):
                                    finalname=None, overwrite=True, decompress=True, 
                                    rate=f'{self.max_rate}')
                 if str(rc) == '0' :
-                    self.log.debug(f'runid {runid} handled successfully.')
+                    self.log.debug(f'runid {runid} [{i+1}/{runlength}] handled successfully.')
                     donelist.append(runid)
                 else:
                     self.log.debug(f'runid {runid} failed. rc={rc}')
@@ -1043,7 +1044,11 @@ class FasterqDump(object):
         -t|--temp <path>                 path to directory for temp. files
                                          (dflt=current dir.)
         -e|--threads <count>             how many threads to use (dflt=6)
+        -s|--split-spot                  split spots into reads
         -S|--split-files                 write reads into different files
+        -3|--split-3                     writes single reads into special file
+        -f|--force                       force overwrite of existing file(s)
+        --include-technical           explicitly include technical reads
         -v|--verbose                     Increase the verbosity of the program
                                          status messages. Use multiple times for
                                          more verbosity.
@@ -1063,13 +1068,11 @@ class FasterqDump(object):
             self.config.get('download', 'metadir'))
         self.tempdir = os.path.expanduser(
             self.config.get('download', 'tempdir'))
+        self.threads = self.config.get('sra', 'fq_nthreads')
 
-        self.threads = self.config.get('analysis', 'fq_nthreads')
-
-        # self.outlist = outlist
 
     def execute(self):
-        self.log.debug(f'downloading id  {self.srrid}')
+        self.log.debug(f'extracting id {self.srrid}')
 
         loglev = LOGLEVELS[self.log.getEffectiveLevel()]
         # os.system("    + " -O "+fastqdirec+ " "+ fastqprefix +".sra" )
@@ -1077,6 +1080,7 @@ class FasterqDump(object):
         cmd = ['fasterq-dump', 
             '--split-files',
             '--include-technical',
+            '--force', 
             '--threads', f'{self.threads}',
             '--outdir', f'{self.tempdir}/',
             '--log-level', f'{loglev}',
@@ -1085,17 +1089,25 @@ class FasterqDump(object):
 
         cmdstr = " ".join(cmd)
         logging.debug(f"Fasterq-dump command: {cmdstr} running...")
-        cp = subprocess.run(cmd)
-        logging.debug(
-            f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
-        # successful runs - append to outlist.
-        # if str(cp.returncode) == "0":
-        #     self.outlist.append(self.srrid)
+        start = dt.datetime.now()
+        cp = subprocess.run(cmd, 
+                        universal_newlines=True, 
+                        stdout=subprocess.PIPE, 
+                        stderr=subprocess.PIPE)
+        end = dt.datetime.now()
+        elapsed =  end - start
+        logging.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {type(cp.returncode)} ")
+        if str(cp.returncode) == '0':
+            logging.info(f'successfully extracted run {self.srrid}')
+        else:
+            logging.debug(f"got stderr: {cp.stderr}")
+            logging.debug(f"got stdout: {cp.stdout}")
+            logging.error(f' unknown non-zero return code for {self.srrid}')
+        
+        return cp.returncode
 
 
-
-
-def get_runs_for_project(config, projectid):
+def get_runs_for_project(config, proj_id):
     """
     
     """
@@ -1104,9 +1116,24 @@ def get_runs_for_project(config, projectid):
     filepath = f"{metadir}/runs.tsv"
     if os.path.isfile(filepath):
         pdf = pd.read_csv(filepath, sep='\t', index_col=0)
-        return list(pdf[pdf.proj_id == projectid].run_id)
+        return list(pdf[pdf.proj_id == proj_id].run_id)
     else:
         return []
+
+
+def get_runs_for_project(config, proj_id):
+    """
+    
+    """
+    
+    metadir = os.path.expanduser(config.get('sra', 'metadir'))
+    filepath = f"{metadir}/runs.tsv"
+    if os.path.isfile(filepath):
+        pdf = pd.read_csv(filepath, sep='\t', index_col=0)
+        return list(pdf[pdf.proj_id == proj_id].run_id)
+    else:
+        return []
+
 
 
 def query_project_metadata(project_id):
@@ -1304,7 +1331,7 @@ if __name__ == "__main__":
                         type=str,
                         nargs='+',
                         default=None,
-                        help='Perform standard query on supplied projectid')
+                        help='Perform standard query on supplied proj_id')
 
     parser.add_argument('-f', '--fasterq',
                         metavar='run_id',
@@ -1375,9 +1402,9 @@ if __name__ == "__main__":
         # start a queue
         dq = Queue() 
         # loop through each project id 
-        for srpid in args.prefetch:
+        for proj_id in args.prefetch:
             # get the runs associated with that project
-            srrids = get_runs_for_project(cp, srpid)
+            srrids = get_runs_for_project(cp, proj_id)
             for srr in srrids:
                 # download the SRA binary file for the run
                 fq = PrefetchRun(cp, srr)
@@ -1395,8 +1422,8 @@ if __name__ == "__main__":
 
     if args.fasterq is not None:
         dq = Queue()
-        for srpid in args.fasterq:
-            srr_ids = get_runs_for_project(cp, srpid)
+        for proj_id in args.fasterq:
+            srr_ids = get_runs_for_project(cp, proj_id)
             for srr in srr_ids:
                 fq = FasterqDump(cp, srr)
                 dq.put(fq)

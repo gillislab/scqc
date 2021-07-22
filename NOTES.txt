@@ -155,8 +155,6 @@ FLOW/ CONVENTIONS
 	-- projects include experiments without uids. these are filtered from 
 	
 	-- impute technology   
-	
-
 
 -- 'download' uses runids to download .sra files
 	-- extract fastq from .sra files. 

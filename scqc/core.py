@@ -264,14 +264,35 @@ class Download(Stage):
         sra.setup(self.config)
 
 
-class Analysis(Stage):
+class Analyze(Stage):
 
     def __init__(self, config):
-        super(Analysis, self).__init__(config, 'analysis')
+        super(Analyze, self).__init__(config, 'analyze')
         self.log.debug('super() ran. object initialized.')
 
-    def execute(self):
-        pass
+    def execute(self, dolist):
+        '''
+        Perform one run for stage.  
+        '''
+        self.log.debug(f'performing custom execute for {self.name}')
+        self.log.debug(f'got dolist len={len(dolist)}. executing...')
+        outlist = []
+        seenlist = []
+        for projectid in dolist:
+            self.log.debug(f'handling id {projectid}...')
+            try:
+                ar = star.AlignReads(self.config)
+                (out, seen) = ar.execute(projectid)
+                self.log.debug(f'done with {projectid}')
+                if out is not None:
+                    outlist.append(out)
+                if seenlist is not None:
+                    seenlist.append(seen)
+            except Exception as ex:
+                self.log.warning(f"exception raised during project query: {projectid}")
+                self.log.error(traceback.format_exc(None))
+        self.log.debug(f"returning outlist len={len(outlist)} seenlist len={len(seenlist)}")
+        return (outlist, seenlist)
 
     def setup(self):
         star.setup(self.config)
@@ -342,7 +363,7 @@ class CLI(object):
         parser_download = subparsers.add_parser('download',
                                                 help='download daemon')
 
-        parser_analysis = subparsers.add_parser('analysis',
+        parser_analysis = subparsers.add_parser('analyze',
                                                 help='analysis daemon')
 
         parser_analysis = subparsers.add_parser('statistics',
@@ -389,8 +410,8 @@ class CLI(object):
             else:
                 d.run()
 
-        if args.subcommand == 'analysis':
-            d = Analysis(cp)
+        if args.subcommand == 'analyze':
+            d = Analyze(cp)
             if args.setup:
                 d.setup()
             else:

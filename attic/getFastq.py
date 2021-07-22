@@ -219,7 +219,7 @@ def getReadFilesIn_SS(df, fastqstoredir="FASTQ",metaDirec = "MetaData",nCore = 3
         
     try :   # make the directory if not already there.
         os.makedirs(fastqstoredir)
-    except OSError as err: 
+    except OSError as err:
         pass
 
     runList = df.Run.values
