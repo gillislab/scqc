@@ -797,7 +797,7 @@ class Impute(object):
         outdf.loc[df.nreads > 1 ,'read1']  = outdf['run_id']+ '_1.fastq'
         outdf.loc[df.nreads > 1 ,'read2']  = outdf['run_id']+ '_2.fastq'
         outdf.loc[df.nreads == 1 ,'read1'] = outdf['run_id']+ '.fastq'
-        outdf.loc[df.nreads == 1 ,'read1'] = '-'
+        outdf.loc[df.nreads == 1 ,'read2'] = '-'
         tax = rdf[['run_id','exp_id','samp_id','proj_id','taxon']]
 
         outdf = outdf.merge(tax, on='run_id', how='inner') 
