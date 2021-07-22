@@ -744,6 +744,7 @@ class Impute(object):
             cp = subprocess.Popen(cmd, stdout=subprocess.PIPE)
             lengths = cp.stdout.read().decode("utf-8").strip().split(': ')[1].split(', ')
 
+            self.log.debug(f"got {lengths}")
             ind = lengths.index(max(lengths))
 
             # which is the longest? use as cDNA read
@@ -771,6 +772,10 @@ class Impute(object):
                 read_tech = '-'
             else:
                 read_tech = f'{srrid}_{ind2+1}.fastq'
+            
+            if read_tech == read_bio :
+                read_tech = '-'
+                tech = '10x'
             allRows.append([srrid, tech, read_bio, read_tech])
 
         outdf = pd.DataFrame(allRows,columns=['run_id','tech_version','read1','read2'] )

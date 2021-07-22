@@ -5,10 +5,6 @@
 # eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 
 
-# brew packages needed for R packages
-brew install cairo
-
-
 # install conda
 wget https://repo.anaconda.com/miniconda/Miniconda3-py39_4.9.2-Linux-x86_64.sh
 bash Miniconda3-latest-Linux-x86_64.sh
@@ -17,6 +13,9 @@ bash ~/.bash_profile
 
 conda create -n scqc python=3.8
 conda activate scqc
+# update conda if necessary
+conda update -n base -c defaults conda
+
 
 conda install requests pandas ipython scipy wget
 # conda install autoconf automake libtool libevent   # for compiling trickle
