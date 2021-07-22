@@ -234,7 +234,7 @@ class AlignReads(object):
             "10xv1":
                 {
                     "solo_type": "CB_UMI_Simple",
-                    "white_list_path": f'{self.resourcedir}/whitelist_10xv1.txt',
+                    "white_list_path": f'{self.resourcedir}/whitelist_10xv1',
                     "CB_length": "14",
                     "UMI_start": "15",
                     "UMI_length": "10"
@@ -242,7 +242,7 @@ class AlignReads(object):
             "10xv2":
                 {
                     "solo_type": "CB_UMI_Simple",
-                    "white_list_path": f'{self.resourcedir}/whitelist_10xv2.txt',
+                    "white_list_path": f'{self.resourcedir}/whitelist_10xv2',
                     "CB_length": "16",
                     "UMI_start": "17",
                     "UMI_length": "10"
@@ -250,7 +250,7 @@ class AlignReads(object):
             "10xv3":
                 {
                     "solo_type": "CB_UMI_Simple",
-                    "white_list_path": f'{self.resourcedir}/whitelist_10xv3.txt',
+                    "white_list_path": f'{self.resourcedir}/whitelist_10xv3',
                     "CB_length": "16",
                     "UMI_start": "17",
                     "UMI_length": "12"
@@ -295,29 +295,30 @@ class AlignReads(object):
         return( f'{self.tempdir}/{srrid}_{tech}_Solo.out', 
                 f'{self.tempdir}/{srrid}_{tech}_Log.final.out')
 
-    def _clean_up_tempdir(self, proj_id,solooutdir):
+    def _clean_up_tempdir(self, proj_id, solooutdir):
         try:    # make project specific solo out directories. 
-            os.makedirs(f'{self.metadir}/{proj_id}')
+            os.makedirs(f'{self.cachedir}/{proj_id}')
         except FileExistsError:
             pass
         
         base = os.path.basename(solooutdir)
         dirname = os.path.dirname(solooutdir)
-        newdirname = f'{self.metadir}/{proj_id}/{base}'
-        try :
-            os.rename(solooutdir,newdirname)
-        except FileNotFoundError :
-            pass
-
+        newdirname = f'{self.cachedir}/{proj_id}/{base}'
+        #try :
+        os.rename(solooutdir,newdirname)
+        self.log.debug(f'moved {solooutdir} -> {newdirname}')
+        #except FileNotFoundError :
+        #self.log.error(f'file not found ')
         
         starlog = base.replace('Solo.out','Log.final.out')
-        newdirname = f'{self.metadir}/{proj_id}/{starlog}'
-        try:
-            os.rename(f'{dirname}/{starlog}',newdirname)     
-        except FileNotFoundError :
-            pass
-
+        newdirname = f'{self.cachedir}/{proj_id}/{starlog}'
+        #try:
+        os.rename(f'{dirname}/{starlog}',newdirname)
+        self.log.debug(f'moved {dirname}/{starlog} -> {newdirname}')     
+        #except FileNotFoundError :
+        #    pass
         # os.remove ... Log.final.out ... Log.progress.out ...SJ.out.tab
+
 
 ### setup scripts
 def setup(config, overwrite=False):

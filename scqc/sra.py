@@ -975,7 +975,7 @@ class FasterqDump(object):
         self.log = logging.getLogger('sra')
         self.srrid = srrid
 
-        self.log.debug(f'downloading id {srrid}')
+        self.log.debug(f'handling id {srrid}')
         self.config = config
 
         self.cachedir = os.path.expanduser(
