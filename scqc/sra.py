@@ -726,51 +726,51 @@ class Impute(object):
         allRows = []
         # TODO multithread?
         for srrid in runs :
+            cmd = ['vdb-dump', 
+                '--rows', '1',
+                '--columns', 'READ_LEN',
+                srrid]
 
-            cmd = ['fastq-dump',
-                '--maxSpotId', '1',
-                '--split-spot',
-                '--stdout',
-                '--log-level', f'{loglev}',
-                srrid]      # don't assume that sra file exists. most likely wont
+            # cmd = ['fastq-dump',
+            #     '--maxSpotId', '1',
+            #     '--split-spot',
+            #     '--stdout',
+            #     '--log-level', f'{loglev}',
+            #     srrid]      # don't assume that sra file exists. most likely wont
 
             # TODO suppress messages from cmd
             cmdstr = " ".join(cmd)
-            logging.debug(f"fastq-dump command: {cmdstr} running...")
+            self.log.debug(f"vdb-dump command: {cmdstr} running...")
             cp = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-            dat = cp.stdout.read().decode("utf-8").split('\n')[:-1]
+            lengths = cp.stdout.read().decode("utf-8").strip().split(': ')[1].split(', ')
 
-            # get the lengths of each read.
-            lengths = {}
-            it = 1
-            for line in dat[0::4]:  # look at every 4 lines for the length of the read
-                lengths[f'{srrid}_{it}.fastq'] = line.split("length=")[-1]
-                it += 1
-
-            l = [int(l) for l in lengths.values()]
-            ind = l.index(max(l))
+            ind = lengths.index(max(lengths))
 
             # which is the longest? use as cDNA read
-            read_bio = list(lengths.keys())[ind]
+            read_bio = f'{srrid}_{ind+1}.fastq'
             
             # 10xv2 is typically 98 bp
             # 10xv3 is typically 91 bp
             tech = "10x"
             for i in range(len(lengths)):
-                if l[i] == 24:
+                if lengths[i] == '24':
                     tech = "10xv1"
                     ind2 = i
-                elif l[i] == 26:
+                    break
+                elif lengths[i] == '26':
                     ind2 = i
                     tech = "10xv2"
-                elif l[i] == 28:
+                    break
+                elif lengths[i] == '28':
                     ind2 = i
                     tech = "10xv3"
+                    break
+
 
             if tech == "10x":
-                read_tech = None
+                read_tech = '-'
             else:
-                read_tech = list(lengths.keys())[ind2]
+                read_tech = f'{srrid}_{ind2+1}.fastq'
             allRows.append([srrid, tech, read_bio, read_tech])
 
         outdf = pd.DataFrame(allRows,columns=['run_id','tech_version','read1','read2'] )
@@ -1371,6 +1371,16 @@ if __name__ == "__main__":
                         default=None,
                         help='Perform standard query on uids in file, print project_ids.')
 
+
+    parser.add_argument('-i', '--impute',
+                        metavar='proj_id',
+                        type=str,
+                        nargs='+',
+                        required=False,
+                        default=None,
+                        help='impute tech')
+
+
     parser.add_argument('-o', '--outfile',
                         metavar='outfile',
                         type=str,
@@ -1472,3 +1482,10 @@ if __name__ == "__main__":
                 curid += batchsize
             time.sleep(efetch_sleep)
                 
+
+    if args.impute is not None:
+        q = Impute(cp)
+        for pid in args.impute:
+            q.execute(pid)
+
+        # SRP225790
