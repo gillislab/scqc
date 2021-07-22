@@ -1,8 +1,12 @@
-# install brew and add to path
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-brew install automake libtool libevent autoconf
-echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/johlee/.bash_profile
-eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+# install brew and add to path - not needed - only for trickle
+# /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# brew install automake libtool libevent autoconf
+# echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/johlee/.bash_profile
+# eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+
+
+# brew packages needed for R packages
+brew install cairo
 
 
 # install conda
@@ -20,6 +24,15 @@ conda install -c bioconda star
 conda install -c conda-forge leidenalg
 
 pip install scanpy
+
+# install R packages on conda
+conda install -c conda-forge r-base r-essentials r-cairo r-uwot
+
+
+R -e "install.packages('devtools',repos='http://cran.us.r-project.org')"
+R -e "install.packages('BiocManager',repos='http://cran.us.r-project.org')"
+R -e "devtools::install_github('gillislab/MetaMarkers')"
+
 
 
 cd  $CONDA_PREFIX
