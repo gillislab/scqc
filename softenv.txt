@@ -1,5 +1,15 @@
-
+# install brew and add to path
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 brew install automake libtool libevent autoconf
+echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/johlee/.bash_profile
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+
+
+# install conda
+wget https://repo.anaconda.com/miniconda/Miniconda3-py39_4.9.2-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh
+bash ~/.bash_profile 
+
 
 conda create -n scqc python=3.8
 conda activate scqc
@@ -14,6 +24,7 @@ pip install scanpy
 
 cd  $CONDA_PREFIX
 
+#download sratoolkit
 # linux/centos
 wget https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/2.11.0/sratoolkit.2.11.0-centos_linux64.tar.gz
 tar -xvzf sratoolkit.2.11.0-centos_linux64.tar.gz
@@ -26,6 +37,10 @@ ln -s ../sratoolkit.2.11.0-centos_linux64/bin/* ./
 # cd bin
 #ln -s ../sratoolkit.2.11.0-mac64/bin/* ./
 
+# configure
+vdb-config --interactive
+# go to tools -> prefetch downloads to: (*) current directory
+
 cd -
 
 
@@ -36,19 +51,12 @@ cd -
 # export PATH=$PATH:$PWD/STAR-2.7.8a/bin/Linux_x86_64
 
 
-# FastQC - possibly do
-wget https://www.bioinformatics.babraham.ac.uk/projects/fastqc/fastqc_v0.11.9.zip
-unzip fastqc_v0.11.9.zip
-cd FastQC
-chmod 755 fastqc
-./fastqc -t 30  SRR14633482.fastq 
-
-
-# SRR14633482.fastq
-# 10:45:45 ~ 5% per min  -> 20 min 
-# 	30915637776 bases 
-#     10930204446 bytes (10 gb)
-#     73 GB file
+# FastQC - not doing
+# wget https://www.bioinformatics.babraham.ac.uk/projects/fastqc/fastqc_v0.11.9.zip
+# unzip fastqc_v0.11.9.zip
+# cd FastQC
+# chmod 755 fastqc
+# ./fastqc -t 30  SRR14633482.fastq 
 
 # tickle for traffic shaping of prefetch: https://github.com/AndreasKoelbl/trickle
 

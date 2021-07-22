@@ -147,7 +147,6 @@ class Worker(Thread):
                 return
 
 
-# john lee is satisfied with this class 6/3/2021
 def setup(config):
     '''
     Builds directories in config file 
@@ -155,30 +154,35 @@ def setup(config):
     Only needs to be done once.
     '''
 
-    log = logging.getLogger('sra')
+    log = logging.getLogger('setup')
     config = config
     # directories
-    metadir = os.path.expanduser(config.get('sra', 'metadir'))
-    cachedir = os.path.expanduser(config.get('sra', 'cachedir'))
-    tempdir = os.path.expanduser(config.get('sra', 'tempdir'))
-    resourcedir = os.path.expanduser(config.get('sra', 'resourcedir'))
+    metadir = os.path.expanduser(config.get('setup', 'metadir'))
+    cachedir = os.path.expanduser(config.get('setup', 'cachedir'))
+    tempdir = os.path.expanduser(config.get('setup', 'tempdir'))
+    resourcedir = os.path.expanduser(config.get('setup', 'resourcedir'))
+    outputdir = os.path.expanduser(config.get('setup', 'outputdir'))
+    figuredir =os.path.expanduser(config.get('setup', 'figuredir'))
 
-    try:
-        os.makedirs(metadir)
-    except FileExistsError:
-        pass
-    try:
-        os.makedirs(cachedir)
-    except FileExistsError:
-        pass
-    try:
-        os.makedirs(tempdir)
-    except FileExistsError:
-        pass
-    try:
-        os.makedirs(resourcedir)
-    except FileExistsError:
-        pass
+    dirs_to_make = [metadir,cachedir,tempdir, resourcedir,outputdir,figuredir]
+
+    for direc in dirs_to_make:
+        try:
+            os.makedirs(direc)
+        except FileExistsError:
+            pass
+    # try:
+    #     os.makedirs(cachedir)
+    # except FileExistsError:
+    #     pass
+    # try:
+    #     os.makedirs(tempdir)
+    # except FileExistsError:
+    #     pass
+    # try:
+    #     os.makedirs(resourcedir)
+    # except FileExistsError:
+    #     pass
 
 
 # To do: batch for large queries.
@@ -708,7 +712,7 @@ class Impute(object):
         
         # XXX require runs have rdf.nreads > 1. Otherwise, unable to impute
         ind = rdf.nreads > 1
-        self.log.debug(f'nnumber of runs where nreads <= 1 {sum(ind)}') 
+        self.log.debug(f'number of runs where nreads <= 1 {sum(ind)}') 
         rdf = rdf [ind]
         df = rdf.merge(idf, on = 'exp_id',how='left')
 
@@ -1391,7 +1395,7 @@ if __name__ == "__main__":
 
     if args.setup:
         s = setup(cp)
-        s.execute()
+        # s.execute()
 
     if args.query is not None:
         q = Query(cp)

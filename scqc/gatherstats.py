@@ -181,7 +181,8 @@ class GetStats(object):
         tmp.index.name = None
         adata.obs = tmp
         adata.write(h5file)
-        
+    
+    # currently not used 
     def _gather_stats_from_STAR(self, solooutdir):
 
         with open(f"{solooutdir}/Barcodes.stats", 'r') as f:
