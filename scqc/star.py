@@ -78,6 +78,8 @@ class AlignReads(object):
         
         self.ncore_align = self.config.get('star', 'ncore_align')
 
+        self.cachedir = os.path.expanduser(
+            self.config.get('star', 'cachedir'))
 
     def execute(self, proj_id):
         # get relevant metadata
