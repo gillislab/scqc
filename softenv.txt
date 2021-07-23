@@ -6,6 +6,10 @@ bash ~/.bash_profile
 
 conda create -n scqc python=3.8
 conda activate scqc
+
+# make sure we have conda-forge
+conda config --add channels conda-forge
+
 # update conda if necessary
 conda update -n base -c defaults conda
 
@@ -18,7 +22,10 @@ conda install -c conda-forge leidenalg
 pip install scanpy
 
 # install R packages on conda
-conda install -c conda-forge r-base r-essentials r-cairo r-uwot
+conda config --set channel_priority strict
+
+conda install -c conda-forge r-base r-essentials
+conda install -c conda-forge r-cairo r-uwot
 
 R -e "install.packages('devtools',repos='http://cran.us.r-project.org')"
 R -e "install.packages('BiocManager',repos='http://cran.us.r-project.org')"
