@@ -1,7 +1,8 @@
 # install conda
 wget https://repo.anaconda.com/miniconda/Miniconda3-py39_4.9.2-Linux-x86_64.sh
-bash Miniconda3-latest-Linux-x86_64.sh
-bash ~/.bash_profile 
+bash Miniconda3-py39_4.9.2-Linux-x86_64.sh
+# be sure to restart terminal to allow conda to start
+
 
 conda create -n scqc python=3.8
 conda activate scqc
@@ -20,9 +21,12 @@ pip install scanpy
 
 # install R packages on conda
 conda config --set channel_priority strict
-
+# required for R 4.0
 conda install -c conda-forge r-base r-essentials
-conda install -c conda-forge r-cairo r-uwot
+conda install -c conda-forge r-essentials
+conda install -c conda-forge r-cairo 
+conda install -c conda-forge r-ragg
+
 
 R -e "install.packages('devtools',repos='http://cran.us.r-project.org')"
 R -e "install.packages('BiocManager',repos='http://cran.us.r-project.org')"
