@@ -114,8 +114,7 @@ class AlignReads(object):
                         self._run_star_smartseq(proj_id, manipath)
                 
                 # 10x runs
-                elif tech.startswith('10xv'): 
-    
+                elif tech.startswith('10xv'):     
                     #    run star for each run
                     for row in range(df.shape[0]):
                         srrid = df.run_id[row]
@@ -132,10 +131,8 @@ class AlignReads(object):
                     self.log.warning(
                         f'{tech} is not yet supported for STAR alignment.')
                     # log... technology not yet supported
-                    raise UnsupportedTechnologyException(f'For project {proj_id}')
-                
-                # finally, clean up fastq files 
-            
+                    raise UnsupportedTechnologyException(f'For project {proj_id}')                
+                # finally, clean up fastq files             
             done = proj_id
         
         except Exception as ex:
