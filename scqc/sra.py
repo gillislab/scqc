@@ -1262,13 +1262,13 @@ if __name__ == "__main__":
                         default=None,
                         help='Download args with fasterq-dump. e.g. SRR14584407')
 
-    parser.add_argument('-p', '--prefetch',
-                        metavar='run_id',
+    parser.add_argument('-p', '--download',
+                        metavar='proj_id',
                         type=str,
                         nargs='+',
                         required=False,
                         default=None,
-                        help='Download (Run) args with prefetch. e.g. SRR14584407')
+                        help='Download (Runs) within project args with wget. e.g. SRR14584407')
 
     parser.add_argument('-m', '--metadata',
                         metavar='project_id',
@@ -1329,23 +1329,24 @@ if __name__ == "__main__":
         for pid in args.query:
             q.execute(pid)
 
-    if args.prefetch is not None:
+    if args.download is not None:
         # start a queue
         dq = Queue() 
         # loop through each project id 
-        for proj_id in args.prefetch:
+        for proj_id in args.download:
             # get the runs associated with that project
-            srrids = get_runs_for_project(cp, proj_id)
-            for srr in srrids:
+            # srrids = get_runs_for_project(cp, proj_id)
+            
                 # download the SRA binary file for the run
-                fq = PrefetchRun(cp, srr)
-                dq.put(fq)
+            fq = Download(cp)
+            fq.execute(proj_id)
+            # dq.put(fq.execute(proj_id))
 
         logging.debug(f'created queue of {dq.qsize()} items')
-        md = int(cp.get('download', 'pf_max_downloads'))
+        md = int(cp.get('download', 'max_downloads'))
 
         # limit number of jobs 
-        for n in range(md):
+        for n in range(md): 
             Worker(dq).start()
         logging.debug('waiting to join threads...')
         dq.join()
@@ -1359,7 +1360,7 @@ if __name__ == "__main__":
                 fq = FasterqDump(cp, srr)
                 dq.put(fq)
             logging.debug(f'created queue of {dq.qsize()} items')
-            md = int(cp.get('analysis', 'fq_max_jobs'))
+            md = int(cp.get('analyze', 'max_jobs'))
 
         for n in range(md):
             Worker(dq).start()

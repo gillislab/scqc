@@ -175,7 +175,6 @@ class AlignReads(object):
         return(impute)
 
     # smart seq scripts
-    #TODO test smartseq
     def _make_manifest(self, proj_id, run_data):
         # search for all fastq files with <run>_[0-9].fastq
         manipath = f"{self.tempdir}/{proj_id}_smartseq_manifest.tsv"
@@ -184,7 +183,6 @@ class AlignReads(object):
         manifest = run_data[['read1','read2','run_id','tech_version']]
         manifest = manifest.loc[manifest.tech_version == 'smartseq',['read1','read2','run_id']]
         
-        # XXX gives a warning - can't figure out how to fix....
         manifest['read1'] =  self.tempdir+'/'+manifest['read1'].astype(str)
         manifest['read2'] =  self.tempdir+'/'+manifest['read2'].astype(str)
         
