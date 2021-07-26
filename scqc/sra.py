@@ -721,11 +721,11 @@ class Impute(object):
 
         allRows = []
         # TODO multithread?
-        for srrid in runs :
+        for run_id in runs :
             cmd = ['vdb-dump', 
                 '--rows', '1',
                 '--columns', 'READ_LEN',
-                srrid]
+                run_id]
 
 
             # TODO suppress messages from cmd
@@ -738,7 +738,7 @@ class Impute(object):
             ind = lengths.index(max(lengths))
 
             # which is the longest? use as cDNA read
-            read_bio = f'{srrid}_{ind+1}.fastq'
+            read_bio = f'{run_id}_{ind+1}.fastq'
             
             # 10xv2 is typically 98 bp
             # 10xv3 is typically 91 bp
@@ -761,12 +761,12 @@ class Impute(object):
             if tech == "10x":
                 read_tech = '-'
             else:
-                read_tech = f'{srrid}_{ind2+1}.fastq'
+                read_tech = f'{run_id}_{ind2+1}.fastq'
             
             if read_tech == read_bio :
                 read_tech = '-'
                 tech = '10x'
-            allRows.append([srrid, tech, read_bio, read_tech])
+            allRows.append([run_id, tech, read_bio, read_tech])
 
         outdf = pd.DataFrame(allRows,columns=['run_id','tech_version','read1','read2'] )
         tax = rdf[['run_id','samp_id','exp_id','proj_id','taxon']]
@@ -976,11 +976,11 @@ class FasterqDump(object):
 
     '''
 
-    def __init__(self, config, srrid): #, outlist
+    def __init__(self, config, run_id): #, outlist
         self.log = logging.getLogger('sra')
-        self.srrid = srrid
+        self.run_id = run_id
 
-        self.log.debug(f'handling id {srrid}')
+        self.log.debug(f'handling id {run_id}')
         self.config = config
 
         self.cachedir = os.path.expanduser(
@@ -993,11 +993,8 @@ class FasterqDump(object):
 
 
     def execute(self):
-        self.log.debug(f'extracting id {self.srrid}')
-
+        self.log.debug(f'extracting id {self.run_id}')
         loglev = LOGLEVELS[self.log.getEffectiveLevel()]
-        # os.system("    + " -O "+fastqdirec+ " "+ fastqprefix +".sra" )
-
         cmd = ['fasterq-dump', 
             '--split-files',
             '--include-technical',
@@ -1005,11 +1002,10 @@ class FasterqDump(object):
             '--threads', f'{self.threads}',
             '--outdir', f'{self.tempdir}/',
             '--log-level', f'{loglev}',
-            f'{self.cachedir}/{self.srrid}.sra']
-
+            f'{self.cachedir}/{self.run_id}.sra']
 
         cmdstr = " ".join(cmd)
-        logging.debug(f"Fasterq-dump command: {cmdstr} running...")
+        logging.info(f"fasterq-dump command: {cmdstr} running...")
         start = dt.datetime.now()
         cp = subprocess.run(cmd, 
                         universal_newlines=True, 
@@ -1019,11 +1015,11 @@ class FasterqDump(object):
         elapsed =  end - start
         logging.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {type(cp.returncode)} ")
         if str(cp.returncode) == '0':
-            logging.info(f'successfully extracted run {self.srrid}')
+            logging.info(f'successfully extracted run {self.run_id}')
         else:
             logging.debug(f"got stderr: {cp.stderr}")
             logging.debug(f"got stdout: {cp.stdout}")
-            logging.error(f' unknown non-zero return code for {self.srrid}')
+            logging.error(f' unknown non-zero return code for {self.run_id}')
         
         return cp.returncode
 
@@ -1335,7 +1331,7 @@ if __name__ == "__main__":
         # loop through each project id 
         for proj_id in args.download:
             # get the runs associated with that project
-            # srrids = get_runs_for_project(cp, proj_id)
+            # run_ids = get_runs_for_project(cp, proj_id)
             
                 # download the SRA binary file for the run
             fq = Download(cp)

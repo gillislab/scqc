@@ -69,3 +69,22 @@ else:
     #Path(f"{outdir}/{gtf_tail}").touch()
 
     #return(f"{outdir}/annotation.gtf", f"{outdir}/genome.fa", outdir, flag)
+    
+    
+    def _clean_up_tempdir(self, proj_id, solooutdir):
+        newdirname = f'{self.cachedir}/{proj_id}/{base}'
+        os.rename(solooutdir,newdirname)
+        self.log.debug(f'moved {solooutdir} -> {newdirname}')
+        
+        starlog = base.replace('Solo.out','Log.final.out')
+        newdirname = f'{self.cachedir}/{proj_id}/{starlog}'
+        os.rename(f'{dirname}/{starlog}',newdirname)
+        self.log.debug(f'moved {dirname}/{starlog} -> {newdirname}')     
+    
+    
+    
+    
+    
+    
+    
+    

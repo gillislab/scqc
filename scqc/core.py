@@ -137,7 +137,7 @@ class Stage(object):
             self.log.warning("exception raised during main loop.")
             self.log.error(traceback.format_exc(None))
             raise ex
-        logging.info(f'Shutdown set. Exitting {self.name}')
+        logging.info(f'Shutdown set. Exiting {self.name}')
 
 
 
