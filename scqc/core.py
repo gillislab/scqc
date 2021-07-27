@@ -35,6 +35,10 @@ class Stage(object):
     .execute() can be overriden, but doesn't need to be for normal case. 
 
 
+    Multi-server setup. Hash on proj_id list. Need stable hash.
+    https://death.andgravity.com/stable-hashing
+    
+
     '''
 
     def __init__(self, config, name):
@@ -66,6 +70,8 @@ class Stage(object):
         self.batchsize = int(self.config.get(f'{self.name}', 'batchsize'))
         self.batchsleep = float(self.config.get(f'{self.name}', 'batchsleep'))
         self.ncycles = int(self.config.get(f'{self.name}', 'ncycles'))
+        self.num_servers = int(self.config.get(f'{self.name}','nservers'))
+        self.server_index = int(self.config.get(f'{self.name}','server_index'))
         self.outlist = []
 
     def run(self):
@@ -292,6 +298,7 @@ class Analyze(Stage):
                 self.log.error(traceback.format_exc(None))
         self.log.debug(f"returning outlist len={len(outlist)} seenlist len={len(seenlist)}")
         return (outlist, seenlist)
+
 
     def setup(self):
         star.setup(self.config)

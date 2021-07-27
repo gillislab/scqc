@@ -284,7 +284,7 @@ class AlignReads(object):
         self.log.info(f"command: {cmdstr} running...")
         start = dt.datetime.now()
         cp = subprocess.run(cmd, 
-                        universal_newlines=True, 
+                        text=True, 
                         stdout=subprocess.PIPE, 
                         stderr=subprocess.STDOUT)
         end = dt.datetime.now()
@@ -295,8 +295,10 @@ class AlignReads(object):
             self.log.info(f'successfully ran {cmdstr}')
         else:
             self.log.error(f'non-zero return code for {self.run_id}')
-        self.log.debug(f"got stderr: {cp.stderr.decode('utf-8')}")
-        self.log.debug(f"got stdout: {cp.stdout.decode('utf-8')}")
+        if cp.stderr is not None:
+            self.log.debug(f"got stderr: {cp.stderr}")
+        if cp.stdout is not None:
+            self.log.debug(f"got stdout: {cp.stdout}")
             
         
 

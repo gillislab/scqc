@@ -127,26 +127,6 @@ class SampleUnavailableException(Exception):
     """ Thrown when Sample in a Runset is unavailable.  """
 
 
-class Worker(Thread):
-    """
-
-    """
-
-    def __init__(self, q):
-        self.q = q
-        super(Worker, self).__init__()
-
-    def run(self):
-        # Race condition, just try!
-        while True:
-            try:
-                job = self.q.get_nowait()
-                job.execute()
-                self.q.task_done()
-            except Empty:
-                return
-
-
 def setup(config):
     '''
     Builds directories in config file 
@@ -1008,7 +988,7 @@ class FasterqDump(object):
         logging.info(f"fasterq-dump command: {cmdstr} running...")
         start = dt.datetime.now()
         cp = subprocess.run(cmd, 
-                        universal_newlines=True, 
+                        text=True, 
                         stdout=subprocess.PIPE, 
                         stderr=subprocess.PIPE)
         end = dt.datetime.now()
