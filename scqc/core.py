@@ -316,8 +316,8 @@ class CLI(object):
 
     def parseopts(self):
 
-        FORMAT = '%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
-        logging.basicConfig(format=FORMAT)
+        #FORMAT = '%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
+        #logging.basicConfig(format=FORMAT)
 
         parser = argparse.ArgumentParser()
 
