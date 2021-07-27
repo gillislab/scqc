@@ -34,6 +34,9 @@ gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 from scqc.utils import *
 
+sc.settings.verbosity = 4
+
+
 LOGLEVELS = {
     10: 'debug',
     20: 'info',
@@ -45,44 +48,44 @@ LOGLEVELS = {
 class GetStats(object):
 
     def __init__(self, config):
-        self.log = logging.getLogger('statistics')
+        self.log = logging.getLogger('stats')
         self.config = config
-        self.species = self.config.get('statistics', 'species')
+        self.species = self.config.get('stats', 'species')
         self.outputdir = os.path.expanduser(
-            self.config.get('statistics', 'outputdir'))
+            self.config.get('stats', 'outputdir'))
         self.resourcedir = os.path.expanduser(
-            self.config.get('statistics', 'resourcedir'))
+            self.config.get('stats', 'resourcedir'))
         self.metadir = os.path.expanduser(
-            self.config.get('statistics', 'metadir'))
+            self.config.get('stats', 'metadir'))
         self.tempdir = os.path.expanduser(
-            self.config.get('statistics', 'tempdir'))
-
+            self.config.get('stats', 'tempdir'))
+        self.cachedir = os.path.expanduser(
+            self.config.get('stats', 'cachedir'))
         # gene sets
 
         self.cell_cycle_genes = os.path.expanduser(
-            self.config.get('statistics', 'cell_cycle_genes'))
+            self.config.get('stats', 'cell_cycle_genes'))
         self.stable_housekeepinig = os.path.expanduser(
-            self.config.get('statistics', 'stable_housekeepinig'))
+            self.config.get('stats', 'stable_housekeepinig'))
         self.essential_genes = os.path.expanduser(
-            self.config.get('statistics', 'essential_genes'))
+            self.config.get('stats', 'essential_genes'))
         self.female_genes = os.path.expanduser(
-            self.config.get('statistics', 'female_genes'))
+            self.config.get('stats', 'female_genes'))
         self.male_genes = os.path.expanduser(
-            self.config.get('statistics', 'male_genes'))
+            self.config.get('stats', 'male_genes'))
 
 
         # hvg params 
-        self.hvg_min_mean = self.config.get('statistics', 'hvg_min_mean')
-        self.hvg_max_mean = self.config.get('statistics', 'hvg_max_mean')
-        self.hvg_min_disp = self.config.get('statistics', 'hvg_min_disp')
-        self.hvg_max_disp = self.config.get('statistics', 'hvg_max_disp')
-        self.hvg_flavor = self.config.get('statistics', 'hvg_flavor')
+        self.hvg_min_mean = self.config.get('stats', 'hvg_min_mean')
+        self.hvg_max_mean = self.config.get('stats', 'hvg_max_mean')
+        self.hvg_min_disp = self.config.get('stats', 'hvg_min_disp')
+        self.hvg_max_disp = self.config.get('stats', 'hvg_max_disp')
+        self.hvg_flavor = self.config.get('stats', 'hvg_flavor')
         #pca params
-        self.nPCA = self.config.get('statistics', 'nPCA')
-        self.use_hvg = self.config.get('statistics', 'use_hvg')
+        self.nPCA = self.config.get('stats', 'nPCA')
+        self.use_hvg = self.config.get('stats', 'use_hvg')
         # neighbor graph params
-        self.n_neighbors = self.config.get('statistics', 'n_neighbors')
-        self.n_pcs = self.config.get('statistics', 'n_pcs')
+        self.n_neighbors = self.config.get('stats', 'n_neighbors')
 
         # metamarker params
         self.class_markerset =  os.path.expanduser(
@@ -100,9 +103,8 @@ class GetStats(object):
 
         '''
 
-
         # outdir = "/home/johlee/scqc/stats"
-        solooutdirs = f'{self.tempdir}/{srpid}'
+        solooutdirs = f'{self.cachedir}/{srpid}'
         solooutdirs = glob.glob(f'{solooutdirs}/*Solo.out')
 
         self.log.debug(f'starting with projectid {srpid}')
@@ -129,13 +131,13 @@ class GetStats(object):
 
         self.log.debug(f'joining adatas for {srpid}')
         adata = adatas[0].concatenate(adatas[1:], batch_categories = ids.id )
-
         adata.obs.columns = ['cell_id','id']
-        
+        ind = adata.obs.index
+
         tmpdf = pd.merge(adata.obs, ids, on= 'id')   # include technology in obs.
         tmpdf.index = tmpdf.cell_id
-        tmpdf.index.name =None
         adata.obs = tmpdf 
+        adata.obs.index= ind
 
         # fill in missing run_ids with the cell_id. (typically smart seq experiments)
         adata.obs.run_id[adata.obs.run_id.isnull()] = adata.obs.cell_id[adata.obs.run_id.isnull()]
@@ -147,8 +149,8 @@ class GetStats(object):
         impute = impute.loc[impute.proj_id == srpid,: ]
 
         tmpdf =  pd.merge(adata.obs, impute )[['cell_id','run_id','exp_id', 'samp_id','proj_id','tech', 'batch' ]]
-        tmpdf.index = tmpdf.cell_id
-        tmpdf.index.name =None
+        tmpdf.index= ind
+
         adata.obs = tmpdf
 
         adata = self._get_stats_scanpy(adata)
@@ -176,10 +178,14 @@ class GetStats(object):
         self.log.debug(f'read df')
 
 
+        # TODO separate into the scores - enrichment - prediction
         tmp =  adata.obs.merge(tmpdf, left_on = 'cell_id' ,right_on = 'cell')
         tmp.index = tmp.cell_id
         tmp.index.name = None
-        adata.obs = tmp
+        tmp.reindex(adata.obs.index)
+        adata.obsm['MetaMarkers'] = tmp
+
+        self.log.debug('Saving to h5ad')
         adata.write(h5file)
     
     # currently not used 
@@ -219,7 +225,7 @@ class GetStats(object):
         path = f'{solooutdir}/Gene/filtered'
 
         # mtx_files = os.listdir(path)
-        adata = sc.read(f'{path}/matrix.mtx').T
+        adata = sc.read_mtx(f'{path}/matrix.mtx').T
 
         
         geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
@@ -248,7 +254,7 @@ class GetStats(object):
         return adata
 
     def _get_stats_scanpy(self, adata):
-        adata.obs['batch'] = None
+        # adata.obs['batch'] = None
 
         # consider different gene sets - ERCC  corresponds to spike ins
         adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')
@@ -337,12 +343,17 @@ class GetStats(object):
                                     flavor=self.hvg_flavor)
 
         # umap coords
+
+        ncomp = min(adata.shape[0] -1 , int(self.nPCA) )
+        self.log.debug('running pca\n')
         sc.tl.pca(adata,
-                  n_comps=int(self.nPCA), zero_center=False, use_highly_variable=self.use_hvg)
-
-        sc.pp.neighbors(adata, n_neighbors=int(self.n_neighbors), n_pcs=int(self.n_pcs))
+                  n_comps=ncomp, zero_center=False, use_highly_variable=self.use_hvg)
+        print('getting neighbors\n')
+        sc.pp.neighbors(adata, n_neighbors=int(self.n_neighbors), n_pcs=ncomp)
+        print('getting umap\n')
         sc.tl.umap(adata)       # umap coords are in adata.obsm['X_umap']
-
+        
+        adata.obs.cell_id = adata.obs.index
         return adata
 
     def _run_EGAD_by_batch(self, adata, rank_standardized = False, 

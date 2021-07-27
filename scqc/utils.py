@@ -510,6 +510,13 @@ def _new_egad(go, nw, nFold):
 
     return roc, avg_degree, roc_null, P
 
+def MetaMarkers_PR(enichment):
+    '''
+    enrichment should be a dataframe of cells by cell type - from MetaMarkers
+    '''
+    pass
+
+
 
 def get_default_config():
     cp = ConfigParser()
