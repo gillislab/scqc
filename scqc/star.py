@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import requests
+import shutil
 import subprocess
 import sys
 import time
@@ -35,7 +36,7 @@ from scqc.sra import FasterqDump
 
 # inputs should be runs  identified as 'some10x'
 # .sra files should already downloaded.
-# srrid and species needs to be passed in from the dataframe
+# run_id and species needs to be passed in from the dataframe
 # can pass star parameters from config
 
 
@@ -64,22 +65,18 @@ class AlignReads(object):
     def __init__(self, config ):
         self.log = logging.getLogger('star')
         self.config = config
-
         self.tempdir = os.path.expanduser(
-            self.config.get('star', 'tempdir'))
-  
+            self.config.get('star', 'tempdir')) 
         self.metadir= os.path.expanduser(
             self.config.get('star', 'metadir'))
-        
-        self.resourcedir = os.path.expanduser(
-            self.config.get('star', 'resourcedir'))
-        
-        self.species = self.config.get('star', 'species')
-        
-        self.ncore_align = self.config.get('star', 'ncore_align')
-
         self.cachedir = os.path.expanduser(
             self.config.get('star', 'cachedir'))
+        self.resourcedir = os.path.expanduser(
+            self.config.get('star', 'resourcedir'))
+        self.species = self.config.get('star', 'species')
+        self.ncore_align = self.config.get('star', 'ncore_align')
+
+
 
     def execute(self, proj_id):
         # get relevant metadata
@@ -88,51 +85,25 @@ class AlignReads(object):
         done = None
         seen = proj_id
         try:
-            # stage in all runs for proj_id
-            runlist  = list( rdf[ rdf.proj_id==proj_id ].run_id.unique()  ) 
-            runlength = len(runlist)
-            i = 0
-            for run_id in runlist:
-                i += 1
-                fqd = FasterqDump(self.config, run_id)
-                rc = fqd.execute()
-                if str(rc)!= '0':
-                    raise FasterqFailureException(f'runid {run_id}')
-                else:
-                    self.log.info(f'runid {run_id}  [{i}/{runlength}] handled successfully.')
-            self.log.info(f'successfully extracted all {runlength} fastqs for project {proj_id}.')
+            # bring in all fastqs to <tempdir>
+            runlist = self._stage_in(proj_id, rdf)
             
             # split by technology and parses independently based on tech
             for tech, df in rdf.groupby(by = "tech_version") :
                 # smartseq runs
                 if tech =="smartseq":
-                    # build the manifest
-                    (manipath, manifest) = self._make_manifest(proj_id, df) 
-                    # run star
-                    if manifest is not None :   # redundant ish
-                        self.log.debug(f'Starting smartseq alignment for {proj_id}')
-                        self._run_star_smartseq(proj_id, manipath)
-                
-                # 10x runs
+                    self._handle_smartseq(proj_id, df)
+                                    
                 elif tech.startswith('10xv'):     
-                    #    run star for each run
-                    for row in range(df.shape[0]):
-                        srrid = df.run_id[row]
-                        read1 = f'{self.tempdir}/{df.read1[row]}' # biological cDNA
-                        read2 = f'{self.tempdir}/{df.read2[row]}' # technical CBarcode + UMI
-                        # saves to disk
-                        (solooutdir, finallog) = self._run_star_10x(srrid, tech, read1, read2)
-                        # move solo out directories
-                        if os.path.isdir( solooutdir ):
-                            os.remove(read1)
-                            os.remove(read2)   
-                        self._clean_up_tempdir(proj_id, solooutdir )
+                    self._handle_10x(proj_id, tech, df)
                 else :
                     self.log.warning(
                         f'{tech} is not yet supported for STAR alignment.')
                     # log... technology not yet supported
                     raise UnsupportedTechnologyException(f'For project {proj_id}')                
                 # finally, clean up fastq files             
+            self._remove_fastqs(runlist)
+                        
             done = proj_id
         
         except Exception as ex:
@@ -143,12 +114,51 @@ class AlignReads(object):
             return (done, seen)
 
 
-     
+
+    def _stage_in(self, proj_id, rdf):
+        """
+        bring in fastq files to <tempdir> for all exp_ids in this project.
         
+        throws FasterqFailureException if there is a problem. 
         
+        """
+        runlist  = list( rdf[ rdf.proj_id==proj_id ].run_id.unique()  ) 
+        runlength = len(runlist)
+        i = 0
+        for run_id in runlist:
+            i += 1
+            fqd = FasterqDump(self.config, run_id)
+            rc = fqd.execute()
+            if str(rc)!= '0':
+                raise FasterqFailureException(f'runid {run_id}')
+            else:
+                self.log.info(f'runid {run_id}  [{i}/{runlength}] handled successfully.')
+        self.log.info(f'successfully extracted all {runlength} fastqs for project {proj_id}.') 
+        return runlist
         
+
+
+    def _handle_smartseq(self, proj_id, df):
+        # build the manifest
+        (manipath, manifest) = self._make_manifest(proj_id, df) 
+        # run star
+        self.log.debug(f'Starting smartseq alignment for {proj_id}')
+        outfile_prefix = self._run_star_smartseq(proj_id, manipath)
+        self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id}')
+        self._stage_out(proj_id, outfile_prefix)
         
-        
+
+
+    def _handle_10x(self, proj_id, tech, df):
+        for row in range(df.shape[0]):
+            run_id = df.run_id[row]
+            read1 = f'{self.tempdir}/{df.read1[row]}' # biological cDNA
+            read2 = f'{self.tempdir}/{df.read2[row]}' # technical CBarcode + UMI
+            # saves to disk
+            outfile_prefix = self._run_star_10x(run_id, tech, read1, read2)
+            self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id} and {run_id}')
+            self._stage_out(proj_id, outfile_prefix)
+            
         
 
     # run|tech|read1|read2|exp|samp|proj|taxon|batch  dataframe in impute. 
@@ -159,20 +169,17 @@ class AlignReads(object):
     #           read2 should be technical (umi+cb)
     #       or for Smartseq manifest. order of reads is irrelevent.
     #       batch will be used by stats
-    def _get_meta_data(self,proj_id ):
+    def _get_meta_data(self, proj_id ):
         '''
         example proj_id="SRP114926"
         '''
-
         impute = pd.read_csv(f'{self.metadir}/impute.tsv',sep="\t" ,index_col=0)
-
         # filter to include only requested project id
         impute = impute.loc[ impute.proj_id==proj_id ,:]
-
         # filter to include only requested species and only keep run ids
         impute = impute.loc[ impute.taxon == int(spec_to_taxon(self.species)) ,:].reset_index(drop=True)
-
         return(impute)
+
 
     # smart seq scripts
     def _make_manifest(self, proj_id, run_data):
@@ -181,8 +188,7 @@ class AlignReads(object):
 
         # runid = runlist[1]
         manifest = run_data[['read1','read2','run_id','tech_version']]
-        manifest = manifest.loc[manifest.tech_version == 'smartseq',['read1','read2','run_id']]
-        
+        manifest = manifest.loc[manifest.tech_version == 'smartseq',['read1','read2','run_id']]       
         manifest['read1'] =  self.tempdir+'/'+manifest['read1'].astype(str)
         manifest['read2'] =  self.tempdir+'/'+manifest['read2'].astype(str)
         
@@ -201,12 +207,12 @@ class AlignReads(object):
                      "soloUMIdedup": "Exact",
                      "soloStrand": "Unstranded"}
 
-        out_file_prefix = f'{self.tempdir}/{proj_id}_smartseq_'
+        outfile_prefix = f'{self.tempdir}/{proj_id}_smartseq_'
         cmd = ['STAR',
                '--runMode', 'alignReads',
                '--runThreadN', f'{self.ncore_align}',
                '--genomeDir', f'{self.resourcedir}/{self.species}',
-               '--outFileNamePrefix', out_file_prefix,
+               '--outFileNamePrefix', outfile_prefix,
                '--soloType', ss_params["solo_type"],
                '--soloFeatures', 'Gene',
                '--readFilesManifest', f'{manipath}',
@@ -215,15 +221,12 @@ class AlignReads(object):
                '--outSAMtype', 'None']
 
         cmdstr = " ".join(cmd)
-
         logging.debug(f"STAR command: {cmdstr} running...")
         cp = subprocess.run(cmd)
-
         logging.debug(
             f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
+        return(outfile_prefix)
 
-        return( f'{out_file_prefix}Solo.out', 
-                f'{out_file_prefix}Log.final.out')
     
     # 10x scripts
     def _get_10x_STAR_parameters(self, tech):
@@ -256,19 +259,20 @@ class AlignReads(object):
         return(d[tech])
    
     # impute stage will obtain tech, and bio/tech_readpaths for 10x runs
-    def _run_star_10x(self,srrid, tech, bio_readpath,tech_readpath):
+    def _run_star_10x(self, run_id, tech, bio_readpath, tech_readpath):
         '''
         saves to temp directory
         '''
         # read_bio, read_tech, tech = self._impute_10x_version()
         # ideally, which read is which will be obtained from impute stage
         star_param = self._get_10x_STAR_parameters(tech)  # as dictionary
-        self.log.debug(f'Starting 10x alignment for {srrid}')
+        self.log.debug(f'Starting 10x alignment for {run_id}')
+        outfile_prefix = f'{self.tempdir}/{run_id}_{tech}_'
         cmd = ['STAR',
                 '--runMode', 'alignReads',
                 '--runThreadN', f'{self.ncore_align}',
                 '--genomeDir', f'{self.resourcedir}/{self.species}',
-                '--outFileNamePrefix', f'{self.tempdir}/{srrid}_{tech}_',
+                '--outFileNamePrefix', outfile_prefix ,
                 '--soloType', star_param["solo_type"],
                 '--soloCBwhitelist', star_param["white_list_path"],
                 '--soloCBlen', star_param["CB_length"],
@@ -285,37 +289,75 @@ class AlignReads(object):
         cp = subprocess.run(cmd)
         logging.debug(
             f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
-        # successful runs - append to outlist.
-        # if str(cp.returncode) == "0":
-        #     self.outlist.append(self.srrid)
+        return(outfile_prefix)
 
-        return( f'{self.tempdir}/{srrid}_{tech}_Solo.out', 
-                f'{self.tempdir}/{srrid}_{tech}_Log.final.out')
 
-    def _clean_up_tempdir(self, proj_id, solooutdir):
+    def _stage_out(self, proj_id, outfile_prefix):
+        """
+        Stage out. 
+        <tempdir>/{outfile_prefix}Solo.out
+                  {outfile_prefix}Log.out
+                  {outfile_prefix}Log.final.out
+                  {outfile_prefix}SJ.out.tab
+                  {outfile_prefix}manifest.tsv        
+        
+        for 10x
+        f'{self.tempdir}/{run_id}_{tech}_Solo.out' -> SRR10285015_10xv2_Solo.out
+            -> <cachedir>/proj_id/{run_id}_{tech}_Solo.out/
+            
+        for smartseq
+        f'{self.tempdir}/{proj_id}_smartseq_Solo.out' -> SRP066963_smartseq_Solo.out/
+            -> <cachedir>/proj_id/{proj_id}_{tech}_Solo.out/
+        
+        """
+        
+        MOVES = ['Log.out','Log.final.out','SJ.out.tab','manifest.tsv']
+          
+        projdir = f'{self.cachedir}/{proj_id}/'
+        
         try:    # make project specific solo out directories. 
-            os.makedirs(f'{self.cachedir}/{proj_id}')
+            os.makedirs(projdir)
+            self.log.debug(f'created cache project dir {projdir}')
         except FileExistsError:
-            pass
-        
-        base = os.path.basename(solooutdir)
-        dirname = os.path.dirname(solooutdir)
-        newdirname = f'{self.cachedir}/{proj_id}/{base}'
-        #try :
-        os.rename(solooutdir,newdirname)
-        self.log.debug(f'moved {solooutdir} -> {newdirname}')
-        #except FileNotFoundError :
-        #self.log.error(f'file not found ')
-        
-        starlog = base.replace('Solo.out','Log.final.out')
-        newdirname = f'{self.cachedir}/{proj_id}/{starlog}'
-        #try:
-        os.rename(f'{dirname}/{starlog}',newdirname)
-        self.log.debug(f'moved {dirname}/{starlog} -> {newdirname}')     
-        #except FileNotFoundError :
-        #    pass
-        # os.remove ... Log.final.out ... Log.progress.out ...SJ.out.tab
+            self.log.warning(f'cache project dir already exists: {projdir}  OK...')
 
+        # move all save files into existing <tempdir>/{outfile_prefix}Solo.out dir. 
+        for ext in MOVES:
+            try:
+                srcfile = f'{outfile_prefix}{ext}'
+                destdir = f'{outfile_prefix}Solo.out'
+                self.log.debug(f'moving {srcfile} -> {destdir} ...')
+                shutil.move(srcfile, destdir)
+            except FileNotFoundError:
+                pass
+        
+        # move Solo.out dir to <cachedir> 
+        outdir = f'{outfile_prefix}Solo.out'
+        base = os.path.basename(outdir)
+        dirname = os.path.dirname(outdir)
+        self.log.debug(f'Got base of {base} dirname {dirname}')
+        destdir = f'{projdir}/{base}'
+        self.log.debug(f'destination directory name is {destdir}')
+        newdir = shutil.copytree(outdir, destdir, dirs_exist_ok=True)
+        # dst, symlinks, ignore, copy_function, ignore_dangling_symlinks, dirs_exist_ok)
+        self.log.info(f'<tempdir> output copied to {newdir}')
+        
+        # clean tempdir. 
+        self.log.debug(f'cleaning temp directory, removing {outdir}')
+        shutil.rmtree(outdir)
+        self.log.info(f'cleared temp dir of {outdir}')
+
+    def _remove_fastqs(self, runlist):
+        """
+        Takes list of run_ids and removes <tempdir>/<run_id>*.fastq
+        """
+        self.log.debug(f'clearing tempdir of fastqs from {len(runlist)} runs...')
+        for run_id in runlist:
+            for fqfile in glob.glob(f'{self.tempdir}/{run_id}*.fastq'):
+                os.remove(fqfile)
+                self.log.debug(f'removed tempfile: {fqfile}')
+         
+        
 
 ### setup scripts
 def setup(config, overwrite=False):

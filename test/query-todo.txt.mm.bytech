@@ -1,13 +1,10 @@
-#
+# test full pipeline, different techs. 
 # <1m to query
 # 5m to impute
-# 
-# 2h to query 
-#
-
-# smallest smartseq
+# 2h to analyze
+# smallest smartseq  4 runs. 
 SRP066963
-# smallesst 10xv2
+# smallest 10xv2 1 run
 SRP225790
-# smallest 10xv3
+# smallest 10xv3  1 run. 
 SRP269581
