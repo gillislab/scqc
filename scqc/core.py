@@ -140,7 +140,6 @@ class Stage(object):
         logging.info(f'Shutdown set. Exiting {self.name}')
 
 
-
     def stop(self):
         self.log.info('stopping...')
 
@@ -379,46 +378,48 @@ class CLI(object):
         if args.verbose:
             logging.getLogger().setLevel(logging.INFO)
 
-        cp = ConfigParser()
-        cp.read(os.path.expanduser(args.conffile))
+        self.cp = ConfigParser()
+        self.cp.read(os.path.expanduser(args.conffile))
         
         if args.ncycles is not None:
-            cp.set('DEFAULT','ncycles',str(int(args.ncycles)))
-            
-        cs = self.get_configstr(cp)
+            self.cp.set('DEFAULT','ncycles',str(int(args.ncycles)))
+        
+        self.setuplogging(args.subcommand)           
+        
+        cs = self.get_configstr(self.cp)
         logging.debug(f"config: \n{cs} ")
         logging.debug(f"args: {args} ")
 
         if args.subcommand == 'query':
-            d = Query(cp)
+            d = Query(self.cp)
             if args.setup:
                 d.setup()
             else:
                 d.run()
 
         if args.subcommand == 'impute':
-            d = Impute(cp)
+            d = Impute(self.cp)
             if args.setup:
                 d.setup()
             else:
                 d.run()
 
         if args.subcommand == 'download':
-            d = Download(cp)
+            d = Download(self.cp)
             if args.setup:
                 d.setup()
             else:
                 d.run()
 
         if args.subcommand == 'analyze':
-            d = Analyze(cp)
+            d = Analyze(self.cp)
             if args.setup:
                 d.setup()
             else:
                 d.run()
 
         if args.subcommand == 'statistics':
-            d = Statistics(cp)
+            d = Statistics(self.cp)
             if args.setup:
                 d.setup()
             else:
@@ -430,6 +431,29 @@ class CLI(object):
             cp.write(ss)
             ss.seek(0)  # rewind
             return ss.read()
+
+    def setuplogging(self, command):
+        """ 
+        Setup logging 
+ 
+        """
+        self.log = logging.getLogger()
+
+        logfile = os.path.expanduser(self.cp.get(command, 'logfile'))
+        if logfile == 'syslog':
+            logStream = logging.handlers.SysLogHandler('/dev/log')
+        elif logfile == 'stdout':
+            logStream = logging.StreamHandler()
+        else:
+            logStream = logging.FileHandler(filename=logfile, mode='a')    
+
+        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(name)s %(filename)s:%(lineno)d %(funcName)s(): %(message)s'
+        formatter = logging.Formatter(FORMAT)
+        #formatter.converter = time.gmtime  # to convert timestamps to UTC
+        logStream.setFormatter(formatter)
+        self.log.addHandler(logStream)
+        self.log.info('Logging initialized.')
+
 
     def run(self):
         self.parseopts()

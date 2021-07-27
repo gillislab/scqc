@@ -1013,14 +1013,14 @@ class FasterqDump(object):
                         stderr=subprocess.PIPE)
         end = dt.datetime.now()
         elapsed =  end - start
-        logging.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {type(cp.returncode)} ")
+        logging.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {elapsed.seconds} seconds.")
         if str(cp.returncode) == '0':
             logging.info(f'successfully extracted run {self.run_id}')
         else:
             logging.debug(f"got stderr: {cp.stderr}")
             logging.debug(f"got stdout: {cp.stdout}")
-            logging.error(f' unknown non-zero return code for {self.run_id}')
-        
+            logging.error(f' unknown non-zero return code for {self.run_id}')       
+
         return cp.returncode
 
 

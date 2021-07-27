@@ -18,6 +18,7 @@ import sys
 import time
 import urllib
 import ast
+import datetime as dt
 from pathlib import Path
 from configparser import ConfigParser
 from threading import Thread
@@ -87,13 +88,11 @@ class AlignReads(object):
         try:
             # bring in all fastqs to <tempdir>
             runlist = self._stage_in(proj_id, rdf)
-            
             # split by technology and parses independently based on tech
             for tech, df in rdf.groupby(by = "tech_version") :
                 # smartseq runs
                 if tech =="smartseq":
                     self._handle_smartseq(proj_id, df)
-                                    
                 elif tech.startswith('10xv'):     
                     self._handle_10x(proj_id, tech, df)
                 else :
@@ -103,12 +102,11 @@ class AlignReads(object):
                     raise UnsupportedTechnologyException(f'For project {proj_id}')                
                 # finally, clean up fastq files             
             self._remove_fastqs(runlist)
-                        
             done = proj_id
         
         except Exception as ex:
             self.log.error(f'problem with NCBI proj_id {proj_id}')
-            logging.error(traceback.format_exc(None))
+            self.log.error(traceback.format_exc(None))
             
         finally:
             return (done, seen)
@@ -220,11 +218,7 @@ class AlignReads(object):
                '--soloStrand', ss_params["soloStrand"],
                '--outSAMtype', 'None']
 
-        cmdstr = " ".join(cmd)
-        logging.debug(f"STAR command: {cmdstr} running...")
-        cp = subprocess.run(cmd)
-        logging.debug(
-            f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
+        self._run_command(cmd)
         return(outfile_prefix)
 
     
@@ -281,16 +275,30 @@ class AlignReads(object):
                 '--soloFeatures', 'Gene',
                 '--readFilesIn', bio_readpath, tech_readpath,
                 '--outSAMtype', 'None']
-
-        cp = subprocess.run(cmd)
-
-        cmdstr = " ".join(cmd)
-        logging.debug(f"STAR command: {cmdstr} running...")
-        cp = subprocess.run(cmd)
-        logging.debug(
-            f"Ran cmd='{cmdstr}' returncode={cp.returncode} {type(cp.returncode)} ")
+        self._run_command(cmd)
         return(outfile_prefix)
 
+
+    def _run_command(self, cmd):
+        cmdstr = " ".join(cmd)
+        self.log.info(f"command: {cmdstr} running...")
+        start = dt.datetime.now()
+        cp = subprocess.run(cmd, 
+                        universal_newlines=True, 
+                        stdout=subprocess.PIPE, 
+                        stderr=subprocess.STDOUT)
+        end = dt.datetime.now()
+        elapsed =  end - start
+        self.log.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {elapsed.seconds} seconds.")
+        
+        if str(cp.returncode) == '0':
+            self.log.info(f'successfully ran {cmdstr}')
+        else:
+            self.log.error(f'non-zero return code for {self.run_id}')
+        self.log.debug(f"got stderr: {cp.stderr.decode('utf-8')}")
+        self.log.debug(f"got stdout: {cp.stdout.decode('utf-8')}")
+            
+        
 
     def _stage_out(self, proj_id, outfile_prefix):
         """
