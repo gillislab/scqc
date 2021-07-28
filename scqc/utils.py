@@ -517,6 +517,29 @@ def MetaMarkers_PR(enichment):
     pass
 
 
+def string_modulo(instring, divisor):
+    """
+    Takes instring. Converts to bytes. Takes hex() value of bytes. converts to integer. 
+    returns final integer % modbase
+    
+    """
+    encoded = instring.encode('utf-8')
+    hstring = encoded.hex()
+    intval = int(hstring)
+    return intval % divisor
+
+def modulo_filter(inlist, divisor, remainder):
+    """
+    Takes a list, returns list containing items in inlist that 
+    have the given remainder modulo divisor. 
+    """
+    newlist = []
+    for e in inlist:
+        if string_modulo(e, divisor) == remainder:
+            newlist.append(e)
+    logging.debug(f'inlist len={len(inlist)}, {divisor} servers, {remainder} server idx. outlist len={len(newlist)}')
+    return newlist
+    
 
 def get_default_config():
     cp = ConfigParser()

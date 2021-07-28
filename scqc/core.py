@@ -63,15 +63,13 @@ class Stage(object):
             self.seenfile = None
         else:
             self.seenfile = os.path.expanduser(self.seenfile)
-        
-        
         self.shutdown = False
         self.sleep = int(self.config.get(f'{self.name}', 'sleep'))
         self.batchsize = int(self.config.get(f'{self.name}', 'batchsize'))
         self.batchsleep = float(self.config.get(f'{self.name}', 'batchsleep'))
         self.ncycles = int(self.config.get(f'{self.name}', 'ncycles'))
-        self.num_servers = int(self.config.get(f'{self.name}','nservers'))
-        self.server_index = int(self.config.get(f'{self.name}','server_index'))
+        self.num_servers = int(self.config.get(f'{self.name}','num_servers'))
+        self.server_index = int(self.config.get(f'{self.name}','server_idx'))
         self.outlist = []
 
     def run(self):
@@ -87,6 +85,10 @@ class Stage(object):
                     self.dolist = listdiff(self.todolist, self.donelist)
                 else:
                     self.dolist = []
+                # if multi-server setup, filter todolist...
+                if num_servers > 1:
+                    self.dolist = modulo_filter(self.dolist, self.num_servers , self.server_index)
+                    
                 # cut into batches and do each separately, updating donelist. 
                 logging.debug(f'dolist len={len(self.dolist)}')
                 curid = 0
