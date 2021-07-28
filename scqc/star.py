@@ -325,9 +325,9 @@ class AlignReads(object):
                  'Log.final.out',
                  'SJ.out.tab',
                  'manifest.tsv']
+        self.log.debug(f'called for project {proj_id} and outfile_prefix= {outfile_prefix}')
           
         projdir = f'{self.cachedir}/{proj_id}/'
-        
         try:    # make project specific solo out directories. 
             os.makedirs(projdir)
             self.log.debug(f'created cache project dir {projdir}')
