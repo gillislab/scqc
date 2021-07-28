@@ -294,7 +294,7 @@ class AlignReads(object):
         if str(cp.returncode) == '0':
             self.log.info(f'successfully ran {cmdstr}')
         else:
-            self.log.error(f'non-zero return code for {self.run_id}')
+            self.log.error(f'non-zero return code for cmd {cmdstr}')
         if cp.stderr is not None:
             self.log.debug(f"got stderr: {cp.stderr}")
         if cp.stdout is not None:
