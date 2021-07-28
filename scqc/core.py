@@ -86,7 +86,7 @@ class Stage(object):
                 else:
                     self.dolist = []
                 # if multi-server setup, filter todolist...
-                if num_servers > 1:
+                if self.num_servers > 1:
                     self.dolist = modulo_filter(self.dolist, self.num_servers , self.server_index)
                     
                 # cut into batches and do each separately, updating donelist. 
