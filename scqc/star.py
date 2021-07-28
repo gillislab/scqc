@@ -321,7 +321,10 @@ class AlignReads(object):
         
         """
         
-        MOVES = ['Log.out','Log.final.out','SJ.out.tab','manifest.tsv']
+        MOVES = ['Log.out',
+                 'Log.final.out',
+                 'SJ.out.tab',
+                 'manifest.tsv']
           
         projdir = f'{self.cachedir}/{proj_id}/'
         
@@ -335,7 +338,7 @@ class AlignReads(object):
         for ext in MOVES:
             try:
                 srcfile = f'{outfile_prefix}{ext}'
-                destdir = f'{outfile_prefix}Solo.out'
+                destdir = f'{outfile_prefix}Solo.out/'
                 self.log.debug(f'moving {srcfile} -> {destdir} ...')
                 shutil.move(srcfile, destdir)
             except FileNotFoundError:
