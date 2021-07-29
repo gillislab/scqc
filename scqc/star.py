@@ -52,6 +52,10 @@ class FasterqFailureException(Exception):
     Thrown when run technology is neither 10x nor SmartSeq
     """
 
+class NonZeroReturnException(Exception):
+    """
+    Thrown when a command has non-zero return code. 
+    """
 
 
 class AlignReads(object):
@@ -291,14 +295,17 @@ class AlignReads(object):
         elapsed =  end - start
         self.log.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {elapsed.seconds} seconds.")
         
-        if str(cp.returncode) == '0':
-            self.log.info(f'successfully ran {cmdstr}')
-        else:
-            self.log.error(f'non-zero return code for cmd {cmdstr}')
         if cp.stderr is not None:
             self.log.debug(f"got stderr: {cp.stderr}")
         if cp.stdout is not None:
             self.log.debug(f"got stdout: {cp.stdout}")
+        
+        if str(cp.returncode) == '0':
+            self.log.info(f'successfully ran {cmdstr}')
+        else:
+            self.log.error(f'non-zero return code for cmd {cmdstr}')
+            raise NonZeroReturnException()
+
             
         
 
@@ -327,13 +334,6 @@ class AlignReads(object):
                  'manifest.tsv']
         self.log.debug(f'called for project {proj_id} and outfile_prefix= {outfile_prefix}')
           
-        projdir = f'{self.cachedir}/{proj_id}/'
-        try:    # make project specific solo out directories. 
-            os.makedirs(projdir)
-            self.log.debug(f'created cache project dir {projdir}')
-        except FileExistsError:
-            self.log.warning(f'cache project dir already exists: {projdir}  OK...')
-
         # move all save files into existing <tempdir>/{outfile_prefix}Solo.out dir. 
         for ext in MOVES:
             try:
@@ -343,13 +343,22 @@ class AlignReads(object):
                 shutil.move(srcfile, destdir)
             except FileNotFoundError:
                 pass
+
+
+        projdir = f'{self.cachedir}/{proj_id}/'
+        try:    # make project specific solo out directories. 
+            os.makedirs(projdir)
+            self.log.debug(f'created cache project dir {projdir}')
+        except FileExistsError:
+            self.log.warning(f'cache project dir already exists: {projdir}  OK...')
+
         
         # move Solo.out dir to <cachedir> 
         outdir = f'{outfile_prefix}Solo.out'
         base = os.path.basename(outdir)
         dirname = os.path.dirname(outdir)
         self.log.debug(f'Got base of {base} dirname {dirname}')
-        destdir = f'{projdir}/{base}'
+        destdir = f'{projdir}{base}'
         self.log.debug(f'destination directory name is {destdir}')
         newdir = shutil.copytree(outdir, destdir, dirs_exist_ok=True)
         # dst, symlinks, ignore, copy_function, ignore_dangling_symlinks, dirs_exist_ok)
