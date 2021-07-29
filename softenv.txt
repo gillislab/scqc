@@ -3,7 +3,6 @@ wget https://repo.anaconda.com/miniconda/Miniconda3-py39_4.9.2-Linux-x86_64.sh
 bash Miniconda3-py39_4.9.2-Linux-x86_64.sh
 # be sure to restart terminal to allow conda to start
 
-
 conda create -n scqc python=3.8
 conda activate scqc
 
@@ -13,7 +12,7 @@ conda config --add channels conda-forge
 # update conda if necessary
 conda update -n base -c defaults conda
 
-conda install requests pandas ipython scipy wget
+conda install requests pandas ipython scipy wget bottleneck
 conda install -c bioconda star
 conda install -c conda-forge leidenalg
 
@@ -22,7 +21,7 @@ pip install scanpy
 # install R packages on conda
 conda config --set channel_priority strict
 # required for R 4.0
-conda install -c conda-forge r-base r-essentials
+conda install -c conda-forge r-base 
 conda install -c conda-forge r-essentials
 conda install -c conda-forge r-cairo 
 conda install -c conda-forge r-ragg

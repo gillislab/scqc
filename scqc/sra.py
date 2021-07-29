@@ -981,6 +981,7 @@ class FasterqDump(object):
             '--force', 
             '--threads', f'{self.threads}',
             '--outdir', f'{self.tempdir}/',
+            '-t', f'{self.tempdir}/',
             '--log-level', f'{loglev}',
             f'{self.cachedir}/{self.run_id}.sra']
 

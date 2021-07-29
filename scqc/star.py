@@ -471,7 +471,7 @@ def build_genome_indices(config, force=False):
         cmd = ["STAR",
                "--runMode", "genomeGenerate",
                "--genomeSAsparseD", "3",   # for low memory (RAM)
-               "--genomeSAindexNbases", "12"  # for low memory
+               "--genomeSAindexNbases", "12",  # for low memory
                "--runThreadN", f'{n_core}',
                "--genomeDir", f'{outdir}',
                "--genomeFastaFiles", f'{outdir}/genome.fa',
