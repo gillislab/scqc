@@ -86,12 +86,14 @@ class AlignReads(object):
     def execute(self, proj_id):
         # get relevant metadata
         rdf = self._get_meta_data(proj_id)
-        self.log.debug(f'initializing STAR alignment for {proj_id}')
+        runlist  = list( rdf[ rdf.proj_id==proj_id ].run_id.unique() )
+        self.log.debug(f'initializing STAR alignment for {proj_id} {len(runlist)} runs.')
         done = None
         seen = proj_id
+ 
         try:
             # bring in all fastqs to <tempdir>
-            runlist = self._stage_in(proj_id, rdf)
+            self._stage_in(proj_id, runlist)
             # split by technology and parses independently based on tech
             for tech, df in rdf.groupby(by = "tech_version") :
                 # smartseq runs
@@ -103,9 +105,7 @@ class AlignReads(object):
                     self.log.warning(
                         f'{tech} is not yet supported for STAR alignment.')
                     # log... technology not yet supported
-                    raise UnsupportedTechnologyException(f'For project {proj_id}')                
-                # finally, clean up fastq files             
-            self._remove_fastqs(runlist)
+                    raise UnsupportedTechnologyException(f'For project {proj_id}')                            
             done = proj_id
         
         except Exception as ex:
@@ -113,18 +113,19 @@ class AlignReads(object):
             self.log.error(traceback.format_exc(None))
             
         finally:
+            # finally, clean up fastq files 
+            self._remove_fastqs(runlist)
             return (done, seen)
 
 
 
-    def _stage_in(self, proj_id, rdf):
+    def _stage_in(self, proj_id, runlist):
         """
         bring in fastq files to <tempdir> for all exp_ids in this project.
         
         throws FasterqFailureException if there is a problem. 
         
         """
-        runlist  = list( rdf[ rdf.proj_id==proj_id ].run_id.unique()  ) 
         runlength = len(runlist)
         i = 0
         for run_id in runlist:
