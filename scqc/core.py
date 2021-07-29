@@ -393,6 +393,9 @@ class CLI(object):
         if args.ncycles is not None:
             self.cp.set('DEFAULT','ncycles',str(int(args.ncycles)))
         
+        if args.setup:
+            self.cp.set(args.subcommand, 'logfile', 'stdout')
+        
         self.setuplogging(args.subcommand)           
         
         cs = self.get_configstr(self.cp)
