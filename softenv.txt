@@ -1,7 +1,15 @@
+
+
 # install conda
 wget https://repo.anaconda.com/miniconda/Miniconda3-py39_4.9.2-Linux-x86_64.sh
 bash Miniconda3-py39_4.9.2-Linux-x86_64.sh
 # be sure to restart terminal to allow conda to start
+
+# to export environment to yml
+# conda env export --name scqc > scqc.yml
+# to create conda from yml file. Otherwise, skip and install manually
+# conda env create --file scqc.yml
+
 
 conda create -n scqc python=3.8
 conda activate scqc
@@ -17,7 +25,7 @@ conda install -c bioconda star
 conda install -c conda-forge leidenalg
 conda install -c conda-forge scanpy
 
-# install R packages on conda
+# install R and dependencies on conda
 conda config --set channel_priority strict
 # required for R 4.0
 conda install -c conda-forge r-base 

@@ -15,7 +15,7 @@ from threading import Thread
 import glob
 import numpy as np
 import pandas as pd
-import scanpy as sc  # pip install
+import scanpy as sc  
 from scipy.io import mmread
 from scipy.sparse import base
 import matplotlib.pyplot as plt
