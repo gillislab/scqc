@@ -363,7 +363,8 @@ class AlignReads(object):
         self.log.debug(f'destination directory name is {destdir}')
         newdir = shutil.copytree(outdir, destdir, dirs_exist_ok=True)
         # dst, symlinks, ignore, copy_function, ignore_dangling_symlinks, dirs_exist_ok)
-        self.log.info(f'<tempdir> output copied to {newdir}')
+        chmod_recurse('{newdir}')
+        self.log.info(f'<tempdir> output copied to {newdir} and permissions adjusted.')
         
         # clean tempdir. 
         self.log.debug(f'cleaning temp directory, removing {outdir}')
@@ -379,7 +380,6 @@ class AlignReads(object):
             for fqfile in glob.glob(f'{self.tempdir}/{run_id}*.fastq'):
                 os.remove(fqfile)
                 self.log.debug(f'removed tempfile: {fqfile}')
-         
         
 
 ### setup scripts

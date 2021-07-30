@@ -313,7 +313,26 @@ class Statistics(Stage):
         self.log.debug('super() ran. object initialized.')
 
     def execute(self):
-        pass
+        self.log.debug(f'performing custom execute for {self.name}')
+        self.log.debug(f'got dolist len={len(dolist)}. executing...')
+        outlist = []
+        seenlist = []
+        for projectid in dolist:
+            self.log.debug(f'handling id {projectid}...')
+            try:
+                st = statistics.Statistics(self.config)
+                (out, seen) = st.execute(projectid)
+                self.log.debug(f'done with {projectid}')
+                if out is not None:
+                    outlist.append(out)
+                if seenlist is not None:
+                    seenlist.append(seen)
+            except Exception as ex:
+                self.log.warning(f"exception raised during project query: {projectid}")
+                self.log.error(traceback.format_exc(None))
+        self.log.debug(f"returning outlist len={len(outlist)} seenlist len={len(seenlist)}")
+        return (outlist, seenlist)
+
 
     def setup(self):
         pass

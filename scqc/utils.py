@@ -136,6 +136,19 @@ def listmerge(list1, list2):
     logging.debug(f"merged has length {len(dl)}")
     return dl
 
+def chmod_recurse(path, perms=0o755):
+    """
+    Recursively set permissions...
+    0o755 is world read+execute. 
+    
+    """
+    for root, dirs, files in os.walk(path):
+        for d in dirs:
+            os.chmod(os.path.join(root, d), perms)
+        for f in files:
+            os.chmod(os.path.join(root, f), perms)
+
+
 def download_wget(srcurl, destpath, finalname=None, overwrite=True, decompress=True, rate='1M'):
     """
     
