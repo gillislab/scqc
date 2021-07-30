@@ -15,8 +15,7 @@ conda update -n base -c defaults conda
 conda install requests pandas ipython scipy wget bottleneck
 conda install -c bioconda star
 conda install -c conda-forge leidenalg
-
-pip install scanpy
+conda install -c conda-forge scanpy
 
 # install R packages on conda
 conda config --set channel_priority strict
