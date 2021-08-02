@@ -107,6 +107,9 @@ class AlignReads(object):
                     # log... technology not yet supported
                     raise UnsupportedTechnologyException(f'For project {proj_id}')                            
             done = proj_id
+
+        except UnsupportedTechnologyException as ut:
+            self.log.error(f'problem with NCBI proj_id {proj_id}')
         
         except Exception as ex:
             self.log.error(f'problem with NCBI proj_id {proj_id}')
@@ -318,6 +321,8 @@ class AlignReads(object):
                   {outfile_prefix}Log.final.out
                   {outfile_prefix}SJ.out.tab
                   {outfile_prefix}manifest.tsv        
+                  {outfile_prefix}Log.progress.out
+                  
         
         for 10x
         f'{self.tempdir}/{run_id}_{tech}_Solo.out' -> SRR10285015_10xv2_Solo.out
@@ -333,6 +338,8 @@ class AlignReads(object):
                  'Log.final.out',
                  'SJ.out.tab',
                  'manifest.tsv']
+        DELETES = ['Log.progress.out']
+        
         self.log.debug(f'called for project {proj_id} and outfile_prefix= {outfile_prefix}')
           
         # move all save files into existing <tempdir>/{outfile_prefix}Solo.out dir. 
@@ -345,6 +352,13 @@ class AlignReads(object):
             except FileNotFoundError:
                 pass
 
+        for ext in DELETES:
+            try:
+                srcfile = f'{outfile_prefix}{ext}'
+                self.log.debug(f'removing {srcfile}...')
+                os.remove(srcfile)
+            except FileNotFoundError:
+                pass
 
         projdir = f'{self.cachedir}/{proj_id}/'
         try:    # make project specific solo out directories. 
@@ -363,7 +377,8 @@ class AlignReads(object):
         self.log.debug(f'destination directory name is {destdir}')
         newdir = shutil.copytree(outdir, destdir, dirs_exist_ok=True)
         # dst, symlinks, ignore, copy_function, ignore_dangling_symlinks, dirs_exist_ok)
-        self.log.info(f'<tempdir> output copied to {newdir}')
+        chmod_recurse('{newdir}')
+        self.log.info(f'<tempdir> output copied to {newdir} and permissions adjusted.')
         
         # clean tempdir. 
         self.log.debug(f'cleaning temp directory, removing {outdir}')
@@ -379,7 +394,6 @@ class AlignReads(object):
             for fqfile in glob.glob(f'{self.tempdir}/{run_id}*.fastq'):
                 os.remove(fqfile)
                 self.log.debug(f'removed tempfile: {fqfile}')
-         
         
 
 ### setup scripts

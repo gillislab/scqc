@@ -144,25 +144,18 @@ def setup(config):
     outputdir = os.path.expanduser(config.get('setup', 'outputdir'))
     figuredir =os.path.expanduser(config.get('setup', 'figuredir'))
 
-    dirs_to_make = [metadir,cachedir,tempdir, resourcedir,outputdir,figuredir]
+    dirs_to_make = [metadir, 
+                    f'{cachedir}/sra', 
+                    tempdir, 
+                    resourcedir, 
+                    outputdir, 
+                    figuredir]
 
     for direc in dirs_to_make:
         try:
             os.makedirs(direc)
         except FileExistsError:
             pass
-    # try:
-    #     os.makedirs(cachedir)
-    # except FileExistsError:
-    #     pass
-    # try:
-    #     os.makedirs(tempdir)
-    # except FileExistsError:
-    #     pass
-    # try:
-    #     os.makedirs(resourcedir)
-    # except FileExistsError:
-    #     pass
 
 
 # To do: batch for large queries.
@@ -209,9 +202,11 @@ class Query(object):
     def execute(self, proj_id):
         """
         For proj_id:
-            Perform query, get ids, fetch for each id, parse XML response. 
-            Put project and run info in project_metadata.tsv and project_runs.tsv
-            Put completed project ids into query-donelist.txt
+            For all experiments that *are* in exppid file (omitting experiments in project 
+            that didn't match a priori query). 
+                Perform full query, get runids, fetch for each id, parse XML response. 
+                Put project and run info in project_metadata.tsv and project_runs.tsv
+                Put completed project ids into query-donelist.txt
 
         """
         self.log.info(f'handling proj_id {proj_id}')
@@ -880,23 +875,11 @@ class Download(object):
         triedlist = []
         runlength = len(runlist)
         
-        for i, (runid, srcurl) in enumerate(rundict.items()): 
-            if self.dltool == 'sra':        
-                self.log.info(f'tool is sra/prefetch. handling runids')
-                self.log.debug(f'handling runid {runid}')
-                pf = Prefetch(self.config, runid)
-                res = pf.execute()
-                if res is not None:
-                    self.log.debug(f'runid {runid}  [{i+1}/{runlength}] handled successfully.')
-                    donelist.append(runid)
-                else:
-                    self.log.debug(f'runid {runid} failed.')
-                triedlist.append(runid)
-    
-            elif self.dltool == 'wget':
+        for i, (runid, srcurl) in enumerate(rundict.items()):  
+            if self.dltool == 'wget':
                 self.log.info(f'tool is wget. handling file_urls')
                 self.log.debug(f'handling runid {runid} srcurl {srcurl}')
-                destpath = f'{self.cachedir}/{runid}.sra'
+                destpath = f'{self.cachedir}/sra/{runid}.sra'
                 rc = download_wget(srcurl, destpath, 
                                    finalname=None, overwrite=True, decompress=True, 
                                    rate=f'{self.max_rate}')
@@ -983,7 +966,7 @@ class FasterqDump(object):
             '--outdir', f'{self.tempdir}/',
             '-t', f'{self.tempdir}/',
             '--log-level', f'{loglev}',
-            f'{self.cachedir}/{self.run_id}.sra']
+            f'{self.cachedir}/sra/{self.run_id}.sra']
 
         cmdstr = " ".join(cmd)
         logging.info(f"fasterq-dump command: {cmdstr} running...")
@@ -1003,6 +986,7 @@ class FasterqDump(object):
             logging.error(f' unknown non-zero return code for {self.run_id}')       
 
         return cp.returncode
+
 
 
 def get_runs_for_project(config, proj_id):

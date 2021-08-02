@@ -47,11 +47,6 @@ def summarize(imputepath):
     print_dict('TECHNOLOGY PROJECT TOTALS',tech_projnum)
     
     
-    
-    
-
-    
-
 
 
 if __name__ == "__main__":
