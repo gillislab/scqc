@@ -107,6 +107,9 @@ class AlignReads(object):
                     # log... technology not yet supported
                     raise UnsupportedTechnologyException(f'For project {proj_id}')                            
             done = proj_id
+
+        except UnsupportedTechnologyException as ut:
+            self.log.error(f'problem with NCBI proj_id {proj_id}')
         
         except Exception as ex:
             self.log.error(f'problem with NCBI proj_id {proj_id}')
