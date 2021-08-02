@@ -21,7 +21,6 @@ txtwrd = ' AND '.join(textword)
 print(f'txtwrd = {txtwrd}')
 tis = '"tissue"[Attribute Name]'
 
-
 params = f"({spc}) AND ({strat}) AND ({txtwrd}) "
 print(f'uncoded params = {params}')
 

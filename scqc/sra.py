@@ -1003,21 +1003,6 @@ def get_runs_for_project(config, proj_id):
         return []
 
 
-def get_runs_for_project(config, proj_id):
-    """
-    
-    """
-    
-    metadir = os.path.expanduser(config.get('sra', 'metadir'))
-    filepath = f"{metadir}/runs.tsv"
-    if os.path.isfile(filepath):
-        pdf = pd.read_csv(filepath, sep='\t', index_col=0)
-        return list(pdf[pdf.proj_id == proj_id].run_id)
-    else:
-        return []
-
-
-
 def query_project_metadata(project_id):
     '''
     E.g. https://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?db=sra&rettype=runinfo&save=efetch&term=SRP131661
@@ -1059,119 +1044,6 @@ def query_project_metadata(project_id):
     else:
         log.warning(f'bad HTTP return for proj: {project_id}')
         raise Exception(f'bad HTTP return for proj: {project_id}')
-
-
-def query_all_uids(config):
-    """
-    Perform standard query with max return, loop over all entries. 
-
-    retstart="+str(retstart)+"&retmax="+str(retmax)+"&retmode=json" 
-
-    """
-    sra_esearch = config.get('sra', 'sra_esearch')
-    sra_efetch = config.get('sra', 'sra_efetch')
-    search_term = config.get('sra', 'search_term')
-    query_max = 50000
-    query_start = 0
-
-    log = logging.getLogger('sra')
-    log.info('querying SRA...')
-    alluids = []
-    while True:
-        try:
-            url = f"{sra_esearch}&term={search_term}&retstart={query_start}&retmax={query_max}&retmode=json"
-            log.debug(f"search url: {url}")
-            r = requests.get(url)
-            er = json.loads(r.content.decode('utf-8'))
-            #log.debug(f"er: {er}")
-            idlist = er['esearchresult']['idlist']
-            log.debug(f"got idlist length={len(idlist)}")
-            if len(idlist) > 0:
-                for id in idlist:
-                    alluids.append(id)
-                query_start += query_max
-            else:
-                break
-        except Exception as ex:
-            #log.error(f'problem with NCBI uid {id}')
-            log.error(traceback.format_exc(None))
-
-    log.debug(f'found {len(alluids)} uids.')
-    for i in alluids:
-        print(i)
-
-def query_project_for_uidlist_byone(config, uidlist):
-    """
-    Fallback routine for troublesome encoding error with particular uids. 
-    """
-    log = logging.getLogger('sra')
-    tuples = []
-    for uid in uidlist:
-        log.debug(f'handling single uid: {uid}')
-        tuplist = query_project_for_uidlist(config, [uid])
-        for tup in tuplist:
-            if tup is not None:
-                tuples.append(tup)
-            else:
-                log.warning(f'Problem querying during special handling. uid {uid}')
-    log.warning(f'returning special tuplelist: {tuples}')
-    return tuples
-
-
-def query_project_for_uidlist(config, uidlist):
-    """
-    Non OOP version of the Query method
-    """
-    log = logging.getLogger('sra')
-    sra_efetch = config.get('sra', 'sra_efetch')
-    uids = ','.join(uidlist)
-    url = f"{sra_efetch}&id={uids}"
-    log.info(f"fetching url={url}")
-    tries = 0
-    while True:
-        try:
-            tuples = []
-            r = requests.post(url)
-            if r.status_code == 200:
-                rd = r.content.decode()
-                root = et.fromstring(rd)
-                expkgs = root.findall('EXPERIMENT_PACKAGE')
-                for exppkg in expkgs:
-                    exp = exppkg.find('EXPERIMENT')
-                    exp_id = exp.get('accession')
-                    proj_id = exp.find('STUDY_REF').get('accession')
-                    log.debug(f'exp_id: {exp_id} proj_id: {proj_id}')
-                    tuples.append( (exp_id, proj_id) )
-            time.sleep(0.5)
-            return tuples
-        
-        except ChunkedEncodingError as cee:
-            log.warning(f'got ChunkedEncodingError error for uidlist {uids}: {cee}')
-            tries += 1
-            if tries >= 3 and len(uidlist) == 1:
-                log.warning(f'got ChunkedEncodingError for uid: {uidlist[0]} Giving up, returning None.')
-                return None
-            elif tries >= 3:
-                log.warning(f'got too many ChunkedEncodingErrors for uidlist {uidlist}. Doing one-by-one...')
-                tuples = query_project_for_uidlist_byone(config, uidlist)
-                return tuples
-            else:
-                log.warning(f'got ChunkedEncodingError. Try {tries}')
-            time.sleep(0.5)                
-            
-            
-        except ConnectionError as ce:
-            log.warning(f'got connection error for uidlist {uids}: {ce}')
-            time.sleep(30)
-
-        except Exception as e:
-            log.warning(f'got another exception for uidlist {uids}: {e}  ')
-            return None
-
-
-# should  this be moved to query? download?
-# Note: special cases....
-#       umi+cb = 30(v3) , 25(v2)
 
 
 
@@ -1238,14 +1110,6 @@ if __name__ == "__main__":
                         required=False,
                         default=None,
                         help='Download metadata for args. ')
-
-    parser.add_argument('-u', '--uidquery',
-                        metavar='uidfile',
-                        type=str,
-                        dest='uidquery',
-                        required=False,
-                        default=None,
-                        help='Perform standard query on uids in file, print project_ids.')
 
 
     parser.add_argument('-i', '--impute',
@@ -1338,26 +1202,7 @@ if __name__ == "__main__":
             for e in exps:
                 print(e)
 
-    if args.uidquery is not None:
-        qfile = args.uidquery
-        uidlist = readlist(os.path.expanduser(qfile))
-        tuplist = []
-        curid = 0
-        batchsize = int(cp.get('sra','uid_batchsize'))
-        efetch_sleep = float(cp.get('sra','query_sleep'))
-        
-        with open(args.outfile, 'w') as f:
-            while curid < len(uidlist):
-                dolist = uidlist[curid:curid + batchsize]
-                outtups = query_project_for_uidlist(cp, dolist)
-                for (expid, projid) in outtups:
-                    if projid is not None and expid is not None :
-                        f.write(f'{expid} {projid}\n')
-                        f.flush()
-                    else:
-                        logging.warning('exp_id or proj_id is None. Ignoring... ')
-                curid += batchsize
-            time.sleep(efetch_sleep)
+
                 
 
     if args.impute is not None:
