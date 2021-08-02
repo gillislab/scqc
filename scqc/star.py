@@ -318,6 +318,8 @@ class AlignReads(object):
                   {outfile_prefix}Log.final.out
                   {outfile_prefix}SJ.out.tab
                   {outfile_prefix}manifest.tsv        
+                  {outfile_prefix}Log.progress.out
+                  
         
         for 10x
         f'{self.tempdir}/{run_id}_{tech}_Solo.out' -> SRR10285015_10xv2_Solo.out
@@ -333,6 +335,8 @@ class AlignReads(object):
                  'Log.final.out',
                  'SJ.out.tab',
                  'manifest.tsv']
+        DELETES = ['Log.progress.out']
+        
         self.log.debug(f'called for project {proj_id} and outfile_prefix= {outfile_prefix}')
           
         # move all save files into existing <tempdir>/{outfile_prefix}Solo.out dir. 
@@ -345,6 +349,13 @@ class AlignReads(object):
             except FileNotFoundError:
                 pass
 
+        for ext in DELETES:
+            try:
+                srcfile = f'{outfile_prefix}{ext}'
+                self.log.debug(f'removing {srcfile}...')
+                os.remove(srcfile)
+            except FileNotFoundError:
+                pass
 
         projdir = f'{self.cachedir}/{proj_id}/'
         try:    # make project specific solo out directories. 
