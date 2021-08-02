@@ -202,9 +202,11 @@ class Query(object):
     def execute(self, proj_id):
         """
         For proj_id:
-            Perform query, get ids, fetch for each id, parse XML response. 
-            Put project and run info in project_metadata.tsv and project_runs.tsv
-            Put completed project ids into query-donelist.txt
+            For all experiments that *are* in exppid file (omitting experiments in project 
+            that didn't match a priori query). 
+                Perform full query, get runids, fetch for each id, parse XML response. 
+                Put project and run info in project_metadata.tsv and project_runs.tsv
+                Put completed project ids into query-donelist.txt
 
         """
         self.log.info(f'handling proj_id {proj_id}')
@@ -984,6 +986,7 @@ class FasterqDump(object):
             logging.error(f' unknown non-zero return code for {self.run_id}')       
 
         return cp.returncode
+
 
 
 def get_runs_for_project(config, proj_id):
