@@ -34,7 +34,7 @@ gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 from scqc.utils import *
 
-sc.settings.verbosity = 4
+# sc.settings.verbosity = 4
 
 
 LOGLEVELS = {
@@ -117,7 +117,7 @@ class GetStats(object):
 
         # merge all of the datasets 
         # technology is obtained from the soloout dir name
-        batchnames = [ os.path.basename(solooutdir).replace('_Solo.out','') for i in range(len(solooutdirs)) ]
+        batchnames = [ os.path.basename(solooutdirs[i]).replace('_Solo.out','') for i in range(len(solooutdirs)) ]
         ids = pd.DataFrame([ batchname.split('_') for batchname in batchnames] )
         self.log.debug(f'starting with projectid {ids}')
 
@@ -228,16 +228,16 @@ class GetStats(object):
         adata = sc.read_mtx(f'{path}/matrix.mtx').T
 
         
-        geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
-        geneinfo.columns = ['gene_accession', 'gene_symbol', 'type']
+        # geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
+        # geneinfo.columns = ['gene_accession', 'gene_symbol', 'type']
         # geneinfo.index = geneinfo.gene_accession
         # geneinfo.index.name =None
         genenames = pd.read_csv(f'{path}/features.tsv',
                                 sep="\t", header=None, dtype=str)
         genenames.columns = ['gene_accession', 'gene_symbol', 'source']
 
-        genenames = genenames.merge(geneinfo, how='left', on=[
-            "gene_accession", 'gene_symbol'], indicator=True)
+        # genenames = genenames.merge(geneinfo, how='left', on=[
+        #     "gene_accession", 'gene_symbol'], indicator=True)
         genenames.index = genenames.gene_accession
         genenames.index.name =None
         cellids = pd.read_csv(f'{path}/barcodes.tsv', sep="\t", header=None)
@@ -259,7 +259,11 @@ class GetStats(object):
         # consider different gene sets - ERCC  corresponds to spike ins
         adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')
         # adata.var['ERCC'] = adata.var.gene_symbol.str.startswith('ERCC')
-        adata.var['ribo'] = adata.var.type == "rRNA"
+        geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
+        geneinfo.columns = ['gene_accession', 'gene_symb','type']
+        tmpdf = pd.merge(adata.var, geneinfo, on = 'gene_accession',how = 'left')        
+        tmpdf = tmpdf.fillna( 'None')
+        adata.var['ribo'] = (tmpdf.type == "rRNA").values
         # adata.var['cytoplasm'] = None       # GO Term/kegg?
         # adata.var['metabolism'] = None      # GO Term/kegg?
         # adata.var['membrane'] = None        # GO Term/kegg?
@@ -274,18 +278,20 @@ class GetStats(object):
         adata.var['housekeeping'] = adata.var.gene_symbol.isin(
             hk_genes.gene)
 
-        # get gender markers
+        # get gender markers  https://www.nature.com/articles/s41586-020-2536-x
+        # just one gene - Xist
         female_genes = pd.read_csv(self.female_genes, sep=",")
         self.log.debug(f"female:{female_genes}")
         adata.var['female'] = adata.var.gene_symbol.isin(
             female_genes.gene)
 
+        # just one gene - Ddx3y
         male_genes = pd.read_csv(self.male_genes, sep=",")
         self.log.debug(f"male:{male_genes}")
         adata.var['male'] = adata.var.gene_symbol.isin(
             male_genes.gene)
 
-        # get essential genes
+        # get essential genes  # 1947 genes
         essential = pd.read_csv(self.essential_genes, sep=",")
         self.log.debug(f"ess:{essential}")
         adata.var['essential'] = adata.var.gene_symbol.isin(
@@ -293,10 +299,19 @@ class GetStats(object):
 
         # get cell cycle genes
         cc = pd.read_csv(self.cell_cycle_genes, sep=",")
+        cc.columns = ['cc_cluster','gene_symbol']
         self.log.debug(f"cc:{cc}")
-        adata.var['cell_cycle'] = adata.var.gene_symbol.isin(cc.gene)
-        for i in cc.cluster.unique():
-            adata.var[f'cc_cluster_{i}'] = adata.var.cell_cycle == i
+
+        tmpdf = pd.merge(adata.var ,cc, on = 'gene_symbol',how='left' )
+        # tmpdf.drop('gene',axis=1)
+        tmpdf.index = adata.var.index
+        tmpdf.cc_cluster.fillna('None')
+        adata.var = tmpdf
+        
+        
+        adata.var['cell_cycle'] = adata.var.cc_cluster != 'None'
+        for i in cc.cc_cluster.unique():
+            adata.var[f'cc_cluster_{i}'] = adata.var.cc_cluster == i 
             qcvars.append(f'cc_cluster_{i}')
 
         self.log.debug('calculating qc metrics')

@@ -327,7 +327,7 @@ def gini_coefficient_fast(X):
 
 
 
-
+# TODO implement smarter - RAM issues. 
 def sparse_pairwise_corr(A, B=None):
     """
     Compute pairwise correlation for sparse matrices. 
@@ -565,3 +565,10 @@ def get_configstr(cp):
         cp.write(ss)
         ss.seek(0)  # rewind
         return ss.read()
+
+
+def compare_barcode_to_whitelists(barcodes, 
+        whitelistpaths = ['resource/whitelist_10xv1.txt','resource/whitelist_10xv2.txt','resource/whitelist_10xv3.txt']):
+    f = open(whitelistpaths[0],'r').split('/n')
+    # set(barcodes) & 
+    pass
