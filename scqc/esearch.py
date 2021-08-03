@@ -22,7 +22,11 @@ from urllib import parse
 
 class SraSearch(object):
     
-    def __init__(self, config, species, strategy, textword):
+    def __init__(self, config, 
+                 outfile='stdout', 
+                 species=["mus musculus",'homo sapiens'], 
+                 strategy=["rna seq"], 
+                 textword=["single cell","brain"] ):
         """
         config:    scqc configparser
         species:   List of Linnean species names. 
@@ -42,6 +46,7 @@ class SraSearch(object):
         self.query_max = int(config.get('sra','query_max'))
         self.efetch_sleep = float(config.get('sra','query_sleep'))
         self.full_url = self.build_searchurl(species, strategy, textword)
+        self.outfile = outfile               
         self.log.debug('SraSearch initted. ')
 
 
@@ -75,7 +80,7 @@ class SraSearch(object):
         self.log.debug(f'uncoded params = {params}')
         encoded = parse.quote_plus(params)        
         furl = f"{self.esearch_rooturl}&term={encoded}"
-        self.log.info(f'full esearch URL= {furl}')
+        self.log.debug(f'full esearch URL= {furl}')
         return furl    
 
 
@@ -90,19 +95,21 @@ class SraSearch(object):
             outtups = query_project_for_uidlist(self.config, dolist)
             for (expid, projid) in outtups:
                 tuplist.append( (expid, projid)  )
-                #if projid is not None and expid is not None :
-                #    f.write(f'{expid} {projid}\n')
-                #    f.flush()
-                #else:
-                #    self.log.warning('exp_id or proj_id is None. Ignoring... ')
             curid += self.batchsize
             self.log.debug(f'handled {self.batchsize} uids. Sleeping...')
             time.sleep(self.efetch_sleep)
         
         self.log.debug(f'got {len(tuplist)} tuples.')
-        for (one, two ) in tuplist:
-            print(f' {one} {two}')
-        self.log.info(f'Done.')
+        
+        if self.outfile == 'stdout':
+            f = sys.stdout
+        else:
+            f = open(self.outfile, 'w', encoding='utf-8')
+              
+        for (exp_id, proj_id ) in tuplist:
+            f.write(f'{exp_id} {proj_id}\n')
+        f.close()
+        self.log.info(f'Wrote {len(tuplist)} exp_ids to {self.outfile}.')
 
 
     def query_all_uids(self):
@@ -127,7 +134,7 @@ class SraSearch(object):
                 er = json.loads(r.content.decode('utf-8'))
                 #log.debug(f"er: {er}")
                 idlist = er['esearchresult']['idlist']
-                log.debug(f"got idlist length={len(idlist)}")
+                log.info(f"got idlist length={len(idlist)}")
                 if len(idlist) > 0:
                     for id in idlist:
                         alluids.append(id)
@@ -170,7 +177,7 @@ class SearchCLI(object):
         parser.add_argument('-o', '--outfile',
                         metavar='outfile',
                         type=str,
-                        default=None,
+                        default='stdout',
                         help='Outfile. ')
         
         subparsers = parser.add_subparsers(dest='subcommand',
@@ -190,7 +197,7 @@ class SearchCLI(object):
         parser_search.add_argument('-s','--species',
                             type=str,
                             dest='species',
-                            default='mus musculus',
+                            default='pan troglodytes',
                             help='comma-separated list of lowercase Linnean names'
                             )
 
@@ -207,6 +214,12 @@ class SearchCLI(object):
                             default="'single cell','brain'",
                             help='comma-separated list of key words'
                             )
+
+        parser_search.add_argument('-o', '--outfile',
+                        metavar='outfile',
+                        type=str,
+                        default='stdout',
+                        help='Outfile. ')
         
         args = parser.parse_args()
 
@@ -231,8 +244,8 @@ class SearchCLI(object):
             sps = [x.strip() for x in args.species.split(',')]
             stg = [r.strip() for r in args.strategy.split(',')]
             txt = [t.strip() for t in args.textword.split(',')]
-            
-            s = SraSearch(self.cp, sps, stg, txt)
+                        
+            s = SraSearch(self.cp, args.outfile, sps, stg, txt)
             s.run()
 
         if args.uidquery is not None:
@@ -342,7 +355,7 @@ def query_project_for_uidlist(config, uidlist):
     sra_efetch = config.get('sra', 'sra_efetch')
     uids = ','.join(uidlist)
     url = f"{sra_efetch}&id={uids}"
-    log.info(f"fetching url={url}")
+    #log.info(f"fetching url={url}")  # will be logged by urllib3
     tries = 0
     while True:
         try:

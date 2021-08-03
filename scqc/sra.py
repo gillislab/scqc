@@ -1208,17 +1208,12 @@ if __name__ == "__main__":
         for srp in args.metadata:
             df = query_project_metadata(srp)
             exps = list(df['Experiment'].unique())
-
             logging.debug(f"Got list of {len(exps)} experiments")
             for e in exps:
                 print(e)
-
-
-                
 
     if args.impute is not None:
         q = Impute(cp)
         for pid in args.impute:
             q.execute(pid)
 
-        # SRP225790
