@@ -615,7 +615,8 @@ class Impute(object):
             outdf = outdf[['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon','batch']]
             outdf.columns = IMPUTE_COLUMNS  # renames the columns from global 
             
-            if outdf.shape[0] > 0:
+            outdf = self._known_tech(outdf)
+            if len(outdf) > 0:
                 merge_write_df(outdf, f'{self.metadir}/impute.tsv')  
             else :
                 self.log.warn(f'Unable to predict tech for:{proj_id} ')
@@ -628,6 +629,16 @@ class Impute(object):
             self.log.error(f'problem with NCBI proj_id {proj_id}')
             logging.error(traceback.format_exc(None))
             return (None, proj_id)
+
+    def _known_tech(self, df):
+        """
+        Filters impute df by known tech. 
+        """
+        KNOWN = ['smartseq','10xv3', '10xv2','10xv1']
+        self.log.debug(f'filter by known tech. inlength={len(df)}')
+        retdf = df[ df.tech_version.isin(KNOWN) ]
+        self.log.debug(f'filter by known tech. outlength={len(retdf)}')        
+        return retdf
             
     # TODO deal with multiple tech finds
     def impute_tech_from_lcp(self, df):
