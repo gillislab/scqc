@@ -56,6 +56,12 @@ class NonZeroReturnException(Exception):
     """
     Thrown when a command has non-zero return code. 
     """
+    
+class NoTechnologyProjectException(Exception):
+    """
+    Thrown when a project has no runs with known technology.
+    
+    """
 
 
 class AlignReads(object):
@@ -86,27 +92,36 @@ class AlignReads(object):
     def execute(self, proj_id):
         # get relevant metadata
         rdf = self._get_meta_data(proj_id)
+        # filter out unknown tech_version
+        rdf = self._known_tech(rdf)
         runlist  = list( rdf[ rdf.proj_id==proj_id ].run_id.unique() )
-        self.log.debug(f'initializing STAR alignment for {proj_id} {len(runlist)} runs.')
+        self.log.debug(f'initializing STAR alignment for {proj_id} {len(runlist)} inferred runs.')
         done = None
         seen = proj_id
  
         try:
             # bring in all fastqs to <tempdir>
             self._stage_in(proj_id, runlist)
+            #
+            some_doable = False
+            
             # split by technology and parses independently based on tech
             for tech, df in rdf.groupby(by = "tech_version") :
                 # smartseq runs
                 if tech =="smartseq":
+                    some_doable = True
                     self._handle_smartseq(proj_id, df)
-                elif tech.startswith('10xv'):     
+                elif tech.startswith('10xv'):  
+                    some_doable = True   
                     self._handle_10x(proj_id, tech, df)
                 else :
                     self.log.warning(
-                        f'{tech} is not yet supported for STAR alignment.')
-                    # log... technology not yet supported
-                    raise UnsupportedTechnologyException(f'For project {proj_id}')                            
-            done = proj_id
+                        f'{tech} in project {proj_id} not supported for STAR.')
+                    # raise UnsupportedTechnologyException(f'For project {proj_id}')                            
+            if some_doable:
+                done = proj_id
+            else:
+                raise NoTechnologyProjectException(f'No runs with known tech for project {proj_id}')
 
         except UnsupportedTechnologyException as ut:
             self.log.error(f'problem with NCBI proj_id {proj_id}')
@@ -120,6 +135,15 @@ class AlignReads(object):
             self._remove_fastqs(runlist)
             return (done, seen)
 
+    def _known_tech(self, df):
+        """
+        Filters impute df by known tech. 
+        """
+        KNOWN = ['smartseq','10xv3', '10xv2','10xv1']
+        self.log.debug(f'filter by known tech. inlength={len(df)}')
+        retdf = df[ df.tech_version.isin(KNOWN) ]
+        self.log.debug(f'filter by known tech. outlength={len(retdf)}')        
+        return retdf
 
 
     def _stage_in(self, proj_id, runlist):
