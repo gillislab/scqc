@@ -203,19 +203,23 @@ assign_cell_type <- function(dataset, top_markers, group_assignment = NULL ) {
     ct_enrichment = MetaMarkers::compute_marker_enrichment(ct_scores)
     ct_pred = MetaMarkers::assign_cells(ct_scores , group_assignment = group_assignment ) 
 
-    return(list(ct_pred , ct_scores, ct_enrichment))
+    rownames(ct_scores) =gsub('/','-',rownames(ct_scores) )
+    rownames(ct_enrichment) =gsub('/','-',rownames(ct_enrichment))
+    colnames(ct_pred) =gsub('/','-',colnames(ct_pred))
+    return(list(ct_pred , t(ct_scores), t(ct_enrichment)))
 
 }
 
 
-annotate_execute <- function( h5path, class_ms ='class_marker_set.csv.gz',
-    subclass_ms='subclass_marker_set.csv.gz', max_rank=100 ) {
+annotate_execute <- function( h5path, class_ms ='biccn_MoP_class_marker_set.csv.gz',
+    subclass_ms='biccn_MoP_subclass_marker_set.csv.gz', max_rank=100 ) {
         # need to figure out a good max_rank for each of the three label sets
 
     # marker_dir = "~/scqc/supplement_data/markersets/MoP"
     dataset = parse_h5ad(h5path)   
     # dataset should already be log-ed
-    marker_sets = list(class=class_ms, subclass=subclass_ms)
+    marker_sets = list(class=class_ms, subclass=subclass_ms,
+    outprefix ='.')
     # marker_sets = list(class='class_marker_set.csv.gz' ,
     #                 subclass= 'subclass_marker_set.csv.gz')
     
@@ -235,42 +239,24 @@ annotate_execute <- function( h5path, class_ms ='class_marker_set.csv.gz',
         subclass_scores = subclass_stats[[2]]
         subclass_enrichment = subclass_stats[[3]]
         
+        dfs2save = c('class_pred','class_scores','class_enrichment',
+            'subclass_pred','subclass_scores','subclass_enrichment')
 
-        dfs2merge = list(class_scores_=class_scores,class_enrichment_=class_enrichment,
-                subclass_scores_=subclass_scores,subclass_enrichment_=subclass_enrichment )
-        i=1
-        for (df in dfs2merge) {
+        # save to disk 
+        # TODO save directly to h5ad files - 
+        # scanpy's read_h5ad doesn't recognize the data type...
+        for (df in dfs2save){
+            bn = basename(h5path)
+            dn = dirname(h5path)
+
+            fname = paste0(outprefix,'/',sub('.h5ad', paste0('_',df,'.tsv'), bn ) )
             
-            tmp = as.data.frame(t(df))
-            colnames(tmp) = paste0(names(dfs2merge)[i] , colnames(tmp) )
-            tmp['cell'] = rownames(tmp)
-            if (i ==1){
-                mergeddf = tmp
-            } else{
-                mergeddf = merge(mergeddf, tmp, by ='cell'  )
-            }
-            i = i+1 
+            write.table(eval(parse(text=df)), file = fname,sep="\t",quote = FALSE)
         }
 
-        colnames(class_pred) = paste0('class_',colnames(class_pred))
-        class_pred$cell = rownames(class_pred)
-        colnames(subclass_pred) = paste0('subclass_',colnames(subclass_pred))
-        subclass_pred$cell = rownames(subclass_pred)
-        
-        preds = merge(class_pred, subclass_pred ,by='cell',sort=FALSE)
-        mergeddf = merge(mergeddf, preds ,by='cell',sort=FALSE)
-
-        # tried to save directly to h5ad file, but sc.read_h5ad doesn't recognize the type
-        # save results to a temp file
-        tmp_path = sub('.h5ad','.tsv',h5path)
-        write.table(mergeddf, file=tmp_path,sep="\t" )
-        # for (cn in colnames(preds)[2:ncol(preds)]){
-        #     tryCatch({
-        #         rhdf5::h5write(obj = preds[,cn] , file = h5path, name = paste0('obs/',cn) )
-        #     }, error = function(e){warning(e)})
-        # }
     }
 
+    return()
 }
 
 
@@ -285,7 +271,7 @@ if (is.null(opt$mode)) {
     if (is.null(opt$h5path)  ) {
         # no directory given, print help statement
     } else if (   file.exists(opt$h5path) ){
-        annotate_execute(opt$h5path, opt$class_markerset, opt$subclass_markerset, opt$max_rank) 
+        annotate_execute(opt$h5path, opt$class_markerset, opt$subclass_markerset, opt$max_rank, opt$outprefix) 
     } else if ( ! file.exists(opt$h5path) ){
         # cant find directory 
         warning("no star output directory found. doing nothing")

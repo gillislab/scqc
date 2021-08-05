@@ -145,12 +145,12 @@ class GetStats(object):
         # get batch information
         self.log.debug(f'getting batch info for {srpid}')
 
-        impute = pd.read_csv(f'{self.metadir}/impute.tsv', sep='\t',index_col=0)
+        impute = load_df(f'{self.metadir}/impute.tsv')
         impute = impute.loc[impute.proj_id == srpid,: ]
 
         tmpdf =  pd.merge(adata.obs, impute )[['cell_id','run_id','exp_id', 'samp_id','proj_id','tech', 'batch' ]]
         tmpdf.index= ind
-
+        
         adata.obs = tmpdf
 
         adata = self._get_stats_scanpy(adata)
@@ -168,25 +168,13 @@ class GetStats(object):
         # adata[solooutdir].var.to_csv(f'{self.tempdir}/var.tsv',sep="\t")
         # consolidate these...
         self.log.debug(f'saving to {self.outputdir}/{srpid}.h5ad ')
-        adata.write(h5file)
+        adata.write_h5ad(h5file)
 
         self.log.debug(f'assinging cell types using metamarkers for {srpid}')
-        tmp_path = self._run_MetaMarkers(h5file)
+        adata = self._run_MetaMarkers(h5file,adata)
         self.log.debug(f'done with metamarkers for {srpid} - saving to h5file')
-        
-        tmpdf = pd.read_csv(tmp_path ,sep="\t", index_col =0)
-        self.log.debug(f'read df')
+        adata.write_h5ad(h5file)
 
-
-        # TODO separate into the scores - enrichment - prediction
-        tmp =  adata.obs.merge(tmpdf, left_on = 'cell_id' ,right_on = 'cell')
-        tmp.index = tmp.cell_id
-        tmp.index.name = None
-        tmp.reindex(adata.obs.index)
-        adata.obsm['MetaMarkers'] = tmp
-
-        self.log.debug('Saving to h5ad')
-        adata.write(h5file)
     
     # currently not used 
     def _gather_stats_from_STAR(self, solooutdir):
@@ -204,7 +192,7 @@ class GetStats(object):
             feature_stats = pd.DataFrame(lines, columns=["stat", "value"])
 
         summary_stats = pd.read_csv(
-            f"{solooutdir}/Gene/Summary.csv", sep=",", header=None)
+            f"{solooutdir}/Gene/Summary.csv", sep=",", header=None,dtype='str')
         summary_stats.columns = ["stat", "value"]
 
         acc = solooutdir.split("/")[-1].split("Solo.out")[0][:-1]
@@ -240,7 +228,7 @@ class GetStats(object):
         #     "gene_accession", 'gene_symbol'], indicator=True)
         genenames.index = genenames.gene_accession
         genenames.index.name =None
-        cellids = pd.read_csv(f'{path}/barcodes.tsv', sep="\t", header=None)
+        cellids = pd.read_csv(f'{path}/barcodes.tsv', sep="\t", header=None,dtype='str')
         cellids.columns = ["cell_id"]
 
         cellids.index = cellids.cell_id
@@ -259,7 +247,7 @@ class GetStats(object):
         # consider different gene sets - ERCC  corresponds to spike ins
         adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')
         # adata.var['ERCC'] = adata.var.gene_symbol.str.startswith('ERCC')
-        geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
+        geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype='str')
         geneinfo.columns = ['gene_accession', 'gene_symb','type']
         tmpdf = pd.merge(adata.var, geneinfo, on = 'gene_accession',how = 'left')        
         tmpdf = tmpdf.fillna( 'None')
@@ -273,35 +261,36 @@ class GetStats(object):
 
         # get housekeeping genes
         self.log.debug(f"gathering marker sets:")
-        hk_genes = pd.read_csv(self.stable_housekeepinig, sep=",")
+        hk_genes = pd.read_csv(self.stable_housekeepinig, sep=",",dtype='str')
         self.log.debug(f"housekeeping:{hk_genes}")
         adata.var['housekeeping'] = adata.var.gene_symbol.isin(
             hk_genes.gene)
 
         # get gender markers  https://www.nature.com/articles/s41586-020-2536-x
         # just one gene - Xist
-        female_genes = pd.read_csv(self.female_genes, sep=",")
+        female_genes = pd.read_csv(self.female_genes, sep=",",dtype='str')
         self.log.debug(f"female:{female_genes}")
         adata.var['female'] = adata.var.gene_symbol.isin(
             female_genes.gene)
 
         # just one gene - Ddx3y
-        male_genes = pd.read_csv(self.male_genes, sep=",")
+        male_genes = pd.read_csv(self.male_genes, sep=",",dtype='str')
         self.log.debug(f"male:{male_genes}")
         adata.var['male'] = adata.var.gene_symbol.isin(
             male_genes.gene)
 
         # get essential genes  # 1947 genes
-        essential = pd.read_csv(self.essential_genes, sep=",")
+        essential = pd.read_csv(self.essential_genes, sep=",",dtype='str')
         self.log.debug(f"ess:{essential}")
         adata.var['essential'] = adata.var.gene_symbol.isin(
             essential.gene)
 
         # get cell cycle genes
-        cc = pd.read_csv(self.cell_cycle_genes, sep=",")
+        cc = pd.read_csv(self.cell_cycle_genes, sep=",",dtype='str')
         cc.columns = ['cc_cluster','gene_symbol']
         self.log.debug(f"cc:{cc}")
 
+        # get the type of gene - pseudogene, rRNA, etc
         tmpdf = pd.merge(adata.var ,cc, on = 'gene_symbol',how='left' )
         # tmpdf.drop('gene',axis=1)
         tmpdf.index = adata.var.index
@@ -371,6 +360,7 @@ class GetStats(object):
         adata.obs.cell_id = adata.obs.index
         return adata
 
+    # not yet implemented
     def _run_EGAD_by_batch(self, adata, rank_standardized = False, 
         batch_column = ['run_id','exp_id','samp_id','proj_id','batch','class_predicted','subclass_predicted'] ):
 
@@ -403,9 +393,9 @@ class GetStats(object):
         adata.uns['EGAD'] = res
         return( adata)
     
-    def _run_MetaMarkers(self, h5path):
+    def _run_MetaMarkers(self, h5path,adata):
         '''
-        h5path should be saved in the temp directory before this stage. 
+        h5path should be saved in the output directory before this stage. 
         After MetaMarkers, move completed h5ad file to output/
         '''
 
@@ -417,13 +407,59 @@ class GetStats(object):
                '--class_markerset', f'{self.class_markerset}',
                '--subclass_markerset', f'{self.subclass_markerset}',
                '--h5path', f'{h5path}',
-               '--max_rank', f'{self.max_rank}'
-               ] #'--outprefix', f'{outpath}'
+               '--max_rank', f'{self.max_rank}',
+               '--outprefix', f'{self.tempdir}'
+               ] 
         subprocess.run(cmd)
 
-        tmp_path = h5path.replace('.h5ad','.tsv')
-        return(tmp_path)
+        file_exts = ['_class_pred.tsv','_subclass_pred.tsv',
+                     '_class_scores.tsv','_subclass_scores.tsv',
+                     '_class_enrichment.tsv','_subclass_enrichment.tsv']
+        tmp_paths = [ f"{self.tempdir}/{os.path.basename(h5path.replace('.h5ad',suff))}" for suff in file_exts ]
+        for tmp_path in tmp_paths:
+            ky = tmp_path.split('_',maxsplit=1)[1].replace('.tsv','')
+            tmpdf = pd.read_csv(tmp_path ,sep="\t", index_col =0,dtype='str')
+            # failsafe - some cells may be ignored in the pred file... 
+            tmpdf = pd.merge(adata.obs[['cell_id']], tmpdf,how='left' , left_index = True, right_index=True)
+            tmpdf = tmpdf.drop('cell_id',axis=1)
+            tmpdf = tmpdf.fillna('NA')
+            adata.obsm[ky] = tmpdf
+
+        return(adata)
     
+    def _get_metadata(self,srpid, adata):
+        rdf = load_df( f'{self.metadir}/runs.tsv' )
+        rdf = rdf.loc[rdf.proj_id == srpid, :]
+
+        edf = load_df( f'{self.metadir}/experiments.tsv' )
+        edf = edf.loc[edf.proj_id == srpid, :]
+
+        sdf = load_df( f'{self.metadir}/samples.tsv' )
+        sdf = sdf.loc[sdf.proj_id == srpid, :]
+
+        pdf = load_df( f'{self.metadir}/projects.tsv' )
+        pdf = pdf.loc[pdf.proj_id == srpid, :]
+
+        
+
+        adata.uns['title'] = pdf.title.values[0]
+        adata.uns['abstract'] = pdf.abstract.values[0]
+        adata.uns['ext_ids'] =  pdf.ext_ids.values[0]
+        # TODO to include
+        # adata.uns['ext_link'] = pdf.ext_link.values[0]
+
+        adata.uns['n_cell'] = adata.shape[0]
+        adata.uns['n_runs'] = rdf.shape[0]
+        adata.uns['n_exps'] = edf.shape[0]
+        adata.uns['n_samp'] = sdf.shape[0]
+        
+        adata.uns['run_df'] = rdf
+        adata.uns['exp_df'] = edf
+        adata.uns['samp_df'] = sdf
+
+        return(adata)        
+
+
 
 # class MetaMarker(object):
     

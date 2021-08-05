@@ -78,7 +78,7 @@ def load_df(filepath):
     """
     Convenience method to load DF
     """
-    df = pd.read_csv(filepath, sep='\t', index_col=0)
+    df = pd.read_csv(filepath, sep='\t', index_col=0,dtype='str')
     return df
 
 
