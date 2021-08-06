@@ -170,7 +170,7 @@ class GetStats(object):
         self.log.debug(f'saving to {self.outputdir}/{srpid}.h5ad ')
         adata.write_h5ad(h5file)
 
-        self.log.debug(f'assinging cell types using metamarkers for {srpid}')
+        self.log.debug(f'assigning cell types using metamarkers for {srpid}')
         adata = self._run_MetaMarkers(h5file,adata)
         self.log.debug(f'done with metamarkers for {srpid} - saving to h5file')
 
@@ -359,19 +359,22 @@ class GetStats(object):
         adata.obs.cell_id = adata.obs.index
         return adata
 
-    # not yet implemented
+    # not yet implemented RAM issues.
+    # TODO sparify EGAD implementation.
     def _run_EGAD_by_batch(self, adata, rank_standardized = False, 
-        batch_column = ['run_id','exp_id','samp_id','proj_id','batch','class_predicted','subclass_predicted'] ):
+        batch_column = ['run_id','exp_id','samp_id','proj_id','batch','class_label','subclass_label'] ):
 
         # XXX memory intensive for datasets with large number of cells.
         # build the pairwise distance matrix
 
         nw = euclidean_distances(adata.X)
+        
+        # nw = adata.obsp['distances']
         if rank_standardized:
             nw = rank(nw.max()-nw )
         else :
-            nw = 1- nw / nw.max()
-
+            nw = 1- nw / nw.max()  
+        
         nw = pd.DataFrame( nw )
     
         
@@ -424,7 +427,12 @@ class GetStats(object):
             tmpdf = tmpdf.fillna('NA')
             adata.obsm[ky] = tmpdf
 
-            os.path.remove(tmpdf)
+            if '_class_pred.tsv' in tmp_path :
+                adata.obs['class_label'] = tmpdf.predicted
+            elif  '_subclass_pred.tsv' in tmp_path :
+                adata.obs['subclass_label'] = tmpdf.predicted
+
+            os.remove(tmp_path)
 
 
         return(adata)
@@ -441,8 +449,6 @@ class GetStats(object):
 
         pdf = load_df( f'{self.metadir}/projects.tsv' )
         pdf = pdf.loc[pdf.proj_id == srpid, :]
-
-        
 
         adata.uns['title'] = pdf.title.values[0]
         adata.uns['abstract'] = pdf.abstract.values[0]

@@ -20,7 +20,7 @@ conda config --add channels conda-forge
 # update conda if necessary
 conda update -n base -c defaults conda
 
-conda install requests pandas ipython scipy wget bottleneck
+conda install requests pandas ipython scipy wget bottleneck tbb
 conda install -c bioconda star
 conda install -c conda-forge leidenalg
 conda install -c conda-forge scanpy
