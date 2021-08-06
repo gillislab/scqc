@@ -327,7 +327,6 @@ def gini_coefficient_fast(X):
 
 
 
-# TODO implement smarter - RAM issues. 
 def sparse_pairwise_corr(A, B=None):
     """
     Compute pairwise correlation for sparse matrices. 
@@ -341,23 +340,39 @@ def sparse_pairwise_corr(A, B=None):
         elements in A (or B) with elements in A (or B)
     """
 
-    if B is not None:
-        A = sparse.vstack((A, B), format='csr')
+    if B is None:
+        B = A.copy()
 
-    A = A.astype(np.float64)
     n = A.shape[1]
+    m = B.shape[1]
+    assert n == m
 
-    # Compute the covariance matrix
-    rowsum = A.sum(1)
-    centering = rowsum.dot(rowsum.T.conjugate()) / n
-    C = (A.dot(A.T.conjugate()) - centering) / (n - 1)
+    numer = np.dot(A,B.T).todense() 
+    asum = A.sum(1)
+    bsum = B.sum(1) 
+    numer = n*numer - np.dot(asum,bsum.T) 
 
-    # The correlation coefficients are given by
-    # C_{i,j} / sqrt(C_{i} * C_{j})
-    d = np.diag(C)
-    coeffs = C / np.sqrt(np.outer(d, d))
+    sa =  np.sqrt(n*A.multiply(A).sum(1) - np.multiply(asum, asum))
+    sb =  np.sqrt(n*B.multiply(B).sum(1) - np.multiply(bsum, bsum))
 
-    return coeffs
+    denom = np.dot(sa, sb.T)
+    return(np.asarray(numer/denom).flatten())
+
+
+    # A = A.astype(np.float64)
+    # n = A.shape[1]
+
+    # # Compute the covariance matrix
+    # rowsum = A.sum(1)
+    # centering = rowsum.dot(rowsum.T.conjugate()) / n
+    # C = (A.dot(A.T.conjugate()) - centering) / (n - 1)
+
+    # # The correlation coefficients are given by
+    # # C_{i,j} / sqrt(C_{i} * C_{j})
+    # d = np.diag(C)
+    # coeffs = C / np.sqrt(np.outer(d, d))
+
+    # return coeffs
 
 
 

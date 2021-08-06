@@ -173,6 +173,8 @@ class GetStats(object):
         self.log.debug(f'assinging cell types using metamarkers for {srpid}')
         adata = self._run_MetaMarkers(h5file,adata)
         self.log.debug(f'done with metamarkers for {srpid} - saving to h5file')
+
+        adata = self._get_metadata(srpid, adata)
         adata.write_h5ad(h5file)
 
     
@@ -310,17 +312,13 @@ class GetStats(object):
             percent_top=(50, 100, 200, 500), inplace=True, use_raw=False,
             qc_vars=qcvars)
 
-        # computes the N+M x N+M corrcoef matrix - extract off diagonal block
-        self.log.debug('calculating corrtomean')
-        adata.obs['corr_to_mean'] = np.array(sparse_pairwise_corr(
-            adata.var.mean_counts, adata.X)[0, 1:]).flatten()
-
-        # this part is slow (~10-15 min) because of a for loop - can parallelize
-        self.log.debug('calculating gini for each cell')
-        # NOTE SLOW commented for testing
-        
+        self.log.debug('calculating corrtomean') # using log1p counts
+        adata.obs['corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X)
         # natural log thge data
         sc.pp.log1p(adata)  
+
+        # computes the N+M x N+M corrcoef matrix - extract off diagonal block
+        adata.obs['log1p_corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X)
 
         # batch this.
         # X = np.random.normal(size=(10, 3))
@@ -330,6 +328,7 @@ class GetStats(object):
         # pool = multiprocessing.Pool(processes=16)
         # if number of processes is not specified, it uses the number of core
         # F[:] = pool.map(my_function, (X[i,:] for i in range(10)) )
+        self.log.debug('calculating gini for each cell')
         tmp = gini_coefficient_fast(adata.X)
 
         adata.obs['gini']  = tmp
@@ -352,9 +351,9 @@ class GetStats(object):
         self.log.debug('running pca\n')
         sc.tl.pca(adata,
                   n_comps=ncomp, zero_center=False, use_highly_variable=self.use_hvg)
-        print('getting neighbors\n')
+        # print('getting neighbors\n')
         sc.pp.neighbors(adata, n_neighbors=int(self.n_neighbors), n_pcs=ncomp)
-        print('getting umap\n')
+        # print('getting umap\n')
         sc.tl.umap(adata)       # umap coords are in adata.obsm['X_umap']
         
         adata.obs.cell_id = adata.obs.index
@@ -425,6 +424,9 @@ class GetStats(object):
             tmpdf = tmpdf.fillna('NA')
             adata.obsm[ky] = tmpdf
 
+            os.path.remove(tmpdf)
+
+
         return(adata)
     
     def _get_metadata(self,srpid, adata):
@@ -445,7 +447,7 @@ class GetStats(object):
         adata.uns['title'] = pdf.title.values[0]
         adata.uns['abstract'] = pdf.abstract.values[0]
         adata.uns['ext_ids'] =  pdf.ext_ids.values[0]
-        # TODO to include
+        # TODO include external links
         # adata.uns['ext_link'] = pdf.ext_link.values[0]
 
         adata.uns['n_cell'] = adata.shape[0]

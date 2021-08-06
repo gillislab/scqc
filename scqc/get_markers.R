@@ -212,14 +212,13 @@ assign_cell_type <- function(dataset, top_markers, group_assignment = NULL ) {
 
 
 annotate_execute <- function( h5path, class_ms ='biccn_MoP_class_marker_set.csv.gz',
-    subclass_ms='biccn_MoP_subclass_marker_set.csv.gz', max_rank=100 ) {
+    subclass_ms='biccn_MoP_subclass_marker_set.csv.gz', max_rank=100, outprefix="." ) {
         # need to figure out a good max_rank for each of the three label sets
 
     # marker_dir = "~/scqc/supplement_data/markersets/MoP"
     dataset = parse_h5ad(h5path)   
     # dataset should already be log-ed
-    marker_sets = list(class=class_ms, subclass=subclass_ms,
-    outprefix ='.')
+    marker_sets = list(class=class_ms, subclass=subclass_ms)
     # marker_sets = list(class='class_marker_set.csv.gz' ,
     #                 subclass= 'subclass_marker_set.csv.gz')
     
