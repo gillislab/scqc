@@ -680,7 +680,7 @@ class Impute(object):
 
 
     # TODO error handling
-    def impute_10x_version(self,idf,rdf):
+    def impute_10x_version(self, idf, rdf):
         """
         For known 10x, get first part of fasta file and determine version.
         Only looks at the 10x portion if multiple techs used.
@@ -693,6 +693,7 @@ class Impute(object):
         # print( f'\n{loglev}\n')
         
         # XXX require runs have rdf.nreads > 1. Otherwise, unable to impute
+        #self.log.debug(f'idf={idf} rdf={rdf.nreads}')
         ind = rdf.nreads > 1
         self.log.debug(f'number of runs where nreads <= 1 {sum(ind)}') 
         rdf = rdf [ind]
