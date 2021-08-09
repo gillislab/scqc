@@ -543,7 +543,7 @@ def MetaMarkers_PR(enrichment, class_pred = None):
     enrichment should be a dataframe of cells by cell type - from MetaMarkers
     '''
 
-    if class_pred != None:
+    if class_pred is not None:
         # groups = class_pred.predicted.unique()
         for group, df in class_pred.groupby('predicted') :
             cols = ~ enrichment.columns.str.contains(group)
