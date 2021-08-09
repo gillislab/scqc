@@ -680,7 +680,7 @@ class Impute(object):
 
 
     # TODO error handling
-    def impute_10x_version(self,idf,rdf):
+    def impute_10x_version(self, idf, rdf):
         """
         For known 10x, get first part of fasta file and determine version.
         Only looks at the 10x portion if multiple techs used.
@@ -693,6 +693,7 @@ class Impute(object):
         # print( f'\n{loglev}\n')
         
         # XXX require runs have rdf.nreads > 1. Otherwise, unable to impute
+        #self.log.debug(f'idf={idf} rdf={rdf.nreads}')
         ind = rdf.nreads > 1
         self.log.debug(f'number of runs where nreads <= 1 {sum(ind)}') 
         rdf = rdf [ind]
@@ -885,32 +886,41 @@ class Download(object):
         donelist = []        
         triedlist = []
         runlength = len(runlist)
+       
+        if not os.path.isdir(f'{self.cachedir}/sra'):
+            self.log.debug(f'making sra cache subdir...')
+            os.mkdir(f'{self.cachedir}/sra')
         
-        for i, (runid, srcurl) in enumerate(rundict.items()):  
-            if self.dltool == 'wget':
-                self.log.info(f'tool is wget. handling file_urls')
-                self.log.debug(f'handling runid {runid} srcurl {srcurl}')
-                destpath = f'{self.cachedir}/sra/{runid}.sra'
-                rc = download_wget(srcurl, destpath, 
-                                   finalname=None, overwrite=True, decompress=True, 
-                                   rate=f'{self.max_rate}')
-                if str(rc) == '0' :
-                    self.log.debug(f'runid {runid} [{i+1}/{runlength}] handled successfully.')
-                    donelist.append(runid)
-                else:
-                    self.log.debug(f'runid {runid} failed. rc={rc}')
-                triedlist.append(runid)
-                
-        # determine if we succesfully completed all runs for project.
-        diffset = set(donelist).difference(set(runlist))
-        self.log.debug(f'diffset is {diffset}')
-        if len(diffset) > 0:
-            self.log.error(f'{len(donelist)} of {len(runlist)} downloaded for proj_id {proj_id} ')
+        try:    
+            for i, (runid, srcurl) in enumerate(rundict.items()):  
+                if self.dltool == 'wget':
+                    self.log.info(f'tool is wget. handling file_urls')
+                    self.log.debug(f'handling runid {runid} srcurl {srcurl}')
+                    destpath = f'{self.cachedir}/sra/{runid}.sra'
+                    rc = download_wget(srcurl, destpath, 
+                                       finalname=None, overwrite=True, decompress=True, 
+                                       rate=f'{self.max_rate}')
+                    if str(rc) == '0' :
+                        self.log.debug(f'runid {runid} [{i+1}/{runlength}] handled successfully.')
+                        donelist.append(runid)
+                    else:
+                        self.log.debug(f'runid {runid} failed. rc={rc}')
+                    triedlist.append(runid)
+                    
+            # determine if we succesfully completed all runs for project.
+            diffset = set(donelist).difference(set(runlist))
+            self.log.debug(f'diffset is {diffset}')
+            if len(diffset) > 0:
+                self.log.error(f'{len(donelist)} of {len(runlist)} downloaded for proj_id {proj_id} ')
+                return (None, proj_id)
+            else:
+                self.log.info(f'download successful for proj_id {proj_id}')
+                return (proj_id, proj_id)    
+        
+        except Exception as ex:
+            self.log.error(f'problem with NCBI proj_id {proj_id}')
+            self.log.error(traceback.format_exc(None))
             return (None, proj_id)
-        else:
-            self.log.info(f'download successful for proj_id {proj_id}')
-            return (proj_id, proj_id)    
-
 
 # inputs are the runs completed by prefetch
 # assumes path is cachedir/<run>.sra
