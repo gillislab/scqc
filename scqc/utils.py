@@ -78,7 +78,7 @@ def load_df(filepath):
     """
     Convenience method to load DF
     """
-    df = pd.read_csv(filepath, sep='\t', index_col=0,dtype='str')
+    df = pd.read_csv(filepath, sep='\t', index_col=0)
     return df
 
 
@@ -538,6 +538,7 @@ def _new_egad(go, nw, nFold):
 
     return roc, avg_degree, roc_null, P
 
+#TODO adjust PR curve...
 def MetaMarkers_PR(enrichment, class_pred = None):
     '''
     enrichment should be a dataframe of cells by cell type - from MetaMarkers
@@ -552,7 +553,7 @@ def MetaMarkers_PR(enrichment, class_pred = None):
 
 
 
-    enrichment = adata.obsm['subclass_enrichment'].astype(float)
+    enrichment = adata.obsm['class_enrichment'].astype(float)
 
     thres = np.quantile(enrichment,np.arange(0,1.,0.01 ))
     
@@ -563,12 +564,13 @@ def MetaMarkers_PR(enrichment, class_pred = None):
         egt = enrichment > thres[i] 
         P = egt.sum(1).sum()        # positives
         TP = (egt.sum(1) ==1).sum() # true positves
-
-        prec[i] = TP / P
-        recall[i] = TP / enrichment.shape[0]
+        TP = (egt.sum(1) >= 1).sum() # true positves - cell is labeled with anything
+        prec[i] = TP / enrichment.shape[0]          # how many cells did we label?
+        recall[i] = P / np.prod(enrichment.shape)   #
 
     pr = pd.DataFrame({'Recall':recall, 'Precision':prec, 'Threshold':thres })
     pr=pr.fillna(1)
+    plt.plot(recall, prec)
     return(pr)
 
 
