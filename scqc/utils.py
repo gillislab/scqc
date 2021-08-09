@@ -552,9 +552,9 @@ def MetaMarkers_PR(enrichment, class_pred = None):
 
 
 
-    enrichment = adata.obsm['class_enrichment'].astype(float)
+    enrichment = adata.obsm['subclass_enrichment'].astype(float)
 
-    thres = np.quantile(enrichment,np.arange(0,1,0.001 ))
+    thres = np.quantile(enrichment,np.arange(0,1.,0.01 ))
     
     # loop(?) through thresholds
     prec = np.zeros(len(thres))
@@ -568,7 +568,7 @@ def MetaMarkers_PR(enrichment, class_pred = None):
         recall[i] = TP / enrichment.shape[0]
 
     pr = pd.DataFrame({'Recall':recall, 'Precision':prec, 'Threshold':thres })
-
+    pr=pr.fillna(1)
     return(pr)
 
 
