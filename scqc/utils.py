@@ -538,11 +538,38 @@ def _new_egad(go, nw, nFold):
 
     return roc, avg_degree, roc_null, P
 
-def MetaMarkers_PR(enichment):
+def MetaMarkers_PR(enrichment, class_pred = None):
     '''
     enrichment should be a dataframe of cells by cell type - from MetaMarkers
     '''
-    pass
+
+    if class_pred != None:
+        # groups = class_pred.predicted.unique()
+        for group, df in class_pred.groupby('predicted') :
+            cols = ~ enrichment.columns.str.contains(group)
+            enrichment.loc[df.index,cols]  = 0
+            # enrichment
+
+
+
+    enrichment = adata.obsm['class_enrichment'].astype(float)
+
+    thres = np.quantile(enrichment,np.arange(0,1,0.001 ))
+    
+    # loop(?) through thresholds
+    prec = np.zeros(len(thres))
+    recall = np.zeros(len(thres))
+    for i in range(len(thres)):
+        egt = enrichment > thres[i] 
+        P = egt.sum(1).sum()        # positives
+        TP = (egt.sum(1) ==1).sum() # true positves
+
+        prec[i] = TP / P
+        recall[i] = TP / enrichment.shape[0]
+
+    pr = pd.DataFrame({'Recall':recall, 'Precision':prec, 'Threshold':thres })
+
+    return(pr)
 
 
 def string_modulo(instring, divisor):
@@ -580,6 +607,8 @@ def get_configstr(cp):
         cp.write(ss)
         ss.seek(0)  # rewind
         return ss.read()
+
+
 
 
 def compare_barcode_to_whitelists(barcodes, 
