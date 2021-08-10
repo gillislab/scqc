@@ -538,39 +538,36 @@ def _new_egad(go, nw, nFold):
 
     return roc, avg_degree, roc_null, P
 
-#TODO adjust PR curve...
+
 def MetaMarkers_PR(enrichment, class_pred = None):
     '''
     enrichment should be a dataframe of cells by cell type - from MetaMarkers
     '''
+    # copy - otherwise overwrites the adata object if one is passed in....
+    enr = enrichment.copy() 
 
     if class_pred is not None:
+        print(class_pred.shape)
         # groups = class_pred.predicted.unique()
         for group, df in class_pred.groupby('predicted') :
-            cols = ~ enrichment.columns.str.contains(group)
-            enrichment.loc[df.index,cols]  = 0
-            # enrichment
+            cols = ~ enr.columns.str.contains(group)
+            enr.loc[df.index,cols]  = 0
 
+    enr = enr.astype(float)
+    pr = enr.T.melt().sort_values('value',ascending=False)
+    pr = pr.reset_index()
+    pr['dup_cell'] = ~ pr.variable.duplicated()
+    pr['TP'] = np.cumsum(pr['dup_cell'])
+    pr['P'] = pr.index +1
+    pr['Recall'] = pr.TP / enr.shape[0]
+    pr['Precision'] = pr.TP / pr.P
+    print(np.trapz(pr.Precision,pr.Recall))
+    # pr = pr.loc[pr.Recall < 0.7, :]
+    # pr = pr.loc[pr.Recall > 0.5, :]
 
-
-    enrichment = adata.obsm['class_enrichment'].astype(float)
-
-    thres = np.quantile(enrichment,np.arange(0,1.,0.01 ))
+    # plt.plot(pr.Recall, pr.Precision)
+    # plt.savefig('/home/johlee/scqc/figures/test3.png')
     
-    # loop(?) through thresholds
-    prec = np.zeros(len(thres))
-    recall = np.zeros(len(thres))
-    for i in range(len(thres)):
-        egt = enrichment > thres[i] 
-        P = egt.sum(1).sum()        # positives
-        TP = (egt.sum(1) ==1).sum() # true positves
-        TP = (egt.sum(1) >= 1).sum() # true positves - cell is labeled with anything
-        prec[i] = TP / enrichment.shape[0]          # how many cells did we label?
-        recall[i] = P / np.prod(enrichment.shape)   #
-
-    pr = pd.DataFrame({'Recall':recall, 'Precision':prec, 'Threshold':thres })
-    pr=pr.fillna(1)
-    plt.plot(recall, prec)
     return(pr)
 
 
