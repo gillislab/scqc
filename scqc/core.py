@@ -375,6 +375,7 @@ class CLI(object):
                             dest='setup',
                             help='perform setup for chosen daemon and exit...'
                             )
+        
         parser.add_argument('-n','--ncycles',
                             action='store',
                             dest='ncycles',
@@ -416,6 +417,7 @@ class CLI(object):
         
         if args.ncycles is not None:
             self.cp.set('DEFAULT','ncycles',str(int(args.ncycles)))
+            self.cp.set(args.subcommand, 'logfile', 'stdout')
 
         if args.nocleanup:
             self.cp.set('DEFAULT','nocleanup', "True")
