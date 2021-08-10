@@ -86,7 +86,7 @@ class AlignReads(object):
             self.config.get('star', 'resourcedir'))
         self.species = self.config.get('star', 'species')
         self.ncore_align = self.config.get('star', 'ncore_align')
-
+        self.nocleanup = self.config.getboolean('star','nocleanup')
 
 
     def execute(self, proj_id):
@@ -118,6 +118,7 @@ class AlignReads(object):
                     self.log.warning(
                         f'{tech} in project {proj_id} not supported for STAR.')
                     # raise UnsupportedTechnologyException(f'For project {proj_id}')                            
+            
             if some_doable:
                 done = proj_id
             else:
@@ -132,7 +133,12 @@ class AlignReads(object):
             
         finally:
             # finally, clean up fastq files 
-            self._remove_fastqs(runlist)
+            if not self.nocleanup:
+                self._cleantemp(runlist)
+                self._remove_fastqs(runlist)
+            else:
+                self.log.info(f'nocleanup is true. leaving temp files.')
+            
             return (done, seen)
 
     def _known_tech(self, df):
@@ -405,9 +411,25 @@ class AlignReads(object):
         self.log.info(f'<tempdir> output copied to {newdir} and permissions adjusted.')
         
         # clean tempdir. 
-        self.log.debug(f'cleaning temp directory, removing {outdir}')
-        shutil.rmtree(outdir)
-        self.log.info(f'cleared temp dir of {outdir}')
+        if not self.nocleanup:
+            self.log.debug(f'cleaning temp directory, removing {outdir}')
+            shutil.rmtree(outdir)
+            self.log.info(f'cleared temp dir of {outdir}')
+        else:
+            self.log.info(f'nocleanup true. leaving files.')
+
+    
+    def _cleantemp(self, runlist):
+        """
+        
+        """
+        filedirlist =  glob.glob(f'{self.tempdir}/{self.proj_id}_smartseq_*')
+        remove_pathlist(filedirlist)
+        for rid in runlist:
+            filelist = glob.glob(f'{self.tempdir}/{self.proj_id}_10xv*')
+            remove_pathlist(filelist)
+        
+        
 
     def _remove_fastqs(self, runlist):
         """

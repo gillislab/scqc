@@ -296,6 +296,25 @@ def gzip_decompress(filename):
             f'tried to gunzip file without .gz extension {filename}. doing nothing.')
 
 
+def remove_pathlist(pathlist):
+    """
+    recursively removes everything in pathlist
+    if file, removes, 
+    if directory, removes recursively. 
+    
+    """
+    for fp in pathlist:
+        if os.path.exists(fp):
+            try:
+                if os.path.isfile(fp):
+                    os.remove(fp)
+                elif os.path.isdir(fp):
+                    shutil.rmtree(fp)
+                logging.debug(f'removed {fp}')
+            except Exception as ex:
+                self.log.error(f'problem removing {fp}')
+                self.log.error(traceback.format_exc(None))
+
 
 def gini_coefficient_fast(X):
     """ 
