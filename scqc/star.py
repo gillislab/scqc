@@ -134,8 +134,8 @@ class AlignReads(object):
         finally:
             # finally, clean up fastq files 
             if not self.nocleanup:
-                self._cleantemp(runlist)
-                self._remove_fastqs(runlist)
+                self._cleantemp(proj_id, runlist)
+                self._remove_fastqs(proj_id, runlist)
             else:
                 self.log.info(f'nocleanup is true. leaving temp files.')
             
@@ -419,19 +419,18 @@ class AlignReads(object):
             self.log.info(f'nocleanup true. leaving files.')
 
     
-    def _cleantemp(self, runlist):
+    def _cleantemp(self, proj_id, runlist):
         """
         
         """
-        filedirlist =  glob.glob(f'{self.tempdir}/{self.proj_id}_smartseq_*')
+        filedirlist =  glob.glob(f'{self.tempdir}/{proj_id}_smartseq_*')
         remove_pathlist(filedirlist)
         for rid in runlist:
-            filelist = glob.glob(f'{self.tempdir}/{self.proj_id}_10xv*')
+            filelist = glob.glob(f'{self.tempdir}/{proj_id}_10xv*')
             remove_pathlist(filelist)
         
-        
 
-    def _remove_fastqs(self, runlist):
+    def _remove_fastqs(self, proj_id, runlist):
         """
         Takes list of run_ids and removes <tempdir>/<run_id>*.fastq
         """
