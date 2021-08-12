@@ -107,6 +107,7 @@ class AlignReads(object):
             
             # split by technology and parses independently based on tech
             for tech, df in rdf.groupby(by = "tech_version") :
+                
                 # smartseq runs
                 if tech =="smartseq":
                     some_doable = True
@@ -176,6 +177,7 @@ class AlignReads(object):
 
     def _handle_smartseq(self, proj_id, df):
         # build the manifest
+        df = df.reset_index()
         (manipath, manifest) = self._make_manifest(proj_id, df) 
         # run star
         self.log.debug(f'Starting smartseq alignment for {proj_id}')
@@ -187,6 +189,7 @@ class AlignReads(object):
 
     def _handle_10x(self, proj_id, tech, df):
         for row in range(df.shape[0]):
+            df = df.reset_index()
             run_id = df.run_id[row]
             read1 = f'{self.tempdir}/{df.read1[row]}' # biological cDNA
             read2 = f'{self.tempdir}/{df.read2[row]}' # technical CBarcode + UMI
