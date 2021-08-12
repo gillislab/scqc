@@ -195,7 +195,6 @@ class AlignReads(object):
             self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id} and {run_id}')
             self._stage_out(proj_id, outfile_prefix)
             
-        
 
     # run|tech|read1|read2|exp|samp|proj|taxon|batch  dataframe in impute. 
     #       taxon to filter
