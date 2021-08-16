@@ -566,7 +566,6 @@ def MetaMarkers_PR(enrichment, class_pred = None):
     enr = enrichment.copy() 
 
     if class_pred is not None:
-        print(class_pred.shape)
         # groups = class_pred.predicted.unique()
         for group, df in class_pred.groupby('predicted') :
             cols = ~ enr.columns.str.contains(group)
@@ -574,19 +573,14 @@ def MetaMarkers_PR(enrichment, class_pred = None):
 
     enr = enr.astype(float)
     pr = enr.T.melt().sort_values('value',ascending=False)
-    pr = pr.reset_index()
+    pr = pr.reset_index(drop=True)
     pr['dup_cell'] = ~ pr.variable.duplicated()
     pr['TP'] = np.cumsum(pr['dup_cell'])
     pr['P'] = pr.index +1
     pr['Recall'] = pr.TP / enr.shape[0]
     pr['Precision'] = pr.TP / pr.P
-    print(np.trapz(pr.Precision,pr.Recall))
-    # pr = pr.loc[pr.Recall < 0.7, :]
-    # pr = pr.loc[pr.Recall > 0.5, :]
-
-    # plt.plot(pr.Recall, pr.Precision)
-    # plt.savefig('/home/johlee/scqc/figures/test3.png')
-    
+    # print(np.trapz(pr.Precision,pr.Recall))
+   
     return(pr)
 
 

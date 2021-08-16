@@ -2,6 +2,33 @@ Google
 
 https://docs.google.com/document/d/1JhmMR8_ZbKvw2l3y3An_w5YQg-5tq3eRjQPrOZjERsQ/edit?usp=sharing
 
+BICCN DATA TO GRAB
+# From Zeng  # 13.26 TB  # MOP datasets here are used to generate the metamarker lists.
+http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/scell/10x_v2/mouse/raw/*
+http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/scell/SSv4/mouse/raw/*
+http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/scell/SSv4_viral/mouse/raw/*
+http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/scell/10x_v3/mouse/raw/MOp/
+
+http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/sncell/10x_v2/mouse/raw/MOp
+http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/sncell/10x_v3/mouse/raw/MOp
+http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/sncell/SSv4/mouse/raw/MOp/
+
+
+# From Huang # 15.5 TB
+http://data.nemoarchive.org/biccn/grant/u19_huang/arlotta/transcriptome/scell/10x_v2/mouse/raw/
+
+http://data.nemoarchive.org/biccn/grant/u19_huang/arlotta/transcriptome/sncell/10x_v2/mouse/raw/
+http://data.nemoarchive.org/biccn/grant/u19_huang/arlotta/transcriptome/sncell/10x_v3/mouse/raw/
+http://data.nemoarchive.org/biccn/grant/u19_huang/dulac/transcriptome/sncell/10x_v2/mouse/pag/raw/
+http://data.nemoarchive.org/biccn/grant/u19_huang/macosko/transcriptome/sncell/10X_v3/mouse/raw/
+http://data.nemoarchive.org/biccn/grant/u19_huang/macosko_regev/transcriptome/sncell/10X_v2/mouse/raw/
+http://data.nemoarchive.org/biccn/grant/u19_huang/macosko_regev/transcriptome/sncell/10X_v3/mouse/raw/
+
+# Nowakowski  # 30 GB
+http://data.nemoarchive.org/biccn/grant/rf1_nowakowski/nowakowski/transcriptome/scell/10x_v3/mouse/PNdev/raw/
+http://data.nemoarchive.org/biccn/grant/rf1_nowakowski/nowakowski/transcriptome/scell/10x_v3/mouse/evobc/raw/
+
+
 
 
 DATA
