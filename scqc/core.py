@@ -111,56 +111,57 @@ class Stage(object):
                     self.dolist = modulo_filter(self.dolist, self.num_servers , self.server_index)
                     
                 # cut into batches and do each separately, updating donelist. 
-                logging.debug(f'dolist len={len(self.dolist)}')
+                self.log.debug(f'dolist len={len(self.dolist)}')
                 curid = 0
                 while curid < len(self.dolist):
                     dobatch = self.dolist[curid:curid + self.batchsize]
-                    logging.debug(f'made dobatch length={len(dobatch)}')
-                    logging.debug(f'made dobatch: {dobatch}')
+                    self.log.debug(f'made dobatch length={len(dobatch)}')
+                    self.log.debug(f'made dobatch: {dobatch}')
                     (finished, partial, seen) = self.execute(dobatch)
+                    
                     for alist in [finished, partial, seen]:
                         try:
                             alist.remove(None)
                             self.log.warn('Got None in job list from an execute. Removed.')
                         except:
                             pass
-                    
+                    self.log.info(f'got ({len(finished)} done, {len(partial)} partial, {len(seen)} seen) from dobatch...')
                     self.log.debug(f"got finished list len={len(finished)}. writing...")
                     
                     if self.donefile is not None:
-                        logging.info('reading current done.')
+                        self.log.info('reading current done.')
                         donelist = readlist(self.donefile)
-                        logging.info('adding just finished.')
+                        self.log.info('adding just finished.')
                         alldone = listmerge(finished, donelist)
                         writelist(self.donefile, alldone)
                         self.log.debug(
                             f"done writing donelist: {self.donefile}.")
                     else:
-                        logging.info(
+                        self.log.info(
                             'donefile is None or no new processing. No output.')
 
                     if self.partfile is not None:
-                        logging.info('reading current partial.')
+                        self.log.info('reading current partial.')
                         partlist = readlist(self.partfile)
-                        logging.info('adding partially finished.')
+                        self.log.info('adding partially finished.')
                         allpart = listmerge(partial, partlist)
                         writelist(self.partfile, allpart)
                         self.log.debug(
                             f"done writing partlist: {self.partfile}.")
                     else:
-                        logging.info(
+                        self.log.info(
                             'partfile is None or no new processing. No output.')
                     
                     if self.seenfile is not None and len(seen) > 0:
-                        logging.info('reading current seen.')
+                        self.log.info('reading current seen.')
                         seenlist = readlist(self.seenfile)
-                        logging.info('adding just seen.')
+                        self.log.info('adding just seen.')
                         allseen = listmerge(seen, seenlist)
                         writelist(self.seenfile, allseen)
                         self.log.debug(
                             f"done writing seenlist: {self.seenfile}. sleeping {self.batchsleep} ...")
                     else:
-                        logging.info(
+                        self.log.info(
                             'seenfile is None or no new processing. No output.')
                         
                     curid += self.batchsize
@@ -171,7 +172,7 @@ class Stage(object):
 
                 # overall stage sleep
                 if not self.shutdown:
-                    logging.info(f'done with all batches. Sleeping for stage. {self.sleep} sec...')
+                    self.log.info(f'done with all batches. Sleeping for stage. {self.sleep} sec...')
                     time.sleep(self.sleep)
 
         except KeyboardInterrupt:
@@ -181,7 +182,7 @@ class Stage(object):
             self.log.warning("exception raised during main loop.")
             self.log.error(traceback.format_exc(None))
             raise ex
-        logging.info(f'Shutdown set. Exiting {self.name}')
+        self.log.info(f'Shutdown set. Exiting {self.name}')
 
 
     def stop(self):
@@ -368,9 +369,12 @@ class Statistics(Stage):
             try:
                 st = statistics.Statistics(self.config)
                 (done, part, seen) = st.execute(proj_id)
+                self.log.info(f'got ({done},{part},{seen})')
                 self.log.debug(f'done with {proj_id}')
                 if done is not None:
-                    donelist.append(out)
+                    donelist.append(done)
+                if part is not None:
+                    partlist.append(part)                
                 if seenlist is not None:
                     seenlist.append(seen)
             except Exception as ex:
@@ -380,7 +384,7 @@ class Statistics(Stage):
         return (donelist, partlist, seenlist)
 
     def setup(self):
-        pass
+        statistics.setup(self.config)
 
 
 class CLI(object):

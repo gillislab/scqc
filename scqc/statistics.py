@@ -62,7 +62,6 @@ class Statistics(object):
         self.cachedir = os.path.expanduser(
             self.config.get('statistics', 'cachedir'))
         # gene sets
-
         self.cell_cycle_genes = os.path.expanduser(
             self.config.get('statistics', 'cell_cycle_genes'))
         self.stable_housekeepinig = os.path.expanduser(
@@ -73,7 +72,6 @@ class Statistics(object):
             self.config.get('statistics', 'female_genes'))
         self.male_genes = os.path.expanduser(
             self.config.get('statistics', 'male_genes'))
-
 
         # hvg params 
         self.hvg_min_mean = self.config.get('statistics', 'hvg_min_mean')
@@ -99,90 +97,80 @@ class Statistics(object):
         '''
         STAR outputs should be placed in the temp directory 
         Look through all of the solo out directories for the project,
-        aggregate them, and run statistics collectively
+        aggregate them, and run stats collectively
 
         '''
-        self.log.info(f'starting projectid {proj_id}')
-        solooutdirs = f'{self.cachedir}/{proj_id}'
-        solooutdirs = glob.glob(f'{solooutdirs}/*Solo.out')
+        self.log.debug(f'starting project id {proj_id}')
+        done = None
+        part = None
+        seen = proj_id
 
-        adatas = []   # loops through all star runs in the project
-        for solooutdir in solooutdirs:
-            self.log.debug(f'opening {solooutdir}')
-            # open one soloutdir, store as adata. 
-            adatas.append(self._parse_STAR_mtx(solooutdir))
+        try:
+            solooutdirs = glob.glob(f'{self.cachedir}/{proj_id}/*Solo.out')
+            adatas = []   # loops through all star runs in the project
+            for solooutdir in solooutdirs:
+                self.log.debug(f'opening {solooutdir}')
+                # open one soloutdir, store as adata. 
+                adatas.append(self._parse_STAR_mtx(solooutdir))
+    
+            # merge all of the datasets 
+            # technology is obtained from the soloout dir name
+            batchnames = [ os.path.basename(dir).replace('_Solo.out','') for dir in solooutdirs ]
+            ids = pd.DataFrame([ batchname.split('_') for batchname in batchnames] )
+            self.log.debug(f'starting with projectid {ids}')
+    
+            ids.columns = ['id','tech']
+            # which are runs and which are projects? 
+            ids['run_id'] = ids.id[ids.id.str.contains('RR')]
+            ids['proj_id'] = ids.id[ids.id.str.contains('RP')]
+            
+            # fill in proj_id NaNs
+            ids.proj_id[ids.proj_id.isnull()] = proj_id
+    
+            self.log.debug(f'joining adatas for {proj_id}')
+            adata = adatas[0].concatenate(adatas[1:], batch_categories = ids.id )
+            adata.obs.columns = ['cell_id','id']
+            ind = adata.obs.index
+            tmpdf = pd.merge(adata.obs, ids, on= 'id')   # include technology in obs.
+            tmpdf.index = tmpdf.cell_id
+            
+            adata.obs = tmpdf 
+            adata.obs.index=ind
+    
+            # fill in missing run_ids with the cell_id. (typically smart seq experiments)
+            adata.obs.run_id[adata.obs.run_id.isnull()] = adata.obs.cell_id[adata.obs.run_id.isnull()]
+    
+            # get batch information
+            self.log.debug(f'getting batch info for {proj_id}')
+            impute = load_df(f'{self.metadir}/impute.tsv')
+            impute = impute.loc[impute.proj_id == proj_id,: ]
+            tmpdf =  pd.merge(adata.obs, impute )[['cell_id','run_id','exp_id', 'samp_id','proj_id','tech', 'batch' ]]
+            tmpdf.index= ind
+            adata.obs = tmpdf
+    
+            adata = self._get_stats_scanpy(adata)
+    
+            h5file = f'{self.outputdir}/{proj_id}.h5ad'
+            adata.var.index.name = None
+            self.log.debug(adata.obs)
+            self.log.debug(adata.var)
+            self.log.debug(f'saving to {self.outputdir}/{proj_id}.h5ad ')
+            adata.write_h5ad(h5file)
+    
+            self.log.debug(f'assigning cell types using metamarkers for {proj_id}')
+            adata = self._run_MetaMarkers(h5file,adata)
+            self.log.debug(f'done with metamarkers for {proj_id} - saving to h5file')
+    
+            adata = self._get_metadata(proj_id, adata)
+            adata.write_h5ad(h5file)
+            self.log.info(f'project {proj_id} done.')
+            done = proj_id
 
-        # merge all of the datasets 
-        # technology is obtained from the soloout dir name
-        batchnames = [ os.path.basename(solooutdir).replace('_Solo.out','') for i in range(len(solooutdirs)) ]
-        ids = pd.DataFrame([ batchname.split('_') for batchname in batchnames] )
-        self.log.debug(f'starting with projectid {ids}')
-
-        ids.columns = ['id','tech']
-        # which are runs and which are projects? 
-        ids['run_id'] = ids.id[ids.id.str.contains('RR')]
-        ids['proj_id'] = ids.id[ids.id.str.contains('RP')]
-        
-        # fill in proj_id NaNs
-        ids.proj_id[ids.proj_id.isnull()] = proj_id
-
-        self.log.debug(f'joining adatas for {proj_id}')
-        adata = adatas[0].concatenate(adatas[1:], batch_categories = ids.id )
-        adata.obs.columns = ['cell_id','id']
-        ind = adata.obs.index
-
-        tmpdf = pd.merge(adata.obs, ids, on= 'id')   # include technology in obs.
-        tmpdf.index = tmpdf.cell_id
-        adata.obs = tmpdf 
-        adata.obs.index= ind
-
-        # fill in missing run_ids with the cell_id. (typically smart seq experiments)
-        adata.obs.run_id[adata.obs.run_id.isnull()] = adata.obs.cell_id[adata.obs.run_id.isnull()]
-
-        # get batch information
-        self.log.debug(f'getting batch info for {proj_id}')
-
-        impute = pd.read_csv(f'{self.metadir}/impute.tsv', sep='\t',index_col=0)
-        impute = impute.loc[impute.proj_id == proj_id,: ]
-
-        tmpdf =  pd.merge(adata.obs, impute )[['cell_id','run_id','exp_id', 'samp_id','proj_id','tech', 'batch' ]]
-        tmpdf.index= ind
-
-        adata.obs = tmpdf
-
-        adata = self._get_stats_scanpy(adata)
-
-        # XXX scanpy default is to overwrite existing file
-        # basename = os.path.basename(solooutdir)
-        # basename = basename.replace('_Solo.out', '.h5ad')
-        h5file = f'{self.outputdir}/{proj_id}.h5ad'
-        adata.var.index.name = None
-        self.log.debug(adata.obs)
-        self.log.debug(adata.var)
-
-        # for testing...
-        # adata[solooutdir].obs.to_csv(f'{self.tempdir}/obs.tsv',sep="\t")
-        # adata[solooutdir].var.to_csv(f'{self.tempdir}/var.tsv',sep="\t")
-        # consolidate these...
-        self.log.debug(f'saving to {self.outputdir}/{proj_id}.h5ad ')
-        adata.write(h5file)
-
-        self.log.debug(f'assinging cell types using metamarkers for {proj_id}')
-        tmp_path = self._run_MetaMarkers(h5file)
-        self.log.debug(f'done with metamarkers for {proj_id} - saving to h5file')
-        
-        tmpdf = pd.read_csv(tmp_path ,sep="\t", index_col =0)
-        self.log.debug(f'read df')
-
-        # TODO separate into the scores - enrichment - prediction
-        tmp =  adata.obs.merge(tmpdf, left_on = 'cell_id' ,right_on = 'cell')
-        tmp.index = tmp.cell_id
-        tmp.index.name = None
-        tmp.reindex(adata.obs.index)
-        adata.obsm['MetaMarkers'] = tmp
-
-        self.log.info(f'Saving to h5ad file: {h5file}')
-        adata.write(h5file)
+        except Exception as ex:
+            self.log.error(f'problem with NCBI proj_id {proj_id}')
+            self.log.error(traceback.format_exc(None))
+            
+        return( done, part, seen)
 
 
     
@@ -375,108 +363,6 @@ class Statistics(object):
     
     
     
-    def XXX_get_stats_scanpy(self, adata):
-        # adata.obs['batch'] = None
-
-        # consider different gene sets - ERCC  corresponds to spike ins
-        adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')
-        # adata.var['ERCC'] = adata.var.gene_symbol.str.startswith('ERCC')
-        adata.var['ribo'] = adata.var.type == "rRNA"
-        # adata.var['cytoplasm'] = None       # GO Term/kegg?
-        # adata.var['metabolism'] = None      # GO Term/kegg?
-        # adata.var['membrane'] = None        # GO Term/kegg?
-
-        qcvars = ['mt', 'ribo', 'female', 'male',
-                  'essential', 'cell_cycle']
-
-        # get housekeeping genes
-        self.log.debug(f"gathering marker sets:")
-        hk_genes = pd.read_csv(self.stable_housekeepinig, sep=",")
-        self.log.debug(f"housekeeping:\n{hk_genes}")
-        adata.var['housekeeping'] = adata.var.gene_symbol.isin(
-            hk_genes.gene)
-
-        # get gender markers
-        female_genes = pd.read_csv(self.female_genes, sep=",")
-        self.log.debug(f"female:\n{female_genes}")
-        adata.var['female'] = adata.var.gene_symbol.isin(
-            female_genes.gene)
-
-        male_genes = pd.read_csv(self.male_genes, sep=",")
-        self.log.debug(f"male:\n{male_genes}")
-        adata.var['male'] = adata.var.gene_symbol.isin(
-            male_genes.gene)
-
-        # get essential genes
-        essential = pd.read_csv(self.essential_genes, sep=",")
-        self.log.debug(f"ess:{essential}")
-        adata.var['essential'] = adata.var.gene_symbol.isin(
-            essential.gene)
-
-        # get cell cycle genes
-        cc = pd.read_csv(self.cell_cycle_genes, sep=",")
-        self.log.debug(f"cc:\n{cc}")
-        adata.var['cell_cycle'] = adata.var.gene_symbol.isin(cc.gene)
-        for i in cc.cluster.unique():
-            adata.var[f'cc_cluster_{i}'] = adata.var.cell_cycle == i
-            qcvars.append(f'cc_cluster_{i}')
-
-        self.log.debug('calculating qc metrics...')
-        sc.pp.calculate_qc_metrics(
-            adata,
-            expr_type='counts', var_type='genes',
-            percent_top=(50, 100, 200, 500), inplace=True, use_raw=False,
-            qc_vars=qcvars)
-
-        # computes the N+M x N+M corrcoef matrix - extract off diagonal block
-        self.log.debug('calculating corrtomean')
-        adata.obs['corr_to_mean'] = sparse_pairwise_corr(
-            np.asarray(adata.var.mean_counts).reshape(adata.shape[1],1), adata.X)
-
-        # this part is slow (~10-15 min) because of a for loop - can parallelize
-        self.log.debug('calculating gini for each cell')
-        # NOTE SLOW commented for testing
-        
-        # natural log thge data
-        sc.pp.log1p(adata)  
-
-        # batch this.
-        # X = np.random.normal(size=(10, 3))
-        # F = np.zeros((10, ))
-
-        # import multiprocessing
-        # pool = multiprocessing.Pool(processes=16)
-        # if number of processes is not specified, it uses the number of core
-        # F[:] = pool.map(my_function, (X[i,:] for i in range(10)) )
-        tmp = gini_coefficient_fast(adata.X)
-
-        adata.obs['gini']  = tmp
-        # unstructured data - dataset specific
-        # adata.uns['gini_by_counts'] = gini_coefficient(
-        #     adata.obs['total_counts'])
-
-        self.log.debug('computing hvg')
-        # highly variable genes - expects log data
-        sc.pp.highly_variable_genes(adata,
-                                    min_mean=float(self.hvg_min_mean),
-                                    max_mean=float(self.hvg_max_mean),
-                                    min_disp=float(self.hvg_min_disp),
-                                    max_disp=float(self.hvg_max_disp),
-                                    flavor=self.hvg_flavor)
-
-        # umap coords
-
-        ncomp = min(adata.shape[0] -1 , int(self.nPCA) )
-        self.log.debug('running pca\n')
-        sc.tl.pca(adata,
-                  n_comps=ncomp, zero_center=False, use_highly_variable=self.use_hvg)
-        print('getting neighbors\n')
-        sc.pp.neighbors(adata, n_neighbors=int(self.n_neighbors), n_pcs=ncomp)
-        print('getting umap\n')
-        sc.tl.umap(adata)       # umap coords are in adata.obsm['X_umap']
-        
-        adata.obs.cell_id = adata.obs.index
-        return adata
 
     def _run_EGAD_by_batch(self, adata, rank_standardized = False, 
         batch_column = ['run_id','exp_id','samp_id','proj_id','batch','class_predicted','subclass_predicted'] ):
@@ -509,50 +395,98 @@ class Statistics(object):
         
         adata.uns['EGAD'] = res
         return( adata)
+
+
     
-    def _run_MetaMarkers(self, h5path):
+    def _run_MetaMarkers(self, h5path, adata):
         '''
-        h5path should be saved in the temp directory before this stage. 
+        h5path should be saved in the output directory before this stage. 
         After MetaMarkers, move completed h5ad file to output/
         '''
 
-        scriptpath = '/home/johlee/git/scqc/scqc/get_markers.R'    # should already be in path
+
+        #scriptpath = '/home/johlee/git/scqc/scqc/get_markers.R'    # should already be in path
         # should have only one outpath per dataset. 
         # TODO verify file does not already exist. Think about what to do if it does
         # outpath = f'{self.outputdir}/{os.path.basename(h5path)}'
-        cmd = ['Rscript', f'{scriptpath}',
+        #cmd = ['Rscript', f'{scriptpath}',
+        cmd = ['get_markers.R',
                '--class_markerset', f'{self.class_markerset}',
                '--subclass_markerset', f'{self.subclass_markerset}',
                '--h5path', f'{h5path}',
-               '--max_rank', f'{self.max_rank}'
-               ] #'--outprefix', f'{outpath}'
-        subprocess.run(cmd)
+               '--max_rank', f'{self.max_rank}',
+               '--outprefix', f'{self.tempdir}'
+               ] 
+        run_command(cmd)
 
-        tmp_path = h5path.replace('.h5ad','.tsv')
-        return(tmp_path)
+        file_exts = ['_class_pred.tsv','_subclass_pred.tsv',
+                     '_class_scores.tsv','_subclass_scores.tsv',
+                     '_class_enrichment.tsv','_subclass_enrichment.tsv']
+        tmp_paths = [ f"{self.tempdir}/{os.path.basename(h5path.replace('.h5ad',suff))}" for suff in file_exts ]
+        for tmp_path in tmp_paths:
+            ky = tmp_path.split('_',maxsplit=1)[1].replace('.tsv','')
+            tmpdf = pd.read_csv(tmp_path ,sep="\t", index_col =0,dtype='str')
+            # failsafe - some cells may be ignored in the pred file... 
+            tmpdf = pd.merge(adata.obs[['cell_id']], tmpdf,how='left' , left_index = True, right_index=True)
+            tmpdf = tmpdf.drop('cell_id',axis=1)
+            tmpdf = tmpdf.fillna('NA')
+            adata.obsm[ky] = tmpdf
+
+            if '_class_pred.tsv' in tmp_path :
+                adata.obs['class_label'] = tmpdf.predicted
+            elif  '_subclass_pred.tsv' in tmp_path :
+                adata.obs['subclass_label'] = tmpdf.predicted
+            os.remove(tmp_path)
+        return(adata)
+
+
+    def _get_metadata(self, proj_id, adata):
+        rdf = load_df( f'{self.metadir}/runs.tsv' )
+        rdf = rdf.loc[rdf.proj_id == proj_id, :]
+
+        edf = load_df( f'{self.metadir}/experiments.tsv' )
+        edf = edf.loc[edf.proj_id == proj_id, :]
+
+        sdf = load_df( f'{self.metadir}/samples.tsv' )
+        sdf = sdf.loc[sdf.proj_id == proj_id, :]
+
+        pdf = load_df( f'{self.metadir}/projects.tsv' )
+        pdf = pdf.loc[pdf.proj_id == proj_id, :]
+
+        adata.uns['title'] = pdf.title.values[0]
+        adata.uns['abstract'] = pdf.abstract.values[0]
+        adata.uns['ext_ids'] =  pdf.ext_ids.values[0]
+        # TODO include external links
+        # adata.uns['ext_link'] = pdf.ext_link.values[0]
+
+        adata.uns['n_cell'] = adata.shape[0]
+        adata.uns['n_runs'] = rdf.shape[0]
+        adata.uns['n_exps'] = edf.shape[0]
+        adata.uns['n_samp'] = sdf.shape[0]
+        
+        adata.uns['run_df'] = rdf
+        adata.uns['exp_df'] = edf
+        adata.uns['samp_df'] = sdf
+
+        return(adata)            
+    
+    
     
 
-# class MetaMarker(object):
+def setup(config, overwrite=False):
+    """
+    create metmarker and output dirs. 
+    """
+    log = logging.getLogger('statistics')
+    rootdir = os.path.expanduser(config.get('statistics', 'rootdir'))
     
-#     def __init__(self, config):
-#         self.log = logging.getLogger('statistics')
-#         self.config = config
-#         self.species = self.config.get('statistics', 'species')
-#         self.outputdir = os.path.expanduser(
-#             self.config.get('statistics', 'outputdir'))
-#         self.resourcedir = os.path.expanduser(
-#             self.config.get('statistics', 'resourcedir'))
-#         self.metadir = os.path.expanduser(
-#             self.config.get('statistics', 'metadir'))
-#         self.tempdir = os.path.expanduser(
-#             self.config.get('statistics', 'tempdir'))
-
-#         # metamarker params
-#         self.class_markerset =  os.path.expanduser(
-#             self.config.get('metamarker', 'class_markerset'))
-#         self.subclass_markerset =  os.path.expanduser(
-#             self.config.get('metamarker', 'subclass_markerset'))
-#         self.max_rank = self.config.get('metamarker', 'max_rank')
+    for sd in ['metamarker','output']:
+        try:
+            log.debug(f"making directory: {sd}")
+            os.makedirs(f'{rootdir}/{sd}')
+        except FileExistsError:
+            pass
+    
 
 
 if __name__ == "__main__":

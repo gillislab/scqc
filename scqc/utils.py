@@ -16,6 +16,15 @@ import io
 import bottleneck
 import pandas as pd
 
+numba_logger = logging.getLogger('numba')
+numba_logger.setLevel(logging.WARNING)
+
+
+class NonZeroReturnException(Exception):
+    """
+    Thrown when a command has non-zero return code. 
+    """
+
 
 def readlist(filepath):
     '''
@@ -312,8 +321,36 @@ def remove_pathlist(pathlist):
                     shutil.rmtree(fp)
                 logging.debug(f'removed {fp}')
             except Exception as ex:
-                self.log.error(f'problem removing {fp}')
-                self.log.error(traceback.format_exc(None))
+                logging.error(f'problem removing {fp}')
+                logging.error(traceback.format_exc(None))
+
+
+def run_command(cmd):
+    """
+    cmd should be standard list of tokens...  ['cmd','arg1','arg2'] with cmd on shell PATH.
+    
+    """
+    cmdstr = " ".join(cmd)
+    logging.info(f"command: {cmdstr} running...")
+    start = dt.datetime.now()
+    cp = subprocess.run(cmd, 
+                    text=True, 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.STDOUT)
+    end = dt.datetime.now()
+    elapsed =  end - start
+    logging.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {elapsed.seconds} seconds.")
+    
+    if cp.stderr is not None:
+        logging.debug(f"got stderr: {cp.stderr}")
+    if cp.stdout is not None:
+        logging.debug(f"got stdout: {cp.stdout}")
+    
+    if str(cp.returncode) == '0':
+        logging.info(f'successfully ran {cmdstr}')
+    else:
+        logging.error(f'non-zero return code for cmd {cmdstr}')
+        raise NonZeroReturnException()
 
 
 def gini_coefficient_fast(X):

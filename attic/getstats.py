@@ -395,7 +395,7 @@ class GetStats(object):
         adata.uns['EGAD'] = res
         return( adata)
     
-    def _run_MetaMarkers(self, h5path,adata):
+    def _run_MetaMarkers(self, h5path, adata):
         '''
         h5path should be saved in the output directory before this stage. 
         After MetaMarkers, move completed h5ad file to output/
