@@ -259,7 +259,7 @@ class Statistics(object):
         adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')
         # adata.var['ERCC'] = adata.var.gene_symbol.str.startswith('ERCC')
         geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype='str')
-        geneinfo.columns = ['gene_accession', 'gene_symb','type']
+        geneinfo.columns = ['gene_accession', 'gene_symb','type_x']
         tmpdf = pd.merge(adata.var, geneinfo, on = 'gene_accession',how = 'left')        
         #tmpdf = tmpdf.fillna( 'None')
         adata.var['ribo'] = (tmpdf['type'] == "rRNA").values
@@ -324,6 +324,11 @@ class Statistics(object):
         self.log.debug('calculating corrtomean') # using log1p counts
         adata.obs['corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X)
         # natural log thge data
+
+
+        tmp = gini_coefficient_fast(adata.X)
+        adata.obs['gini']  = tmp
+
         sc.pp.log1p(adata)  
 
         # computes the N+M x N+M corrcoef matrix - extract off diagonal block
@@ -340,7 +345,7 @@ class Statistics(object):
         self.log.debug('calculating gini for each cell')
         tmp = gini_coefficient_fast(adata.X)
 
-        adata.obs['gini']  = tmp
+        adata.obs['log1p_gini']  = tmp
         # unstructured data - dataset specific
         # adata.uns['gini_by_counts'] = gini_coefficient(
         #     adata.obs['total_counts'])
@@ -607,7 +612,7 @@ if __name__ == "__main__":
     logging.debug(f"args: {args}")
 
     if args.projectids is not None:
-        q = GetStats(cp)
+        q = Statistics(cp)
         print(args.projectids)
         for pid in args.projectids:
             # args.projectid is a list of project ids
