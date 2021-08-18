@@ -358,8 +358,9 @@ def sparse_pairwise_corr(A, B=None):
     and main diagonal blocks as correlations between
         elements in A (or B) with elements in A (or B)
     """
-
+    logging.debug(f'A.shape={A.shape} ')
     if B is None:
+        logging.debug(f'B is none. copying A.')
         B = A.copy()
 
     n = A.shape[1]

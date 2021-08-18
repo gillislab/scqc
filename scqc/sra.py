@@ -33,7 +33,6 @@ import numpy as np
 
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
-
 from scqc.utils import *
 
 # Translate between Python and SRAToolkit log levels for wrapped commands.
@@ -126,6 +125,9 @@ class RunUnavailableException(Exception):
 class SampleUnavailableException(Exception):
     """ Thrown when Sample in a Runset is unavailable.  """
 
+class MissingReadsException(Exception):
+    """ Thrown when Run is lacking one or more reads.  """
+
 
 def setup(config):
     '''
@@ -171,7 +173,6 @@ class Query(object):
     Run info for sample and projects?
     wget -qO- 'http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=SRS049712'
     wget -qO- 'http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=SRP290125'
-
 
     """
 
@@ -262,12 +263,12 @@ class Query(object):
 
             self.log.info(f'successfully processed project {proj_id}')
             # return proj_id only if it has completed successfully.
-            return (proj_id, proj_id)
+            return (proj_id, proj_id, proj_id)
 
         except Exception as ex:
             self.log.error(f'problem with NCBI proj_id {proj_id}')
             logging.error(traceback.format_exc(None))
-            return(None, proj_id)
+            return(None, None, proj_id)
 
 
     def query_experiment_package_set(self, xid):
@@ -620,15 +621,15 @@ class Impute(object):
                 merge_write_df(outdf, f'{self.metadir}/impute.tsv')  
             else :
                 self.log.warn(f'Unable to predict tech for:{proj_id} ')
-                return (None, proj_id)
+                return (None, None, proj_id)
             
             self.log.info(f'completed imputation for proj_id {proj_id}')
-            return (proj_id, proj_id)          
+            return (proj_id, proj_id, proj_id)          
 
         except Exception as ex:
             self.log.error(f'problem with NCBI proj_id {proj_id}')
             logging.error(traceback.format_exc(None))
-            return (None, proj_id)
+            return (None, None, proj_id)
 
 
     def _known_tech(self, df):
@@ -873,7 +874,7 @@ class Download(object):
         self.dltool = os.path.expanduser(self.config.get('download', 'dltool'))
         self.max_rate = os.path.expanduser(self.config.get('download', 'max_rate'))
         rdf_file = f'{self.metadir}/runs.tsv'
-        self.rdf = load_df(rdf_file)        
+        self.rdf = load_df(rdf_file).drop_duplicates()        
         self.log.info(f'Download initialized. ')
 
 
@@ -913,15 +914,15 @@ class Download(object):
             self.log.debug(f'diffset is {diffset}')
             if len(diffset) > 0:
                 self.log.error(f'{len(donelist)} of {len(runlist)} downloaded for proj_id {proj_id} ')
-                return (None, proj_id)
+                return (None, None, proj_id)
             else:
                 self.log.info(f'download successful for proj_id {proj_id}')
-                return (proj_id, proj_id)    
+                return (proj_id, proj_id, proj_id)    
         
         except Exception as ex:
             self.log.error(f'problem with NCBI proj_id {proj_id}')
             self.log.error(traceback.format_exc(None))
-            return (None, proj_id)
+            return (None, None, proj_id)
 
 # inputs are the runs completed by prefetch
 # assumes path is cachedir/<run>.sra
@@ -967,7 +968,6 @@ class FasterqDump(object):
 
         self.log.debug(f'handling id {run_id}')
         self.config = config
-
         self.cachedir = os.path.expanduser(
             self.config.get('download', 'cachedir'))
         self.metadir = os.path.expanduser(
@@ -975,9 +975,32 @@ class FasterqDump(object):
         self.tempdir = os.path.expanduser(
             self.config.get('download', 'tempdir'))
         self.threads = self.config.get('sra', 'fq_nthreads')
+        self.force = self.config.getboolean('download','force')
+        self.nocleanup = self.config.getboolean('download','nocleanup')
 
 
     def execute(self):
+        """
+        fasterq-dump creates all files in a temp file before moving to final output. 
+        if final output exists, files are done. 
+                
+        """
+        if self._files_exist() and not self.force:
+            self.log.info(f'output files already exist for {self.run_id}')
+            return 0
+        else:
+            try:
+                self.log.debug(f'running fasterq_dump {self.run_id}')
+                self.run_fasterq_dump()
+                return 0
+                self.log.info(f'fasterq_dump run without exception {self.run_id}')
+                
+            except Exception as ex:
+                self.log.warning(f'problem extracting for {self.run_id}')
+     
+
+    def run_fasterq_dump(self):
+ 
         self.log.debug(f'extracting id {self.run_id}')
         loglev = LOGLEVELS[self.log.getEffectiveLevel()]
         cmd = ['fasterq-dump', 
@@ -1006,10 +1029,50 @@ class FasterqDump(object):
             logging.debug(f"got stderr: {cp.stderr}")
             logging.debug(f"got stdout: {cp.stdout}")
             logging.error(f' unknown non-zero return code for {self.run_id}')       
+        
+        if not self._files_exist():
+            raise MissingReadsException(f'For {self.run_id}')                        
+  
 
-        return cp.returncode
+    def _handle_incomplete(self):
+        """
+        check /temp/fasterq.tmp.*/ for files for this runid. 
+        delete if they exist
+        return True if some were found.
+        return False if not. 
+        """
+        found = False
+        flist = glob.glob(f'{self.tempdir}/fasterq.tmp.*/{self.run_id}*')
+        if len(flist) > 0:
+            found = True
+            fqtemp =   os.path.dirname(flist[0])
+            self.log.debug(f'fasterq tempdir = {fqtemp}')
+            self.log.debug(f'found incomplete files {flist}')
+            if not self.nocleanup:
+                self.log.debug(f'removing fasterq tempdir {fqtemp} for runid {self.run_id}')
+                remove_pathlist([fqtemp])
+        return found
 
-
+    def _files_exist(self):
+        """
+        Determine if output files already exist.
+        E.g. SRR13782545_1.fastq    
+             SRR13782545_2.fastq               
+             SRR13782545_3.fastq
+             
+              
+        Return True if done
+        False if not. 
+        """
+        found = False
+        flist = glob.glob(f'{self.tempdir}/{self.run_id}_*.fastq')
+        if len(flist) > 0:
+            found = True
+            self.log.debug(f'found output files for {self.run_id}: {flist}')
+        else:
+            self.log.debug(f'no output files for {self.run_id}')
+        return found
+        
 
 def get_runs_for_project(config, proj_id):
     """

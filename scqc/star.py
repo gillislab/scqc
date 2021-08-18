@@ -92,55 +92,63 @@ class AlignReads(object):
     def execute(self, proj_id):
         # get relevant metadata
         rdf = self._get_meta_data(proj_id)
-        # filter out unknown tech_version
         rdf = self._known_tech(rdf)
         runlist  = list( rdf[ rdf.proj_id==proj_id ].run_id.unique() )
         self.log.debug(f'initializing STAR alignment for {proj_id} {len(runlist)} inferred runs.')
+        # should contain proj_id if category applies
         done = None
+        part = None
         seen = proj_id
- 
-        try:
-            # bring in all fastqs to <tempdir>
-            self._stage_in(proj_id, runlist)
-            #
-            some_doable = False
-            
-            # split by technology and parses independently based on tech
-            for tech, df in rdf.groupby(by = "tech_version") :
-                
-                # smartseq runs
-                if tech =="smartseq":
-                    some_doable = True
-                    self._handle_smartseq(proj_id, df)
-                elif tech.startswith('10xv'):  
-                    some_doable = True   
-                    self._handle_10x(proj_id, tech, df)
-                else :
-                    self.log.warning(
-                        f'{tech} in project {proj_id} not supported for STAR.')
-                    # raise UnsupportedTechnologyException(f'For project {proj_id}')                            
-            
-            if some_doable:
-                done = proj_id
-            else:
-                raise NoTechnologyProjectException(f'No runs with known tech for project {proj_id}')
-
-        except UnsupportedTechnologyException as ut:
-            self.log.error(f'problem with NCBI proj_id {proj_id}')
         
-        except Exception as ex:
-            self.log.error(f'problem with NCBI proj_id {proj_id}')
-            self.log.error(traceback.format_exc(None))
+        # bring in all fastqs possible to <tempdir>
+        self._stage_in(proj_id, runlist)
+        
+        # Overall flags. 
+        somedone = False
+        partial = False
+        somefailed = False
             
-        finally:
-            # finally, clean up fastq files 
-            if not self.nocleanup:
-                self._cleantemp(proj_id, runlist)
-                self._remove_fastqs(proj_id, runlist)
-            else:
-                self.log.info(f'nocleanup is true. leaving temp files.')
-            
-            return (done, seen)
+        # split by technology and parses independently based on tech
+        for tech, df in rdf.groupby(by = "tech_version") :
+            try:
+                if tech =="smartseq":
+                    (some, part) = self._handle_smartseq(proj_id, df)
+                    if some:
+                        # for smartseq, somedone means successful
+                        somedone = True
+                    else:
+                        somefailed = True
+                    self.log.debug(f'{proj_id} smartseq somedone={somedone} somefailed={somefailed}')
+                        
+                elif tech.startswith('10xv'):  
+                    (some, failed) = self._handle_10x(proj_id, tech, df)
+                    if some:
+                        # for 10x, some means some, possibly all
+                        somedone = True
+                    if failed:
+                        somefailed = True
+                    if some and failed:
+                        partial = True
+                    self.log.debug(f'{proj_id} {tech} somedone={somedone} somefailed={somefailed} partial={partial}')
+
+            except Exception as ex:
+                self.log.error(f'fatal problem with NCBI proj_id {proj_id}')
+                self.log.error(traceback.format_exc(None))
+                
+            finally:
+                # finally, clean up fastq files 
+                if not self.nocleanup:
+                    self._cleantemp(proj_id, runlist)
+                    self._remove_fastqs(proj_id, runlist)
+                else:
+                    self.log.info(f'nocleanup is true. leaving temp files.')
+        
+        if somedone and not somefailed:
+            done = proj_id
+        if somedone and somefailed:
+            part = proj_id
+        self.log.debug(f'{proj_id} final: done={done} part={part} seen={seen}')
+        return (done, part, seen)
 
     def _known_tech(self, df):
         """
@@ -170,7 +178,7 @@ class AlignReads(object):
                 raise FasterqFailureException(f'runid {run_id}')
             else:
                 self.log.info(f'runid {run_id}  [{i}/{runlength}] handled successfully.')
-        self.log.info(f'successfully extracted all {runlength} fastqs for project {proj_id}.') 
+        self.log.info(f'successfully extracted fastqs for all {runlength} runs in project {proj_id}.') 
         return runlist
         
 
@@ -181,23 +189,39 @@ class AlignReads(object):
         (manipath, manifest) = self._make_manifest(proj_id, df) 
         # run star
         self.log.debug(f'Starting smartseq alignment for {proj_id}')
-        outfile_prefix = self._run_star_smartseq(proj_id, manipath)
-        self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id}')
-        self._stage_out(proj_id, outfile_prefix)
-        
+        try:
+            outfile_prefix = self._run_star_smartseq(proj_id, manipath)
+            self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id}')
+            self._stage_out(proj_id, outfile_prefix)
+            # (somedone, partial) 
+            return (True, False)
+
+        except Exception as ex:
+            self.log.warning(f'smartseq run failed. ')
+            return (False, False)
 
 
     def _handle_10x(self, proj_id, tech, df):
+        partial = False
+        somedone = False
+        somefailed = False
+        df.reset_index()
         for row in range(df.shape[0]):
-            df = df.reset_index()
-            run_id = df.run_id[row]
-            read1 = f'{self.tempdir}/{df.read1[row]}' # biological cDNA
-            read2 = f'{self.tempdir}/{df.read2[row]}' # technical CBarcode + UMI
-            # saves to disk
-            outfile_prefix = self._run_star_10x(run_id, tech, read1, read2)
-            self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id} and {run_id}')
-            self._stage_out(proj_id, outfile_prefix)
+            try:
+                run_id = df.run_id[row]
+                read1 = f'{self.tempdir}/{df.read1[row]}' # biological cDNA
+                read2 = f'{self.tempdir}/{df.read2[row]}' # technical CBarcode + UMI
+                # saves to disk
+                outfile_prefix = self._run_star_10x(run_id, tech, read1, read2)
+                self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id} and {run_id}')
+                self._stage_out(proj_id, outfile_prefix)
+                somedone = True
             
+            except Exception as ex:
+                self.log.warning(f'Problem with run_id {run_id}.')
+                somefailed = True
+        
+        return( somedone, somefailed )
 
     # run|tech|read1|read2|exp|samp|proj|taxon|batch  dataframe in impute. 
     #       taxon to filter

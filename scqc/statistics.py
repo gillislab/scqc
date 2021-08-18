@@ -48,44 +48,44 @@ LOGLEVELS = {
 class Statistics(object):
 
     def __init__(self, config):
-        self.log = logging.getLogger('stats')
+        self.log = logging.getLogger('statistics')
         self.config = config
-        self.species = self.config.get('stats', 'species')
+        self.species = self.config.get('statistics', 'species')
         self.outputdir = os.path.expanduser(
-            self.config.get('stats', 'outputdir'))
+            self.config.get('statistics', 'outputdir'))
         self.resourcedir = os.path.expanduser(
-            self.config.get('stats', 'resourcedir'))
+            self.config.get('statistics', 'resourcedir'))
         self.metadir = os.path.expanduser(
-            self.config.get('stats', 'metadir'))
+            self.config.get('statistics', 'metadir'))
         self.tempdir = os.path.expanduser(
-            self.config.get('stats', 'tempdir'))
+            self.config.get('statistics', 'tempdir'))
         self.cachedir = os.path.expanduser(
-            self.config.get('stats', 'cachedir'))
+            self.config.get('statistics', 'cachedir'))
         # gene sets
 
         self.cell_cycle_genes = os.path.expanduser(
-            self.config.get('stats', 'cell_cycle_genes'))
+            self.config.get('statistics', 'cell_cycle_genes'))
         self.stable_housekeepinig = os.path.expanduser(
-            self.config.get('stats', 'stable_housekeepinig'))
+            self.config.get('statistics', 'stable_housekeepinig'))
         self.essential_genes = os.path.expanduser(
-            self.config.get('stats', 'essential_genes'))
+            self.config.get('statistics', 'essential_genes'))
         self.female_genes = os.path.expanduser(
-            self.config.get('stats', 'female_genes'))
+            self.config.get('statistics', 'female_genes'))
         self.male_genes = os.path.expanduser(
-            self.config.get('stats', 'male_genes'))
+            self.config.get('statistics', 'male_genes'))
 
 
         # hvg params 
-        self.hvg_min_mean = self.config.get('stats', 'hvg_min_mean')
-        self.hvg_max_mean = self.config.get('stats', 'hvg_max_mean')
-        self.hvg_min_disp = self.config.get('stats', 'hvg_min_disp')
-        self.hvg_max_disp = self.config.get('stats', 'hvg_max_disp')
-        self.hvg_flavor = self.config.get('stats', 'hvg_flavor')
+        self.hvg_min_mean = self.config.get('statistics', 'hvg_min_mean')
+        self.hvg_max_mean = self.config.get('statistics', 'hvg_max_mean')
+        self.hvg_min_disp = self.config.get('statistics', 'hvg_min_disp')
+        self.hvg_max_disp = self.config.get('statistics', 'hvg_max_disp')
+        self.hvg_flavor = self.config.get('statistics', 'hvg_flavor')
         #pca params
-        self.nPCA = self.config.get('stats', 'nPCA')
-        self.use_hvg = self.config.get('stats', 'use_hvg')
+        self.nPCA = self.config.get('statistics', 'nPCA')
+        self.use_hvg = self.config.get('statistics', 'use_hvg')
         # neighbor graph params
-        self.n_neighbors = self.config.get('stats', 'n_neighbors')
+        self.n_neighbors = self.config.get('statistics', 'n_neighbors')
 
         # metamarker params
         self.class_markerset =  os.path.expanduser(
@@ -99,7 +99,7 @@ class Statistics(object):
         '''
         STAR outputs should be placed in the temp directory 
         Look through all of the solo out directories for the project,
-        aggregate them, and run stats collectively
+        aggregate them, and run statistics collectively
 
         '''
         self.log.info(f'starting projectid {proj_id}')
@@ -269,18 +269,18 @@ class Statistics(object):
         # get housekeeping genes
         self.log.debug(f"gathering marker sets:")
         hk_genes = pd.read_csv(self.stable_housekeepinig, sep=",")
-        self.log.debug(f"housekeeping:{hk_genes}")
+        self.log.debug(f"housekeeping:\n{hk_genes}")
         adata.var['housekeeping'] = adata.var.gene_symbol.isin(
             hk_genes.gene)
 
         # get gender markers
         female_genes = pd.read_csv(self.female_genes, sep=",")
-        self.log.debug(f"female:{female_genes}")
+        self.log.debug(f"female:\n{female_genes}")
         adata.var['female'] = adata.var.gene_symbol.isin(
             female_genes.gene)
 
         male_genes = pd.read_csv(self.male_genes, sep=",")
-        self.log.debug(f"male:{male_genes}")
+        self.log.debug(f"male:\n{male_genes}")
         adata.var['male'] = adata.var.gene_symbol.isin(
             male_genes.gene)
 
@@ -292,13 +292,13 @@ class Statistics(object):
 
         # get cell cycle genes
         cc = pd.read_csv(self.cell_cycle_genes, sep=",")
-        self.log.debug(f"cc:{cc}")
+        self.log.debug(f"cc:\n{cc}")
         adata.var['cell_cycle'] = adata.var.gene_symbol.isin(cc.gene)
         for i in cc.cluster.unique():
             adata.var[f'cc_cluster_{i}'] = adata.var.cell_cycle == i
             qcvars.append(f'cc_cluster_{i}')
 
-        self.log.debug('calculating qc metrics')
+        self.log.debug('calculating qc metrics...')
         sc.pp.calculate_qc_metrics(
             adata,
             expr_type='counts', var_type='genes',

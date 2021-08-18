@@ -20,7 +20,9 @@ conda config --add channels conda-forge
 # update conda if necessary
 conda update -n base -c defaults conda
 
-conda install requests pandas ipython scipy wget bottleneck tbb
+conda install pandas ipython  
+conda install  requests scipy wget 
+conda install bottleneck tbb
 conda install -c bioconda star
 conda install -c conda-forge leidenalg
 conda install -c conda-forge scanpy
@@ -39,9 +41,10 @@ R -e "install.packages('devtools',repos='http://cran.us.r-project.org')"
 R -e "install.packages('BiocManager',repos='http://cran.us.r-project.org')"
 R -e "install.packages('optparse',repos='http://cran.us.r-project.org')"
 R -e "install.packages('Matrix',repos='http://cran.us.r-project.org')"
+R -e "remove.packages('textshaping')"
+R -e "BiocManager::install('scRNAseq')"
 R -e "BiocManager::install('rhdf5')"
 R -e "devtools::install_github('gillislab/MetaMarkers')"
-
 
 
 #download sratoolkit, link binaries within conda environment

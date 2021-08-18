@@ -14,7 +14,7 @@ import traceback
 from configparser import ConfigParser
 from queue import Queue
 
-from scqc import sra, star
+from scqc import sra, star, statistics
 from scqc.utils import *
 
 
@@ -47,22 +47,38 @@ class Stage(object):
         self.log.info(f'{self.name} init...')
         self.config = config
         self.todofile = self.config.get(f'{self.name}', 'todofile')
+        self.donefile = self.config.get(f'{self.name}', 'donefile')
         self.seenfile = self.config.get(f'{self.name}', 'seenfile')
+        self.partfile = self.config.get(f'{self.name}', 'partfile')
+        
+        # handle todo file(s)
         if self.todofile.lower().strip() == "none":
             self.todofile = None
         else:
-            self.todofile = os.path.expanduser(self.todofile)
-
-        self.donefile = self.config.get(f'{self.name}', 'donefile')
+            flist = []
+            todofiles = self.todofile.split(',')
+            for fpath in todofiles:
+                tdf = os.path.expanduser(fpath.strip())
+                self.log.debug(f'todofile={tdf}')
+                flist.append(tdf)
+            self.todofile = flist
+            self.log.debug(f'found {len(self.todofile)} todo files.')
+        
         if self.donefile.lower().strip() == "none":
             self.donefile = None
         else:
             self.donefile = os.path.expanduser(self.donefile)
-        self.seenfile = self.config.get(f'{self.name}', 'seenfile')
+
+        if self.partfile.lower().strip() == "none":
+            self.partfile = None
+        else:
+            self.partfile = os.path.expanduser(self.partfile)
+        
         if self.seenfile.lower().strip() == "none":
             self.seenfile = None
         else:
             self.seenfile = os.path.expanduser(self.seenfile)
+    
         self.shutdown = False
         self.sleep = int(self.config.get(f'{self.name}', 'sleep'))
         self.batchsize = int(self.config.get(f'{self.name}', 'batchsize'))
@@ -70,7 +86,7 @@ class Stage(object):
         self.ncycles = int(self.config.get(f'{self.name}', 'ncycles'))
         self.num_servers = int(self.config.get(f'{self.name}','num_servers'))
         self.server_index = int(self.config.get(f'{self.name}','server_idx'))
-        self.outlist = []
+        self.donelist = []
 
     def run(self):
         self.log.info(f'{self.name} run...')
@@ -79,7 +95,12 @@ class Stage(object):
             while not self.shutdown:
                 self.log.debug(
                     f'{self.name} cycle will be {self.sleep} seconds...')
-                self.todolist = readlist(self.todofile)
+                todoset = set()
+                for tdf in self.todofile:
+                    tdl = readlist(tdf)
+                    todoset.update(tdl)
+                self.todolist = list(todoset)
+                self.todolist.sort()
                 self.donelist = readlist(self.donefile)
                 if self.todolist is not None:
                     self.dolist = listdiff(self.todolist, self.donelist)
@@ -96,11 +117,14 @@ class Stage(object):
                     dobatch = self.dolist[curid:curid + self.batchsize]
                     logging.debug(f'made dobatch length={len(dobatch)}')
                     logging.debug(f'made dobatch: {dobatch}')
-                    (finished, seen) = self.execute(dobatch)
-                    try:
-                        finished.remove(None)
-                    except:
-                        self.log.warn('Got None in finished list from an execute. Removed.')
+                    (finished, partial, seen) = self.execute(dobatch)
+                    for alist in [finished, partial, seen]:
+                        try:
+                            alist.remove(None)
+                            self.log.warn('Got None in job list from an execute. Removed.')
+                        except:
+                            pass
+                    
                     self.log.debug(f"got finished list len={len(finished)}. writing...")
                     
                     if self.donefile is not None:
@@ -114,6 +138,18 @@ class Stage(object):
                     else:
                         logging.info(
                             'donefile is None or no new processing. No output.')
+
+                    if self.partfile is not None:
+                        logging.info('reading current partial.')
+                        partlist = readlist(self.partfile)
+                        logging.info('adding partially finished.')
+                        allpart = listmerge(partial, partlist)
+                        writelist(self.partfile, allpart)
+                        self.log.debug(
+                            f"done writing partlist: {self.partfile}.")
+                    else:
+                        logging.info(
+                            'partfile is None or no new processing. No output.')
                     
                     if self.seenfile is not None and len(seen) > 0:
                         logging.info('reading current seen.')
@@ -169,27 +205,30 @@ class Query(Stage):
         '''
         self.log.debug(f'performing custom execute for {self.name}')
         self.log.debug(f'got dolist len={len(dolist)}. executing...')
-        outlist = []
+        donelist = []
+        partlist = []
         seenlist = []
-        for projectid in dolist:
-            self.log.debug(f'handling id {projectid}...')
+        for proj_id in dolist:
+            self.log.debug(f'handling id {proj_id}...')
             try:
                 sq = sra.Query(self.config)
-                (out, seen) = sq.execute(projectid)
-                self.log.debug(f'done with {projectid}')
-                if out is not None:
-                    outlist.append(out)
+                (done, part, seen) = sq.execute(proj_id)
+                self.log.debug(f'done with {proj_id}')
+                if done is not None:
+                    donelist.append(done)
+                if part is not None:
+                    partlist.append(part)
                 if seenlist is not None:
                     seenlist.append(seen)
             except Exception as ex:
-                self.log.warning(f"exception raised during project query: {projectid}")
+                self.log.warning(f"exception raised during project query: {proj_id}")
                 self.log.error(traceback.format_exc(None))
-        self.log.debug(f"returning outlist len={len(outlist)} seenlist len={len(seenlist)}")
-        return (outlist, seenlist)
-
+        self.log.debug(f"returning donelist len={len(donelist)} seenlist len={len(seenlist)}")
+        return (donelist, partlist, seenlist)
 
     def setup(self):
         sra.setup(self.config)
+
 
 class Impute(Stage):
     """
@@ -210,24 +249,26 @@ class Impute(Stage):
         '''
         self.log.debug(f'performing custom execute for {self.name}')
         self.log.debug(f'got dolist len={len(dolist)}. executing...')
-        outlist = []
+        donelist = []
+        partlist = []
         seenlist = []
-        for projectid in dolist:
-            self.log.debug(f'handling id {projectid}...')
+        for proj_id in dolist:
+            self.log.debug(f'handling id {proj_id}...')
             try:
                 si = sra.Impute(self.config)
-                (out, seen) = si.execute(projectid)
-                self.log.debug(f'done with {projectid}')
-                if out is not None:
-                    outlist.append(out)
+                (done, part, seen) = si.execute(proj_id)
+                self.log.debug(f'done with {proj_id}')
+                if done is not None:
+                    donelist.append(out)
+                if part is not None:
+                    partlist.append(part)
                 if seenlist is not None:
                     seenlist.append(seen)
             except Exception as ex:
-                self.log.warning(f"exception raised during project query: {projectid}")
+                self.log.warning(f"exception raised during project query: {proj_id}")
                 self.log.error(traceback.format_exc(None))
-        self.log.debug(f"returning outlist len={len(outlist)} seenlist len={len(seenlist)}")
-        return (outlist, seenlist)
-
+        self.log.debug(f"returning donelist len={len(donelist)} seenlist len={len(seenlist)}")
+        return (donelist, partlist, seenlist)
 
     def setup(self):
         sra.setup(self.config)
@@ -248,24 +289,26 @@ class Download(Stage):
         '''
         self.log.debug(f'performing custom execute for {self.name}')
         self.log.debug(f'got dolist len={len(dolist)}. executing...')
-        outlist = []
+        donelist = []
+        partlist = []
         seenlist = []
         for projectid in dolist:
             self.log.debug(f'handling id {projectid}...')
             try:
                 sd = sra.Download(self.config)
-                (done, seen) = sd.execute(projectid)
+                (done, part, seen) = sd.execute(projectid)
                 self.log.debug(f'done with {projectid}')
                 if done is not None:
-                    outlist.append(done)
+                    donelist.append(done)
+                if part is not None:
+                    partlist.append(part)
                 if seenlist is not None:
                     seenlist.append(seen)
             except Exception as ex:
                 self.log.warning(f"exception raised during project query: {projectid}")
                 self.log.error(traceback.format_exc(None))
-        self.log.debug(f"returning outlist len={len(outlist)} seenlist len={len(seenlist)}")
-        return (outlist, seenlist)
-
+        self.log.debug(f"returning donelist len={len(donelist)} seenlist len={len(seenlist)}")
+        return (donelist, partlist, seenlist)
 
     def setup(self):
         sra.setup(self.config)
@@ -283,24 +326,26 @@ class Analyze(Stage):
         '''
         self.log.debug(f'performing custom execute for {self.name}')
         self.log.debug(f'got dolist len={len(dolist)}. executing...')
-        outlist = []
+        donelist = []
+        partlist = []
         seenlist = []
         for projectid in dolist:
             self.log.debug(f'handling id {projectid}...')
             try:
                 ar = star.AlignReads(self.config)
-                (out, seen) = ar.execute(projectid)
+                (done, part, seen) = ar.execute(projectid)
                 self.log.debug(f'done with {projectid}')
-                if out is not None:
-                    outlist.append(out)
+                if done is not None:
+                    donelist.append(done)
+                if part is not None:
+                    partlist.append(part)
                 if seenlist is not None:
                     seenlist.append(seen)
             except Exception as ex:
                 self.log.warning(f"exception raised during project query: {projectid}")
                 self.log.error(traceback.format_exc(None))
-        self.log.debug(f"returning outlist len={len(outlist)} seenlist len={len(seenlist)}")
-        return (outlist, seenlist)
-
+        self.log.debug(f"returning donelist len={len(donelist)} seenlist len={len(seenlist)}")
+        return (donelist, partlist, seenlist)
 
     def setup(self):
         star.setup(self.config)
@@ -309,35 +354,33 @@ class Analyze(Stage):
 class Statistics(Stage):
 
     def __init__(self, config):
-        super(Statistics, self).__init__(config, 'analysis')
+        super(Statistics, self).__init__(config, 'statistics')
         self.log.debug('super() ran. object initialized.')
 
-    def execute(self):
+    def execute(self, dolist):
         self.log.debug(f'performing custom execute for {self.name}')
         self.log.debug(f'got dolist len={len(dolist)}. executing...')
-        outlist = []
+        donelist = []
+        partlist= []
         seenlist = []
-        for projectid in dolist:
-            self.log.debug(f'handling id {projectid}...')
+        for proj_id in dolist:
+            self.log.debug(f'handling id {proj_id}...')
             try:
                 st = statistics.Statistics(self.config)
-                (out, seen) = st.execute(projectid)
-                self.log.debug(f'done with {projectid}')
-                if out is not None:
-                    outlist.append(out)
+                (done, part, seen) = st.execute(proj_id)
+                self.log.debug(f'done with {proj_id}')
+                if done is not None:
+                    donelist.append(out)
                 if seenlist is not None:
                     seenlist.append(seen)
             except Exception as ex:
-                self.log.warning(f"exception raised during project query: {projectid}")
+                self.log.warning(f"exception raised during project query: {proj_id}")
                 self.log.error(traceback.format_exc(None))
-        self.log.debug(f"returning outlist len={len(outlist)} seenlist len={len(seenlist)}")
-        return (outlist, seenlist)
-
+        self.log.debug(f"returning donelist len={len(donelist)} seenlist len={len(seenlist)}")
+        return (donelist, partlist, seenlist)
 
     def setup(self):
         pass
-
-
 
 
 class CLI(object):
