@@ -379,23 +379,6 @@ def sparse_pairwise_corr(A, B=None):
     return(np.asarray(numer/denom).flatten())
 
 
-    # A = A.astype(np.float64)
-    # n = A.shape[1]
-
-    # # Compute the covariance matrix
-    # rowsum = A.sum(1)
-    # centering = rowsum.dot(rowsum.T.conjugate()) / n
-    # C = (A.dot(A.T.conjugate()) - centering) / (n - 1)
-
-    # # The correlation coefficients are given by
-    # # C_{i,j} / sqrt(C_{i} * C_{j})
-    # d = np.diag(C)
-    # coeffs = C / np.sqrt(np.outer(d, d))
-
-    # return coeffs
-
-
-
 def taxon_to_spec(taxid= '10090'):
     d = {   '10090': "mouse",
             '9606':"human"}

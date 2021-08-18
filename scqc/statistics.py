@@ -258,6 +258,124 @@ class Statistics(object):
         # consider different gene sets - ERCC  corresponds to spike ins
         adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')
         # adata.var['ERCC'] = adata.var.gene_symbol.str.startswith('ERCC')
+        geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype='str')
+        geneinfo.columns = ['gene_accession', 'gene_symb','type']
+        tmpdf = pd.merge(adata.var, geneinfo, on = 'gene_accession',how = 'left')        
+        #tmpdf = tmpdf.fillna( 'None')
+        adata.var['ribo'] = (tmpdf['type'] == "rRNA").values
+        # adata.var['cytoplasm'] = None       # GO Term/kegg?
+        # adata.var['metabolism'] = None      # GO Term/kegg?
+        # adata.var['membrane'] = None        # GO Term/kegg?
+
+        qcvars = ['mt', 'ribo', 'female', 'male',
+                  'essential', 'cell_cycle']
+
+        # get housekeeping genes
+        self.log.debug(f"gathering marker sets:")
+        hk_genes = pd.read_csv(self.stable_housekeepinig, sep=",",dtype='str')
+        self.log.debug(f"housekeeping:{hk_genes}")
+        adata.var['housekeeping'] = adata.var.gene_symbol.isin(
+            hk_genes.gene)
+
+        # get gender markers  https://www.nature.com/articles/s41586-020-2536-x
+        # just one gene - Xist
+        female_genes = pd.read_csv(self.female_genes, sep=",",dtype='str')
+        self.log.debug(f"female:{female_genes}")
+        adata.var['female'] = adata.var.gene_symbol.isin(
+            female_genes.gene)
+
+        # just one gene - Ddx3y
+        male_genes = pd.read_csv(self.male_genes, sep=",",dtype='str')
+        self.log.debug(f"male:{male_genes}")
+        adata.var['male'] = adata.var.gene_symbol.isin(
+            male_genes.gene)
+
+        # get essential genes  # 1947 genes
+        essential = pd.read_csv(self.essential_genes, sep=",",dtype='str')
+        self.log.debug(f"ess:{essential}")
+        adata.var['essential'] = adata.var.gene_symbol.isin(
+            essential.gene)
+
+        # get cell cycle genes
+        cc = pd.read_csv(self.cell_cycle_genes, sep=",",dtype='str')
+        cc.columns = ['cc_cluster','gene_symbol']
+        self.log.debug(f"cc:{cc}")
+
+        # get the type of gene - pseudogene, rRNA, etc
+        tmpdf = pd.merge(adata.var ,cc, on = 'gene_symbol',how='left' )
+        # tmpdf.drop('gene',axis=1)
+        tmpdf.index = adata.var.index
+        tmpdf.cc_cluster.fillna('None')
+        adata.var = tmpdf
+        
+        
+        adata.var['cell_cycle'] = adata.var.cc_cluster != 'None'
+        for i in cc.cc_cluster.unique():
+            adata.var[f'cc_cluster_{i}'] = adata.var.cc_cluster == i 
+            qcvars.append(f'cc_cluster_{i}')
+
+        self.log.debug('calculating qc metrics')
+        sc.pp.calculate_qc_metrics(
+            adata,
+            expr_type='counts', var_type='genes',
+            percent_top=(50, 100, 200, 500), inplace=True, use_raw=False,
+            qc_vars=qcvars)
+
+        self.log.debug('calculating corrtomean') # using log1p counts
+        adata.obs['corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X)
+        # natural log thge data
+        sc.pp.log1p(adata)  
+
+        # computes the N+M x N+M corrcoef matrix - extract off diagonal block
+        adata.obs['log1p_corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X)
+
+        # batch this.
+        # X = np.random.normal(size=(10, 3))
+        # F = np.zeros((10, ))
+
+        # import multiprocessing
+        # pool = multiprocessing.Pool(processes=16)
+        # if number of processes is not specified, it uses the number of core
+        # F[:] = pool.map(my_function, (X[i,:] for i in range(10)) )
+        self.log.debug('calculating gini for each cell')
+        tmp = gini_coefficient_fast(adata.X)
+
+        adata.obs['gini']  = tmp
+        # unstructured data - dataset specific
+        # adata.uns['gini_by_counts'] = gini_coefficient(
+        #     adata.obs['total_counts'])
+
+        self.log.debug('computing hvg')
+        # highly variable genes - expects log data
+        sc.pp.highly_variable_genes(adata,
+                                    min_mean=float(self.hvg_min_mean),
+                                    max_mean=float(self.hvg_max_mean),
+                                    min_disp=float(self.hvg_min_disp),
+                                    max_disp=float(self.hvg_max_disp),
+                                    flavor=self.hvg_flavor)
+
+        # umap coords
+
+        ncomp = min(adata.shape[0] -1 , int(self.nPCA) )
+        self.log.debug('running pca\n')
+        sc.tl.pca(adata,
+                  n_comps=ncomp, zero_center=False, use_highly_variable=self.use_hvg)
+        # print('getting neighbors\n')
+        sc.pp.neighbors(adata, n_neighbors=int(self.n_neighbors), n_pcs=ncomp)
+        # print('getting umap\n')
+        sc.tl.umap(adata)       # umap coords are in adata.obsm['X_umap']
+        
+        adata.obs.cell_id = adata.obs.index
+        return adata
+    
+    
+    
+    def XXX_get_stats_scanpy(self, adata):
+        # adata.obs['batch'] = None
+
+        # consider different gene sets - ERCC  corresponds to spike ins
+        adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')
+        # adata.var['ERCC'] = adata.var.gene_symbol.str.startswith('ERCC')
         adata.var['ribo'] = adata.var.type == "rRNA"
         # adata.var['cytoplasm'] = None       # GO Term/kegg?
         # adata.var['metabolism'] = None      # GO Term/kegg?
@@ -307,8 +425,8 @@ class Statistics(object):
 
         # computes the N+M x N+M corrcoef matrix - extract off diagonal block
         self.log.debug('calculating corrtomean')
-        adata.obs['corr_to_mean'] = np.array(sparse_pairwise_corr(
-            adata.var.mean_counts, adata.X)[0, 1:]).flatten()
+        adata.obs['corr_to_mean'] = sparse_pairwise_corr(
+            np.asarray(adata.var.mean_counts).reshape(adata.shape[1],1), adata.X)
 
         # this part is slow (~10-15 min) because of a for loop - can parallelize
         self.log.debug('calculating gini for each cell')
