@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-
-
-# aggregates statistics.
+#
+# Aggregates statistics. Outputs to /output/<proj_id>.h5ad
+#
 
 import argparse
 import io
@@ -15,7 +15,7 @@ from threading import Thread
 import glob
 import numpy as np
 import pandas as pd
-import scanpy as sc  # pip install
+import scanpy as sc  
 from scipy.io import mmread
 from scipy.sparse import base
 import matplotlib.pyplot as plt
@@ -24,11 +24,6 @@ from sklearn.metrics.pairwise import euclidean_distances
 # import matplotlib.cbook as cbook
 
 
-# SRP090110 - mouse brain SS (500 cells)    Not found in scbrain_pids_mouse!
-# SRP124513 - mouse brain SS (1700 cells)   Not found in scbrain_pids_mouse!
-# SRP110034 - mouse brain 10x (1700 cells)  Not found in scbrain_pids_mouse!
-# SRP106908 - mouse brain SS (3186 cells) (atlas)
-# SRP135960 - mouse brain 10x (509000 cells) (atlas)
 
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
@@ -61,6 +56,8 @@ class Statistics(object):
             self.config.get('statistics', 'tempdir'))
         self.cachedir = os.path.expanduser(
             self.config.get('statistics', 'cachedir'))
+        self.nocleanup = self.config.getboolean('statistics','nocleanup')
+        
         # gene sets
         self.cell_cycle_genes = os.path.expanduser(
             self.config.get('statistics', 'cell_cycle_genes'))
@@ -84,13 +81,15 @@ class Statistics(object):
         self.use_hvg = self.config.get('statistics', 'use_hvg')
         # neighbor graph params
         self.n_neighbors = self.config.get('statistics', 'n_neighbors')
-
+        
         # metamarker params
         self.class_markerset =  os.path.expanduser(
             self.config.get('metamarker', 'class_markerset'))
         self.subclass_markerset =  os.path.expanduser(
             self.config.get('metamarker', 'subclass_markerset'))
         self.max_rank = self.config.get('metamarker', 'max_rank')
+        
+
 
 
     def execute(self, proj_id):
@@ -436,7 +435,10 @@ class Statistics(object):
                 adata.obs['class_label'] = tmpdf.predicted
             elif  '_subclass_pred.tsv' in tmp_path :
                 adata.obs['subclass_label'] = tmpdf.predicted
-            os.remove(tmp_path)
+            
+            if not self.nocleanup:
+                os.remove(tmp_path)
+        
         return(adata)
 
 

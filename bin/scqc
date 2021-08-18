@@ -7,6 +7,7 @@ import os
 import sys
 gitpath=os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
+
 binpath = os.path.expanduser("~/git/scqc/bin")
 os.environ['PATH'] = f'{os.environ["PATH"]}:{binpath}'
 
