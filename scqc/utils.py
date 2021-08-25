@@ -352,6 +352,8 @@ def run_command(cmd):
         logging.error(f'non-zero return code for cmd {cmdstr}')
         raise NonZeroReturnException()
 
+    return(cp.stderr, cp.stdout,cp.returncode)
+
 
 def gini_coefficient_fast(X):
     """ 
