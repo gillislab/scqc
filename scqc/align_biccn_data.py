@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 import os 
 import glob
 import sys
@@ -102,9 +102,13 @@ class AlignBICCN(object) :
         # ex /data/biccn/nemo/L8TX_180221_01_B10.fastq.tar
         # with tarfile.open(tarpath) as f : 
         #     f.extractall(os.path.dirname(tarpath) )
-        cmd = ['tar', '-C',os.path.dirname(tarpath), '-xvf', tarpath ]
-        run_command(cmd)
 
+        if os.path.isdir(os.path.dirname(tarpath)):
+            self.logging.debug(f'already untarred {tarpath}- doing nothing')    
+        else :                
+            cmd = ['tar', '-C',os.path.dirname(tarpath), '-xvf', tarpath ]
+            run_command(cmd)
+            self.logging.debug(f'untarred {tarpath}') 
 
         if self.clean:
             os.remove(tarpath)
@@ -121,7 +125,32 @@ class AlignBICCN(object) :
 
             return(l)
 
-        
+
+def get_ids(fastqs = FASTQS.srcurl) :
+
+    # assign project ids
+    proj_ids = [os.path.dirname(f).replace('http://data.nemoarchive.org/biccn/grant/','') for f in fastqs  ]
+    
+    proj_ids = [re.sub('transcriptome/','',pid).replace('mouse/','').replace('raw/','') for pid in proj_ids ]
+    proj_ids = [re.sub('/' ,'_',pid) for pid in proj_ids]
+
+    # get the run id - separates lanes ideally.
+    run_ids = [os.path.basename(f).replace('.fastq.tar','') for f in fastqs  ]
+    run_ids = [re.sub('.fastq.tar','',r) for r in run_ids  ]
+    run_ids = [re.sub('_L00[0-9]','',r) for r in run_ids  ]
+
+    pdf = pd.DataFrame({'proj_id':proj_ids})
+    pdf['run_id'] = run_ids
+    pdf['tech'] = 'SSv4'
+    pdf.loc[pdf.proj_id.str.upper().str.contains('10X_V2'), 'tech']  = '10x_v2'
+    pdf.loc[pdf.proj_id.str.upper().str.contains('10X_V3'), 'tech']  = '10x_v3'
+
+    # assign the smartseq 'run_ids' as the 'proj_id'. 
+    pdf.loc[pdf.tech =='SSv4', 'run_id'] = pdf.loc[pdf.tech =='SSv4', 'proj_id']
+
+    pdf['uid'] = [os.path.basename(f).replace('.fastq.tar','') for f in fastqs]
+    return(pdf)
+
     
 if __name__ == '__main__' :
     
