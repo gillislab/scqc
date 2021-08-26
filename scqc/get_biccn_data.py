@@ -168,12 +168,13 @@ def get_zeng_data(base_url = 'http://data.nemoarchive.org/biccn/grant/u19_zeng/z
                             f'{srcurl}/{region}'
                         ]
                         stderr, stdout ,returncode =run_command(cmd)
-                        if str(returncode) =='0'
+                        if str(returncode) =='0':
                             htmlpath =(f'{srcurl}/{region}index.html').replace('http://','')
                             fastqs = get_files_from_html(htmlpath,pattern = 'fastq')
                             fastqs = [ f'{srcurl}/{region}{fastq}' for fastq in fastqs  ] 
                             allfastqs = allfastqs + fastqs
-
+                else: 
+                    print(f'something wrong with {srcurl}/{region}')
 
     
     f = open('/home/johlee/zeng_fastqs.txt','w')
@@ -193,9 +194,8 @@ def get_zeng_data(base_url = 'http://data.nemoarchive.org/biccn/grant/u19_zeng/z
     # sncell/10x_v3/mouse/raw/MOp
     # sncell/SSv4/mouse/raw/MOp/
 
-### unable to get macosko data...
 def get_huang_data(base_url = 'http://data.nemoarchive.org/biccn/grant/u19_huang'):
-    pis = ['arlotta','dulac','macosko','macosko_regev']
+    pis = ['arlotta','dulac','macosko','macosko_regev'] 
     modals = ['transcriptome']
     subsamples = ['scell','sncell']
     techs = ['10x_v2','10x_v3']
@@ -253,7 +253,7 @@ def get_huang_data(base_url = 'http://data.nemoarchive.org/biccn/grant/u19_huang
                                 allfastqs += fastqs
 
             
-    f = open('/home/johlee/huang_fastqs1.txt','w')
+    f = open('/home/johlee/huang_fastqs2.txt','w')
     [f.write( f'{fq}\n' ) for fq in allfastqs ]
     f.close()
 

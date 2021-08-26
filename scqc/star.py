@@ -317,7 +317,7 @@ class AlignReads(object):
         return(d[tech])
    
     # impute stage will obtain tech, and bio/tech_readpaths for 10x runs
-    def _run_star_10x(self, run_id, tech, bio_readpath, tech_readpath):
+    def _run_star_10x(self, run_id, tech, bio_readpath, tech_readpath,gzipped = False):
         '''
         saves to temp directory
         '''
@@ -339,6 +339,8 @@ class AlignReads(object):
                 '--soloFeatures', 'Gene',
                 '--readFilesIn', bio_readpath, tech_readpath,
                 '--outSAMtype', 'None']
+        if gzipped :
+            cmd += ['--readFilesCommand','zcat']
         self._run_command(cmd)
         return(outfile_prefix)
 

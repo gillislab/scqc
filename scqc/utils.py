@@ -348,11 +348,12 @@ def run_command(cmd):
     
     if str(cp.returncode) == '0':
         logging.info(f'successfully ran {cmdstr}')
+        return(cp.stderr, cp.stdout,cp.returncode)
+
     else:
         logging.error(f'non-zero return code for cmd {cmdstr}')
         raise NonZeroReturnException()
 
-    return(cp.stderr, cp.stdout,cp.returncode)
 
 
 def gini_coefficient_fast(X):
