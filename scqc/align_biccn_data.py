@@ -27,7 +27,6 @@ class AlignBICCN(object) :
 
     def __init__(self, config):
         self.config = config
-        self.ar = AlignReads(config)
         self.nocleanup  = self.config.get('star' ,'nocleanup') # if false, cleans tmp dir
         self.log = logging.getLogger('biccn_align')
         self.tempdir = os.path.expanduser(
@@ -38,6 +37,7 @@ class AlignBICCN(object) :
     def execute(self,run_id ) : 
            
         # needs to be able to deal with multiple lanes. 
+        ar = AlignReads(self.config)
 
         tarpaths =  glob.glob(f'/data/biccn/nemo/{run_id}*fastq.tar')
         if len(tarpaths) ==0 :
@@ -92,7 +92,7 @@ class AlignBICCN(object) :
             cDNAs = ','.join(cDNAs)
 
 
-            outfile_prefix = self.ar._run_star_10x(run_id = run_id, tech = '10xv2' , 
+            outfile_prefix = ar._run_star_10x(run_id = run_id, tech = '10xv2' , 
                 bio_readpath = cDNAs, tech_readpath=barcodes , gzipped=True)
             if not self.nocleanup : 
                 for fq in ulfastqs: 
@@ -129,7 +129,7 @@ class AlignBICCN(object) :
             manipath = f'{self.tempdir}/{run_id}_manifest.tsv'
             manifest.to_csv(manipath,sep="\t" ,header=None, index=None)
 
-            outfile_prefix = self.ar._run_star_smartseq(run_id, manipath,gzipped= True)
+            outfile_prefix = ar._run_star_smartseq(run_id, manipath,gzipped= True)
 
 
             # if not self.nocleanup : 
