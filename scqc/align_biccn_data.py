@@ -19,6 +19,8 @@ FASTQS = pd.read_csv('/home/johlee/git/scqc/resource/biccn_fastq_paths.txt',head
 FASTQS.columns=['srcurl']
 FASTQS = FASTQS.loc[ ~ FASTQS.duplicated(), :]  # just in case
 
+BICCN_PROJS = pd.read_csv('/home/johlee/git/scqc/resource/biccn_projects.tsv',index_col=0,sep="\t")
+
 CONF = get_default_config()
 
 class AlignBICCN(object) :
@@ -26,14 +28,37 @@ class AlignBICCN(object) :
     def __init__(self, config):
         self.config = config
         self.ar = AlignReads(config)
-        self.clean  = self.config.get('star' ,'nocleanup')
+        self.nocleanup  = self.config.get('star' ,'nocleanup') # if false, cleans tmp dir
+        self.log = logging.getLogger('biccn_align')
+        self.tempdir = os.path.expanduser(
+            self.config.get('star', 'tempdir')) 
+
 
 
     def execute(self,run_id ) : 
            
         # needs to be able to deal with multiple lanes. 
+
         tarpaths =  glob.glob(f'/data/biccn/nemo/{run_id}*fastq.tar')
-        
+        if len(tarpaths) ==0 :
+            # no fastqs with that id found. check the list if it should be there. 
+            rdf = BICCN_PROJS.loc[BICCN_PROJS.run_id ==run_id,:]
+            if rdf.shape[0] == 0:
+                raise NameError ('Invalid run_id')
+            else :
+                # get the files that we do have...
+                fqs_avail = os.listdir('/data/biccn/nemo/')
+
+                # get the ones that we expect to have
+                fqs_required = rdf.uid
+                tarpaths = [f'/data/biccn/nemo/{uid}.fastq.tar' for uid in rdf.uid if f'{uid}.fastq.tar' in fqs_avail ]
+                if len(tarpaths) == 0 :
+                    raise NameError (f'no runs downloaded yet for {run_id}')
+
+                # Require all of the runs to be downloaded. If not, skip.
+                # elif len(tarpaths) < len(rdf.uid) : 
+                #     raise NameError (f'not all runs downloaded yet for {run_id}')
+           
         # unpack tars  # TODO multi thread
         # occasional issue?? NoneType?
         for tarpath in tarpaths :
@@ -45,20 +70,19 @@ class AlignBICCN(object) :
         
         subdirs = [ tarpath.replace('.fastq.tar','') for tarpath in tarpaths ] 
         fastqs = [ glob.glob(f'{subdir}/*.fastq.gz') for subdir in subdirs]
-        fastqs = list(itertools.chain.from_iterable(fastqs))
+        ulfastqs = list(itertools.chain.from_iterable(fastqs))
         
         # What technology is the url suggesting?
-        srcurls = [ f for f in FASTQS.srcurl  if run_id in f]
-        is10xv2 = ['10X_V2'  in srcurl.upper()  for srcurl in srcurls ] 
-        is10xv3 = ['10X_V3'  in srcurl.upper()  for srcurl in srcurls ] 
-        isSSv4 = ['SSv4'  in srcurl.upper()  for srcurl in srcurls ] 
+        isSSv4  = [True if 'SSv4' in f else False for f in rdf.tech ]
+        is10xv2 = [True if '10x_v2' in f else False for f in rdf.tech ]
+        is10xv3 = [True if '10x_v3' in f else False for f in rdf.tech ]
 
         if all(is10xv2) : 
             # which fastqs are the cDNA/barcodes?
             print(f'starting 10xv2 processing for {run_id}')
             barcodes = []
             cDNAs = []
-            for fq in fastqs :
+            for fq in ulfastqs :
                 l = self.get_read_length(fq)
                 if l == 26 : 
                     barcodes.append(fq)
@@ -70,8 +94,8 @@ class AlignBICCN(object) :
 
             outfile_prefix = self.ar._run_star_10x(run_id = run_id, tech = '10xv2' , 
                 bio_readpath = cDNAs, tech_readpath=barcodes , gzipped=True)
-            if self.clean : 
-                for fq in fastqs: 
+            if not self.nocleanup : 
+                for fq in ulfastqs: 
                     os.remove(fq) 
             print(outfile_prefix)
 
@@ -80,7 +104,7 @@ class AlignBICCN(object) :
             # which fastqs are the cDNA/barcodes? 
             barcodes = []
             cDNAs = []
-            for fq in fastqs :
+            for fq in ulfastqs :
                 l = self.get_read_length(fq)
                 if l == 28 : 
                     barcodes.append(fq)
@@ -91,11 +115,32 @@ class AlignBICCN(object) :
 
             outfile_prefix = a._run_star_10x(run_id = run_id, tech = '10xv2' , 
                 bio_readpath = cDNAs, tech_readpath=barcodes , gzipped=True)
-             
-        elif 'SSv4'  in srcurl.upper() : 
+            if not self.nocleanup : 
+                for fq in ulfastqs: 
+                    os.remove(fq) 
+            print(outfile_prefix)
+
+        elif all(isSSv4) : 
             # continue as smartseq. 
-            #make manifest...
-            pass
+            # make manifest...
+            manirows = [fqs if len(fqs) ==2 else fqs+['-'] for fqs in fastqs ] 
+            manifest = pd.DataFrame(manirows ,columns =['read1','read2'])
+            manifest['cell_id'] = subdirs
+            manipath = f'{self.tempdir}/{run_id}_manifest.tsv'
+            manifest.to_csv(manipath,sep="\t" ,header=None, index=None)
+
+            outfile_prefix = self.ar._run_star_smartseq(run_id, manipath,gzipped= True)
+
+
+            # if not self.nocleanup : 
+            #     for fq in ulfastqs: 
+            #         os.remove(fq) 
+            print(outfile_prefix)
+
+
+        else : 
+            raise AssertionError (f'technology for the run is unclear for {run_id}')
+            
 
 
     def untar_file(self, tarpath):
@@ -103,14 +148,16 @@ class AlignBICCN(object) :
         # with tarfile.open(tarpath) as f : 
         #     f.extractall(os.path.dirname(tarpath) )
 
-        if os.path.isdir(os.path.dirname(tarpath)):
-            self.logging.debug(f'already untarred {tarpath}- doing nothing')    
+        outdir = os.path.dirname(tarpath) 
+        outbn = os.path.basename(tarpath).replace('.fastq.tar','')
+        if os.path.isdir(f'{outdir}/{outbn}'):
+            self.log.debug(f'already untarred {tarpath}- doing nothing')    
         else :                
             cmd = ['tar', '-C',os.path.dirname(tarpath), '-xvf', tarpath ]
             run_command(cmd)
-            self.logging.debug(f'untarred {tarpath}') 
+            self.log.debug(f'untarred {tarpath}') 
 
-        if self.clean:
+        if not self.nocleanup:
             os.remove(tarpath)
 
         # return(stderr, stdout, returncode)
@@ -149,8 +196,10 @@ def get_ids(fastqs = FASTQS.srcurl) :
     pdf.loc[pdf.tech =='SSv4', 'run_id'] = pdf.loc[pdf.tech =='SSv4', 'proj_id']
 
     pdf['uid'] = [os.path.basename(f).replace('.fastq.tar','') for f in fastqs]
+    pdf.to_csv('/home/johlee/git/scqc/resource/biccn_projects.tsv',sep="\t")
     return(pdf)
 
+# get_ids()
     
 if __name__ == '__main__' :
     

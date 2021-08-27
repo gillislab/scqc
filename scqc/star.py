@@ -263,7 +263,7 @@ class AlignReads(object):
         return(manipath, manifest)
 
 
-    def _run_star_smartseq(self, proj_id, manipath):
+    def _run_star_smartseq(self, proj_id, manipath,gzipped= False):
 
         ss_params = {"solo_type": "SmartSeq",
                      "soloUMIdedup": "Exact",
@@ -282,6 +282,9 @@ class AlignReads(object):
                '--soloStrand', ss_params["soloStrand"],
                '--outSAMtype', 'None']
 
+        if gzipped : 
+            cmd +=  ['--readFilesCommand','zcat']
+            
         self._run_command(cmd)
         return(outfile_prefix)
 
