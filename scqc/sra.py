@@ -588,6 +588,42 @@ class Impute(object):
             self.log.debug(f'got project-specific df: \n{edf}')
             # impute technology  -  exp_id|tech
             idf = self.impute_tech_from_lcp(edf)    
+
+
+            ss_manual = pd.read_csv(f'{self.metadir}/smartseq_projs.tsv' , header=None)
+            ss_manual.columns = ['proj_id']
+            if proj_id in ss_manual.proj_id.unique() :
+                # read the vdb dump data
+                vdf = load_df(f'{self.metadir}/vdb_dump.tsv')
+                vdf = vdf[vdf.proj_id == proj_id].reset_index(drop=True) 
+                # only take the consistent runs lengths 
+                m = vdf.read_lengths.value_counts().index[0]
+                print(vdf.read_lengths.value_counts())
+                print(m)
+                
+                vdf = vdf.loc[vdf.read_lengths == m,:]
+                #update idf
+                idf.tech[idf.exp_id.isin(vdf.exp_id)] = 'smartseq'
+            
+            
+            tx_manual = pd.read_csv(f'{self.metadir}/tenx_projs.tsv' , header=None)
+            tx_manual.columns = ['proj_id']
+            if proj_id in tx_manual.proj_id.unique() :
+                
+                vdf = load_df(f'{self.metadir}/vdb_dump.tsv')
+                vdf = vdf[vdf.proj_id == proj_id].reset_index(drop=True) 
+                # only take runs with read_length containing 24, 26, 28
+                m = vdf.read_lengths.str.contains('24,|, 24|26,|, 26|28,|, 28')
+                vdf = vdf.loc[m,:]
+                
+                print(vdf.read_lengths.value_counts())
+                
+                #update idf
+                idf.tech[idf.exp_id.isin(vdf.exp_id)] = '10x'
+
+
+
+
             self.log.debug(f'got initial imputed tech df: \n{idf}')
 
             # match run to tech
@@ -595,6 +631,8 @@ class Impute(object):
             rdf = load_df(runfile)
             rdf = rdf[rdf.proj_id == proj_id].reset_index(drop=True)
             # impute 10x version
+                
+
             outdf = self.impute_10x_version(idf, rdf)
             self.log.debug(f'got imputed 10x version df: \n{outdf}')
             

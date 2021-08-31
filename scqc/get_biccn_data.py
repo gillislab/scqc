@@ -18,7 +18,7 @@ class NonZeroReturnException(Exception):
     """
 
 
-def download_wget(srcurl, destpath, finalname=None, overwrite=True, decompress=True, rate='100M'):
+def download_wget(srcurl, destpath, finalname=None, overwrite=True, decompress=True, rate='1M'):
     """
     
     
