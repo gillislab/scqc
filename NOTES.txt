@@ -9,7 +9,6 @@ http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/scell/10x_v2
 http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/scell/SSv4/mouse/raw/*
 http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/scell/SSv4_viral/mouse/raw/*
 http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/scell/10x_v3/mouse/raw/MOp/
-
 http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/sncell/10x_v2/mouse/raw/MOp
 http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/sncell/10x_v3/mouse/raw/MOp
 http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/sncell/SSv4/mouse/raw/MOp/

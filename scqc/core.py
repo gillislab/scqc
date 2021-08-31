@@ -260,7 +260,7 @@ class Impute(Stage):
                 (done, part, seen) = si.execute(proj_id)
                 self.log.debug(f'done with {proj_id}')
                 if done is not None:
-                    donelist.append(out)
+                    donelist.append(done)
                 if part is not None:
                     partlist.append(part)
                 if seenlist is not None:

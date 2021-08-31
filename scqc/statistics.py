@@ -471,6 +471,44 @@ class Statistics(object):
         adata.uns['samp_df'] = sdf
 
         return(adata)            
+
+def parse_STAR_mtx(solooutdir, resourcedir='./resource' ,species='mouse'):
+    # static version of _parse_STAR_mtx
+    
+    # note that scanpy uses cell x gene.
+    # read into anndata
+    # path should end with "Solo.out"
+    # solooutdir = "/home/johlee/scqc/starout/SRP308826_smartseq_Solo.out"
+    path = f'{solooutdir}/Gene/filtered'
+
+    # mtx_files = os.listdir(path)
+    adata = sc.read_mtx(f'{path}/matrix.mtx').T
+
+    
+    geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
+    geneinfo.columns = ['gene_accession', 'gene_symbol', 'type']
+    # geneinfo.index = geneinfo.gene_accession
+    # geneinfo.index.name =None
+    genenames = pd.read_csv(f'{path}/features.tsv',
+                            sep="\t", header=None, dtype=str)
+    genenames.columns = ['gene_accession', 'gene_symbol', 'source']
+
+    genenames = genenames.merge(geneinfo, how='left', on=[
+        "gene_accession", 'gene_symbol'], indicator=True)
+    genenames.index = genenames.gene_accession
+    genenames.index.name =None
+    cellids = pd.read_csv(f'{path}/barcodes.tsv', sep="\t", header=None)
+    cellids.columns = ["cell_id"]
+
+    cellids.index = cellids.cell_id
+    cellids.index.name =None
+
+    adata.var = genenames
+    adata.obs = cellids
+
+    # gather imputed data and append to obs
+
+    return adata
     
     
     
