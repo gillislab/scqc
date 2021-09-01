@@ -273,6 +273,7 @@ class Impute(Stage):
 
     def setup(self):
         sra.setup(self.config)
+        biccn.setup(self.config)
 
 
 class Download(Stage):

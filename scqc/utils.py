@@ -122,6 +122,7 @@ def merge_write_df(newdf, filepath,  mode=0o644):
 
     except Exception as ex:
         logging.error(traceback.format_exc(None))
+        raise ex
 
 
 def listdiff(list1, list2):

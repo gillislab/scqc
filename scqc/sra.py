@@ -136,7 +136,7 @@ def setup(config):
     Only needs to be done once.
     '''
 
-    log = logging.getLogger('setup')
+    log = logging.getLogger('sra')
     config = config
     # directories
     metadir = os.path.expanduser(config.get('setup', 'metadir'))
@@ -586,10 +586,10 @@ class Impute(object):
             self.log.debug(f'opened experiments DF OK...')
             edf = edf[edf.proj_id == proj_id].reset_index(drop=True) # rename pdf -> edf 
             self.log.debug(f'got project-specific df: \n{edf}')
-            # impute technology  -  exp_id|tech
+            # auto impute technology  -  exp_id|tech
             idf = self.impute_tech_from_lcp(edf)    
-
-
+            
+            # gather manually-curated smartseq tech
             ss_manual = pd.read_csv(f'{self.metadir}/smartseq_projs.tsv' , header=None)
             ss_manual.columns = ['proj_id']
             if proj_id in ss_manual.proj_id.unique() :
@@ -598,31 +598,25 @@ class Impute(object):
                 vdf = vdf[vdf.proj_id == proj_id].reset_index(drop=True) 
                 # only take the consistent runs lengths 
                 m = vdf.read_lengths.value_counts().index[0]
-                print(vdf.read_lengths.value_counts())
-                print(m)
+                self.log.debug(vdf.read_lengths.value_counts())
+                self.log.debug(m)
                 
                 vdf = vdf.loc[vdf.read_lengths == m,:]
                 #update idf
                 idf.tech[idf.exp_id.isin(vdf.exp_id)] = 'smartseq'
             
-            
+            # gather manually-curated 10x tech            
             tx_manual = pd.read_csv(f'{self.metadir}/tenx_projs.tsv' , header=None)
             tx_manual.columns = ['proj_id']
             if proj_id in tx_manual.proj_id.unique() :
-                
                 vdf = load_df(f'{self.metadir}/vdb_dump.tsv')
                 vdf = vdf[vdf.proj_id == proj_id].reset_index(drop=True) 
                 # only take runs with read_length containing 24, 26, 28
                 m = vdf.read_lengths.str.contains('24,|, 24|26,|, 26|28,|, 28')
                 vdf = vdf.loc[m,:]
-                
-                print(vdf.read_lengths.value_counts())
-                
+                self.log.debug(vdf.read_lengths.value_counts())
                 #update idf
                 idf.tech[idf.exp_id.isin(vdf.exp_id)] = '10x'
-
-
-
 
             self.log.debug(f'got initial imputed tech df: \n{idf}')
 

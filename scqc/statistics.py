@@ -483,7 +483,6 @@ def parse_STAR_mtx(solooutdir, resourcedir='./resource' ,species='mouse'):
 
     # mtx_files = os.listdir(path)
     adata = sc.read_mtx(f'{path}/matrix.mtx').T
-
     
     geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
     geneinfo.columns = ['gene_accession', 'gene_symbol', 'type']
