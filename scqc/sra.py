@@ -1156,6 +1156,7 @@ def query_project_metadata(project_id):
         log.info('got good return. reading CSV to dataframe.')
         with io.BytesIO(r.content) as imf:
             df = pd.read_csv(imf)
+        log.debug(f'dataframe read from CSV.: {df}')
         return df
 
     else:
