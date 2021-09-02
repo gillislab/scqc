@@ -6,7 +6,7 @@
 #
 # Could use  SRR14584407 SRR14584408 in example..
 # John Lee's working examples - SRP126648 for Smartseq and SRP243446 for 10xv2
-
+    
 import argparse
 import glob
 import io
