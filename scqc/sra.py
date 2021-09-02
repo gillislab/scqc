@@ -567,6 +567,7 @@ class Impute(object):
         self.log = logging.getLogger('impute')
         self.config = config
         self.metadir = os.path.expanduser(self.config.get('impute', 'metadir'))
+        self.resourcedir = os.path.expanduser(self.config.get('impute', 'resourcedir'))
 
 
     def execute(self, proj_id):
@@ -590,11 +591,11 @@ class Impute(object):
             idf = self.impute_tech_from_lcp(edf)    
             
             # gather manually-curated smartseq tech
-            ss_manual = pd.read_csv(f'{self.metadir}/smartseq_projs.tsv' , header=None)
+            ss_manual = pd.read_csv(f'{self.resourcedir}/smartseq_projs.tsv' , header=None)
             ss_manual.columns = ['proj_id']
             if proj_id in ss_manual.proj_id.unique() :
                 # read the vdb dump data
-                vdf = load_df(f'{self.metadir}/vdb_dump.tsv')
+                vdf = load_df(f'{self.resourcedir}/vdb_dump.tsv')
                 vdf = vdf[vdf.proj_id == proj_id].reset_index(drop=True) 
                 # only take the consistent runs lengths 
                 m = vdf.read_lengths.value_counts().index[0]
@@ -606,10 +607,10 @@ class Impute(object):
                 idf.tech[idf.exp_id.isin(vdf.exp_id)] = 'smartseq'
             
             # gather manually-curated 10x tech            
-            tx_manual = pd.read_csv(f'{self.metadir}/tenx_projs.tsv' , header=None)
+            tx_manual = pd.read_csv(f'{self.resourcedir}/tenx_projs.tsv' , header=None)
             tx_manual.columns = ['proj_id']
             if proj_id in tx_manual.proj_id.unique() :
-                vdf = load_df(f'{self.metadir}/vdb_dump.tsv')
+                vdf = load_df(f'{self.resourcedir}/vdb_dump.tsv')
                 vdf = vdf[vdf.proj_id == proj_id].reset_index(drop=True) 
                 # only take runs with read_length containing 24, 26, 28
                 m = vdf.read_lengths.str.contains('24,|, 24|26,|, 26|28,|, 28')

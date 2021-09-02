@@ -18,21 +18,17 @@ from scqc.utils import *
 
 
 # look for 10x runs  
-def get_vdb_data(start ,stop, outfile):
-
-    print(f'starting - {start}:{stop} and saving at {outfile}')
-    runs = glob.glob('/data/hover/scqc/cache2/sra/*.sra')
-    runs = [run_id.replace('/data/hover/scqc/cache2/sra/','') for run_id in runs ]
-    runs = [run_id.replace('.sra','') for run_id in runs ]
+def get_vdb_data(runfile, outfile):
+    runs = pd.read_csv(runfile, sep="\t")
 
     allrows =list()
-    for run_id in runs[start:stop] : 
-        # print(run_id)
+    for run_id in runs.run_id : 
+        print(run_id)
         cmd = ['vdb-dump', 
             '--rows', '1',
             '--columns', 'READ_LEN,SPOT_COUNT',
             run_id]
-        stderr, stdout = run_command(cmd)
+        stderr, stdout, rc = run_command(cmd)
         # print("...",stdout.strip())
         tmp = stdout.strip().split('\n')
         row = [i.split(': ' )[1].strip() for i in   stdout.strip().split('\n') ]
@@ -49,17 +45,11 @@ if __name__== "__main__":
     parser = argparse.ArgumentParser()
 
 
-    parser.add_argument('-e','--stop',
-                        metavar='stop',
-                        type=int,
-                        default=1,
-                        help='stop index')
-
-    parser.add_argument('-i','--start',
-                        metavar='start',
-                        type=int,
-                        default=0,
-                        help='start index')
+    parser.add_argument('-r','--runfile',
+                        metavar='runfile',
+                        type=str,
+                        default=None,
+                        help='run files')
 
     parser.add_argument('-o', '--outfile',
                         metavar='outfile',
@@ -69,5 +59,6 @@ if __name__== "__main__":
 
     args = parser.parse_args()
 
-    get_vdb_data(args.start,args.stop,args.outfile)
+    get_vdb_data(args.runfile, args.outfile)
+
     
