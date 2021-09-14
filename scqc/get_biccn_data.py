@@ -7,6 +7,8 @@ import requests
 import pandas as pd
 import logging
 import datetime as dt
+import time
+
 # search request
 # https://portal.nemoarchive.org/search/s?facetTab=cases&filters=%7B%22op%22:%22and%22,%22content%22:%5B%7B%22op%22:%22in%22,%22content%22:%7B%22field%22:%22sample.modality%22,%22value%22:%5B%22Transcriptomics%22%5D%7D%7D,%7B%22op%22:%22in%22,%22content%22:%7B%22field%22:%22sample.organism%22,%22value%22:%5B%22Mouse%22%5D%7D%7D,%7B%22op%22:%22in%22,%22content%22:%7B%22field%22:%22sample.subspecimen_type%22,%22value%22:%5B%22Nuclei%22,%22Cells%22%5D%7D%7D,%7B%22op%22:%22in%22,%22content%22:%7B%22field%22:%22file.format%22,%22value%22:%5B%22FASTQ%22%5D%7D%7D,%7B%22op%22:%22in%22,%22content%22:%7B%22field%22:%22sample.technique%22,%22value%22:%5B%22Patch-seq;SMART-seq%20v4%22,%22SMART-seq%20v4%22,%2210x%20Chromium%203%27%20v3%20sequencing%22,%2210x%20Chromium%203%27%20v2%20sequencing%22%5D%7D%7D%5D%7D
 
@@ -81,14 +83,24 @@ def download_wget(srcurl, destpath, finalname=None, overwrite=True, decompress=T
         logging.debug(f"got stderr: {cp.stderr}")
         logging.debug(f"got stdout: {cp.stdout}")
         if len(cp.stderr) > 10:
-            dlbytes = parse_wget_output_bytes(cp.stderr)
-            logging.info(f'downloaded {dlbytes} bytes {destpath} successfully, in {elapsed.seconds} seconds. ')
+            pass
+            # dlbytes = parse_wget_output_bytes(cp.stderr)
+            # logging.info(f'downloaded {dlbytes} bytes {destpath} successfully, in {elapsed.seconds} seconds. ')
         else:
             logging.info(f'file already downloaded.')
     else:
         logging.error(f'non-zero return code for src {srcurl}')
     return cp.returncode
 
+def parse_wget_output_bytes(outstr):
+    """
+    E.g. 2021-07-20 14:33:09 URL:https://sra-pub-run-odp.s3.amazonaws.com/sra/SRR5529542/SRR5529542 [17019750/17019750] -> "SRR5529542.sra" [1]
+    """
+    logging.debug(f'handling stderr string {outstr}')    
+    fields = outstr.split()
+    bstr = fields[3][1:-1]
+    dlbytes = int(bstr.split('/')[0])
+    return dlbytes
 
 def run_command(cmd):
     """
@@ -121,8 +133,6 @@ def run_command(cmd):
 
     return(cp.stderr, cp.stdout ,cp.returncode)
 
-
-
 def get_files_from_html(htmlpath,pattern = '/'):
     # note pattern = "/" looks for subdirectories only.
 
@@ -133,7 +143,6 @@ def get_files_from_html(htmlpath,pattern = '/'):
         subdirs = [ subdir  for subdir in subdirs if pattern in subdir]
     return(subdirs)
                 
-
 
 
 def get_zeng_data(base_url = 'http://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome'):
@@ -259,10 +268,6 @@ def get_huang_data(base_url = 'http://data.nemoarchive.org/biccn/grant/u19_huang
 
     return(allfastqs)
 
-
-
-
-
 def get_nowakowski_data(base_url ='http://data.nemoarchive.org/biccn/grant/rf1_nowakowski/nowakowski/transcriptome/scell/10x_v3/mouse') :
     regions = ['PNdev', 'evobc']
     
@@ -292,3 +297,9 @@ def get_nowakowski_data(base_url ='http://data.nemoarchive.org/biccn/grant/rf1_n
     return(allfastqs)
 
 
+df = pd.read_csv('/home/johlee/biccn_fastq_paths.txt',header=None)
+
+# for f in df[0][::-1]:
+#     print(f)
+#     rc = download_wget(f,destpath=f'/data/biccn/nemo/{os.path.basename(f)}')
+#     time.sleep(1)

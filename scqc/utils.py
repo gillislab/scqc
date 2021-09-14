@@ -352,8 +352,8 @@ def run_command(cmd):
         return(cp.stderr, cp.stdout,cp.returncode)
 
     else:
-        logging.error(f'non-zero return code for cmd {cmdstr}')
-        raise NonZeroReturnException()
+        logging.warn(f'non-zero return code for cmd {cmdstr}')
+        # raise NonZeroReturnException()
 
 
 
@@ -417,7 +417,23 @@ def sparse_pairwise_corr(A, B=None):
     sb =  np.sqrt(n*B.multiply(B).sum(1) - np.multiply(bsum, bsum))
 
     denom = np.dot(sa, sb.T)
-    return(np.asarray(numer/denom).flatten())
+    return(np.asarray(numer/denom))
+
+# TODO chunk for speed
+def pairwise_cell_corr(X,chunksize = 1):
+    # X should be a cell x gene csr matrix 
+    # be sure to onlycalculate the upper tri
+    max_corr = np.zeros(X.shape[0])
+    min_corr = np.ones(X.shape[0])
+    
+    for i in range(X.shape[0]-1 ): 
+        current_corr = sparse_pairwise_corr(X[i:i+1,:] , X[i: ,:]  )
+        current_corr[0][1] = np.nan
+        # fmin/fmax ignores nan value where correlation is with itself. 
+        max_corr[i:] = np.fmax(current_corr[0] ,max_corr[i:] )
+        min_corr[i:] = np.fmin(current_corr[0] ,min_corr[i:] )
+
+    pass
 
 
 def taxon_to_spec(taxid= '10090'):
