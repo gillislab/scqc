@@ -106,7 +106,7 @@ def merge_write_df(newdf, filepath,  mode=0o644):
     else:
         df = newdf
     df.drop_duplicates(inplace=True)
-
+    df = df.reset_index(drop=True)
     rootpath = os.path.dirname(filepath)
     basename = os.path.basename(filepath)
     try:
