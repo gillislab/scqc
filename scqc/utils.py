@@ -353,7 +353,7 @@ def run_command(cmd):
 
     else:
         logging.error(f'non-zero return code for cmd {cmdstr}')
-        raise NonZeroReturnException()
+        raise NonZeroReturnException(cp.stderr)
 
 
 
