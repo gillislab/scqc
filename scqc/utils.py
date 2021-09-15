@@ -357,6 +357,7 @@ def run_command(cmd):
 
 
 
+
 def gini_coefficient_fast(X):
     """ 
         expects a CSR sparse matrix
