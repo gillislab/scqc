@@ -4,9 +4,11 @@ import glob
 import sys
 import subprocess
 import argparse
-
-import tarfile
+import re
 import pandas as pd
+
+# L8TX_180406_01_E02!
+# L8TX_180406_01_C08
 
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
@@ -18,7 +20,8 @@ from scqc.star import *
 FASTQS = pd.read_csv('/home/johlee/git/scqc/resource/biccn_fastq_paths.txt',header=None)
 FASTQS.columns=['srcurl']
 FASTQS = FASTQS.loc[ ~ FASTQS.duplicated(), :]  # just in case
-
+DONELIST = []
+FAILLIST = []
 BICCN_PROJS = pd.read_csv('/home/johlee/git/scqc/resource/biccn_projects.tsv',index_col=0,sep="\t")
 
 CONF = get_default_config()
@@ -62,7 +65,6 @@ class AlignBICCN(object) :
                 #     raise NameError (f'not all runs downloaded yet for {run_id}')
            
         # unpack tars  # TODO multi thread
-        # occasional issue?? NoneType?
         for tarpath in tarpaths :
             if os.path.isfile(tarpath) :
                 self.log.debug(f'untarring files: {tarpath}' )
@@ -70,7 +72,9 @@ class AlignBICCN(object) :
 
         # list the fastqs found
         
-        subdirs = [ tarpath.replace('.fastq.tar','') for tarpath in tarpaths ] 
+        subdirs = [ re.sub('_L00[0-9].fastq.tar','',tarpath) for tarpath in tarpaths ] 
+        subdirs = [ re.sub('.fastq.tar','',tarpath) for tarpath in tarpaths ] 
+        
         subdirs = [ subdir.replace(os.path.dirname(subdir),self.tempdir) for subdir in subdirs] 
         fastqs = [ glob.glob(f'{subdir}/*.fastq.gz') for subdir in subdirs]
         ulfastqs = list(itertools.chain.from_iterable(fastqs))
@@ -91,25 +95,31 @@ class AlignBICCN(object) :
                     barcodes.append(fq)
                 if l > 30 :
                     cDNAs.append(fq)
-            barcodes = ','.join(barcodes)
-            cDNAs = ','.join(cDNAs)
 
-            outdir = f'{self.tempdir}/{run_id}_10xv2_Solo.out'
-            if not os.path.isdir(outdir):
-                outfile_prefix = ar._run_star_10x(run_id = run_id, tech = '10xv2' , 
-                    bio_readpath = cDNAs, tech_readpath=barcodes , gzipped=True)
+            if len(cDNAs)  == len(barcodes):
 
-                
-                if not self.nocleanup : 
-                    for fq in ulfastqs: 
-                        os.remove(fq) 
-                        self.log.debug(f'removing {fq}')
-                self.log.debug(outfile_prefix)
+                barcodes = ','.join(barcodes)
+                cDNAs = ','.join(cDNAs)
 
+                outdir = f'{self.tempdir}/{run_id}_10xv2_Solo.out/Gene'
+                if not os.path.isdir(outdir):
+                    try:
+                        outfile_prefix = ar._run_star_10x(run_id = run_id, tech = '10xv2' , 
+                            bio_readpath = cDNAs, tech_readpath=barcodes , gzipped=True)
+                    except:
+                        self.log.warning(f'UNABLE TO RUN STAR FOR {run_id}')
 
+                    
+                    if not self.nocleanup : 
+                        for fq in ulfastqs: 
+                            os.remove(fq) 
+                            self.log.debug(f'removing {fq}')
+                    self.log.debug(outfile_prefix)
+
+                else: 
+                    self.log.debug(f'Already ran STAR for {run_id}. Skipping.')
             else: 
-                self.log.debug(f'Already ran STAR for {run_id}. Skipping.')
-
+                self.log.warning(f'Tech provided does not match read length for {run_id}!')
         elif  all(is10xv3) : 
             self.log.debug(f'starting 10xv3 processing for {run_id}')
             # which fastqs are the cDNA/barcodes? 
@@ -121,22 +131,31 @@ class AlignBICCN(object) :
                     barcodes.append(fq)
                 if l > 30 :
                     cDNAs.append(fq)
-            barcodes = ','.join(barcodes)
-            cDNAs = ','.join(cDNAs)
 
-            outdir = f'{self.tempdir}/{run_id}_10xv3_Solo.out'
-            if not os.path.isdir(outdir):
-                    
-                outfile_prefix = a._run_star_10x(run_id = run_id, tech = '10xv3' , 
-                    bio_readpath = cDNAs, tech_readpath=barcodes , gzipped=True)
-                if not self.nocleanup : 
-                    for fq in ulfastqs: 
-                        self.log.debug(f'removing {fq}')
-                        os.remove(fq) 
-                self.log.debug(outfile_prefix)
+            if len(cDNAs)  == len(barcodes):
+ 
+                barcodes = ','.join(barcodes)
+                cDNAs = ','.join(cDNAs)
+
+                outdir = f'{self.tempdir}/{run_id}_10xv3_Solo.out/Gene'
+                if not os.path.isdir(outdir):
+                    try:                        
+                        outfile_prefix = ar._run_star_10x(run_id = run_id, tech = '10xv3' , 
+                            bio_readpath = cDNAs, tech_readpath=barcodes , gzipped=True)
+
+                    except:
+                        self.log.warning(f'UNABLE TO RUN STAR FOR {run_id}')
+
+                    if not self.nocleanup : 
+                        for fq in ulfastqs: 
+                            self.log.debug(f'removing {fq}')
+                            os.remove(fq) 
+                    self.log.debug(outfile_prefix)
+                else: 
+                    self.log.debug(f'Already ran STAR for {run_id}. Skipping.')
+
             else: 
-                self.log.debug(f'Already ran STAR for {run_id}. Skipping.')
-
+                self.log.debug(f'Tech provided does not match read length for {run_id}!')
         elif all(isSSv4) : 
             # continue as smartseq. 
             # make manifest...
@@ -150,7 +169,11 @@ class AlignBICCN(object) :
 
             # outdir = f'{self.tempdir}/{run_id}_SSv4_Solo.out'
             # if not os.path.isdir(outdir):
-            outfile_prefix = ar._run_star_smartseq(run_id, manipath,gzipped= True)
+            try:
+                outfile_prefix = ar._run_star_smartseq(run_id, manipath,gzipped= True)
+            except:
+                self.log.warning(f'UNABLE TO RUN STAR FOR {run_id}')
+
 
 
             # if not self.nocleanup : 
@@ -158,10 +181,9 @@ class AlignBICCN(object) :
             #         os.remove(fq) 
             print(outfile_prefix)
 
-
         else : 
             self.log.warning(f'technology for the run is unclear for {run_id}')
-            
+  
 
 
     def untar_file(self, tarpath):
@@ -171,11 +193,27 @@ class AlignBICCN(object) :
 
         outdir = self.tempdir #os.path.dirname(tarpath) 
         outbn = os.path.basename(tarpath).replace('.fastq.tar','')
-        if os.path.isdir(f'{outdir}/{outbn}'):
+        outbn2 = re.sub('_L00[0-9]','',outbn)
+        if os.path.isdir(f'{outdir}/{outbn2}'):
             self.log.debug(f'already untarred {tarpath}- doing nothing')    
         else :                
             cmd = ['tar', '-C',f'{outdir}', '-xvf', tarpath ]
-            run_command(cmd)
+            err, out, rc = run_command(cmd)
+            self.log.debug(f'{err}, {out}, {rc}')
+            outpaths = out.split('\n')[:-1]
+            for op in outpaths :
+                if not f'{outbn}/' in op :
+                    try: 
+                        os.makedirs(f'{self.tempdir}/{outbn}/')
+                    except:
+                        pass
+
+                    try: 
+                        os.rename(f'{self.tempdir}/{op}' , f'{self.tempdir}/{outbn}/{op}')
+                    except:
+                        pass
+            if not outbn == outbn2:
+                os.rename(f'{outdir}/{outbn}', f'{outdir}/{outbn2}')
             self.log.debug(f'untarred {tarpath}') 
 
         if not self.nocleanup:
@@ -276,13 +314,38 @@ if __name__ == '__main__' :
             ab.execute(run_id)
 
     else : 
-        pdf = get_ids()
+        # pdf = get_ids()
+
+        pdf = BICCN_PROJS
         run_ids = pdf.run_id.unique()
+        donelist = glob.glob('/home/johlee/scqc/temp/*Solo.out')
+        donelist = [ os.path.basename(done).replace('_Solo.out','') for done in donelist  ]
+        donelist = [ done.replace('_10xv2','') for done in donelist  ]
+        donelist = [ done.replace('_10xv3','') for done in donelist  ]
+        donelist = [ done.replace('_SSv4','') for done in donelist  ]
+
+        run_ids = set(run_ids) - set(donelist)
         ab = AlignBICCN(cp)
 
         for run_id in run_ids:
             print(run_id)
-            ab.execute(run_id)
+            try:
+                ab.execute(run_id)
+            except: 
+                print(f'{run_id} failed!!!')
+            
+            
+            DONELIST.append(run_id)
+            writelist( f'/home/johlee/scqc/temp/biccn_align_seenlist.txt',DONELIST)
+            
 
 
- 
+
+# head NW_TX0019-8_S01_L003.fastq.tar
+
+# <html><head><title>Traffic Quota Control</title></head><body><font size=2>
+# <table width="100%"><tr><td bgcolor=#3300cc align="center" colspan=2>
+# <font color=#ffffff><b>Traffic blocked because of exceed session quota</b></font>
+# </td></tr></table><br><br>Traffic blocked because of exceed per IP shaper session quota. 
+# Please contact the system administrator.<br> 
+# Your session quota is:8, further traffic will be blocked.<br><br><hr></font></body></html>

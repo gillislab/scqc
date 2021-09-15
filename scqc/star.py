@@ -285,7 +285,7 @@ class AlignReads(object):
         if gzipped : 
             cmd +=  ['--readFilesCommand','zcat']
             
-        self._run_command(cmd)
+        run_command(cmd)
         return(outfile_prefix)
 
     
@@ -344,7 +344,7 @@ class AlignReads(object):
                 '--outSAMtype', 'None']
         if gzipped :
             cmd += ['--readFilesCommand','zcat']
-        self._run_command(cmd)
+        run_command(cmd)
         return(outfile_prefix)
 
 

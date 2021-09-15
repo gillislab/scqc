@@ -26,6 +26,7 @@ conda install bottleneck tbb
 conda install -c bioconda star
 conda install -c conda-forge leidenalg
 conda install -c conda-forge scanpy
+conda install -c conda-forge scikit-misc
 
 # install R and dependencies on conda
 conda config --set channel_priority strict

@@ -133,6 +133,7 @@ class Statistics(object):
             tmpdf = pd.merge(adata.obs, ids, on= 'id')   # include technology in obs.
             tmpdf.index = tmpdf.cell_id
             
+
             adata.obs = tmpdf 
             adata.obs.index=ind
     
@@ -147,6 +148,8 @@ class Statistics(object):
             tmpdf.index= ind
             adata.obs = tmpdf
     
+            adata.uns['tech count'] = adata.obs.tech.value_counts()
+
             adata = self._get_stats_scanpy(adata)
     
             h5file = f'{self.outputdir}/{proj_id}.h5ad'
@@ -240,7 +243,25 @@ class Statistics(object):
         return adata
 
     def _get_stats_scanpy(self, adata):
-        # adata.obs['batch'] = None
+
+
+        # first take the log1p of adata and store else where
+        alog1p = sc.pp.log1p(adata, base = np.exp(1), copy = True)
+
+        # get the set of highly variable genes.
+        sc.pp.highly_variable_genes(alog1p,
+                                    min_mean=float(self.hvg_min_mean),
+                                    max_mean=float(self.hvg_max_mean),
+                                    min_disp=float(self.hvg_min_disp),
+                                    max_disp=float(self.hvg_max_disp),
+                                    flavor=self.hvg_flavor)      
+
+        # move hvg stats to adata
+        adata.var['highly_variable'] = alog1p.var.highly_variable
+        adata.var['means'] = alog1p.var.means
+        adata.var['dispersions'] = alog1p.var.dispersions
+        adata.var['dispersions_norm'] = alog1p.var.dispersions_norm
+        adata.uns['hvg'] = alog1p.uns['hvg']
 
         # consider different gene sets - ERCC  corresponds to spike ins
         adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')
@@ -255,9 +276,9 @@ class Statistics(object):
         # adata.var['membrane'] = None        # GO Term/kegg?
 
         qcvars = ['mt', 'ribo', 'female', 'male',
-                  'essential', 'cell_cycle']
+                  'essential', 'cell_cycle','highly_variable','housekeeping']
 
-        # get housekeeping genes
+        # get housekeeping genes    # 22 genes
         self.log.debug(f"gathering marker sets:")
         hk_genes = pd.read_csv(self.stable_housekeepinig, sep=",",dtype='str')
         self.log.debug(f"housekeeping:{hk_genes}")
@@ -309,17 +330,17 @@ class Statistics(object):
             qc_vars=qcvars)
 
         self.log.debug('calculating corrtomean') # using log1p counts
-        adata.obs['corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X)
-        # natural log thge data
+        adata.obs['corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X).flatten()
 
 
         tmp = gini_coefficient_fast(adata.X)
         adata.obs['gini']  = tmp
 
-        sc.pp.log1p(adata)  
 
+        # use the log transformed now 
+        adata.X = alog1p.X
         # computes the N+M x N+M corrcoef matrix - extract off diagonal block
-        adata.obs['log1p_corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X)
+        adata.obs['log1p_corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X).flatten()
 
         # batch this.
         # X = np.random.normal(size=(10, 3))
@@ -345,6 +366,13 @@ class Statistics(object):
                                     min_disp=float(self.hvg_min_disp),
                                     max_disp=float(self.hvg_max_disp),
                                     flavor=self.hvg_flavor)
+
+
+        sc.pp.calculate_qc_metrics(
+            adata,
+            expr_type='counts', var_type='genes',
+            inplace=True, use_raw=False,
+            qc_vars=['highly_variable'])
 
         # umap coords
 
