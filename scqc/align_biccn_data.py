@@ -20,7 +20,6 @@ from scqc.star import *
 FASTQS = pd.read_csv('/home/johlee/git/scqc/resource/biccn_fastq_paths.txt',header=None)
 FASTQS.columns=['srcurl']
 FASTQS = FASTQS.loc[ ~ FASTQS.duplicated(), :]  # just in case
-DONELIST = []
 FAILLIST = []
 BICCN_PROJS = pd.read_csv('/home/johlee/git/scqc/resource/biccn_projects.tsv',index_col=0,sep="\t")
 
@@ -34,6 +33,11 @@ class AlignBICCN(object) :
         self.log = logging.getLogger('biccn_align')
         self.tempdir = os.path.expanduser(
             self.config.get('star', 'tempdir')) 
+        self.cachedir = os.path.expanduser(
+            self.config.get('star', 'cachedir')) 
+        self.outputdir = os.path.expanduser(
+            self.config.get('star', 'outputdir'))             
+        
 
 
 
@@ -71,119 +75,123 @@ class AlignBICCN(object) :
                 self.untar_file(tarpath)
 
         # list the fastqs found
-        
+        # need to be able to handle lane specific        
         subdirs = [ re.sub('_L00[0-9].fastq.tar','',tarpath) for tarpath in tarpaths ] 
         subdirs = [ re.sub('.fastq.tar','',tarpath) for tarpath in tarpaths ] 
         
         subdirs = [ subdir.replace(os.path.dirname(subdir),self.tempdir) for subdir in subdirs] 
         fastqs = [ glob.glob(f'{subdir}/*.fastq.gz') for subdir in subdirs]
-        ulfastqs = list(itertools.chain.from_iterable(fastqs))
+        ulfastqs = set(itertools.chain.from_iterable(fastqs))
         
-        # What technology is the url suggesting?
-        isSSv4  = [True if 'SSv4' in f else False for f in rdf.tech ]
-        is10xv2 = [True if '10x_v2' in f else False for f in rdf.tech ]
-        is10xv3 = [True if '10x_v3' in f else False for f in rdf.tech ]
+        if len(ulfastqs) > 0:
+            # What technology is the url suggesting?
+            isSSv4  = [True if 'SSv4' in f else False for f in rdf.tech ]
+            is10xv2 = [True if '10x_v2' in f else False for f in rdf.tech ]
+            is10xv3 = [True if '10x_v3' in f else False for f in rdf.tech ]
 
-        if all(is10xv2) : 
-            # which fastqs are the cDNA/barcodes?
-            self.log.debug(f'starting 10xv2 processing for {run_id}')
-            barcodes = []
-            cDNAs = []
-            for fq in ulfastqs :
-                l = self.get_read_length(fq)
-                if l == 26 : 
-                    barcodes.append(fq)
-                if l > 30 :
-                    cDNAs.append(fq)
+            if all(is10xv2) : 
+                # which fastqs are the cDNA/barcodes?
+                self.log.debug(f'starting 10xv2 processing for {run_id}')
+                barcodes = []
+                cDNAs = []
+                for fq in ulfastqs :
+                    l = self.get_read_length(fq)
+                    if l == 26 : 
+                        barcodes.append(fq)
+                    if l > 30 :
+                        cDNAs.append(fq)
 
-            if len(cDNAs)  == len(barcodes):
+                if len(cDNAs)  == len(barcodes):
 
-                barcodes = ','.join(barcodes)
-                cDNAs = ','.join(cDNAs)
+                    barcodes = ','.join(barcodes)
+                    cDNAs = ','.join(cDNAs)
 
-                outdir = f'{self.tempdir}/{run_id}_10xv2_Solo.out/Gene'
-                if not os.path.isdir(outdir):
-                    try:
-                        outfile_prefix = ar._run_star_10x(run_id = run_id, tech = '10xv2' , 
-                            bio_readpath = cDNAs, tech_readpath=barcodes , gzipped=True)
-                    except:
-                        self.log.warning(f'UNABLE TO RUN STAR FOR {run_id}')
+                    outdir = f'{self.tempdir}/{run_id}_10xv2_Solo.out/Gene'
+                    if not os.path.isdir(outdir):
+                        try:
+                            outfile_prefix = ar._run_star_10x(run_id = run_id, tech = '10xv2' , 
+                                bio_readpath = cDNAs, tech_readpath=barcodes , gzipped=True)
+                        except:
+                            self.log.warning(f'UNABLE TO RUN STAR FOR {run_id}')
 
-                    
-                    if not self.nocleanup : 
-                        for fq in ulfastqs: 
-                            os.remove(fq) 
-                            self.log.debug(f'removing {fq}')
-                    self.log.debug(outfile_prefix)
+                        
+                        # if not self.nocleanup : 
+                        #     for fq in ulfastqs: 
+                        #         os.remove(fq) 
+                        #         self.log.debug(f'removing {fq}')
+                        # self.log.debug(outfile_prefix)
+
+                    else: 
+                        self.log.debug(f'Already ran STAR for {run_id}. Skipping.')
+                else: 
+                    self.log.warning(f'Tech provided does not match read length for {run_id}!')
+            elif  all(is10xv3) : 
+                self.log.debug(f'starting 10xv3 processing for {run_id}')
+                # which fastqs are the cDNA/barcodes? 
+                barcodes = []
+                cDNAs = []
+                for fq in ulfastqs :
+                    l = self.get_read_length(fq)
+                    if l == 28 : 
+                        barcodes.append(fq)
+                    if l > 30 :
+                        cDNAs.append(fq)
+
+                if len(cDNAs)  == len(barcodes):
+    
+                    barcodes = ','.join(barcodes)
+                    cDNAs = ','.join(cDNAs)
+
+                    outdir = f'{self.tempdir}/{run_id}_10xv3_Solo.out/Gene'
+                    if not os.path.isdir(outdir):
+                        try:                        
+                            outfile_prefix = ar._run_star_10x(run_id = run_id, tech = '10xv3' , 
+                                bio_readpath = cDNAs, tech_readpath=barcodes , gzipped=True)
+
+                        except:
+                            self.log.warning(f'UNABLE TO RUN STAR FOR {run_id}')
+
+                        # if not self.nocleanup : 
+                        #     for fq in ulfastqs: 
+                        #         self.log.debug(f'removing {fq}')
+                        #         os.remove(fq) 
+                        self.log.debug(outfile_prefix)
+                    else: 
+                        self.log.debug(f'Already ran STAR for {run_id}. Skipping.')
 
                 else: 
-                    self.log.debug(f'Already ran STAR for {run_id}. Skipping.')
-            else: 
-                self.log.warning(f'Tech provided does not match read length for {run_id}!')
-        elif  all(is10xv3) : 
-            self.log.debug(f'starting 10xv3 processing for {run_id}')
-            # which fastqs are the cDNA/barcodes? 
-            barcodes = []
-            cDNAs = []
-            for fq in ulfastqs :
-                l = self.get_read_length(fq)
-                if l == 28 : 
-                    barcodes.append(fq)
-                if l > 30 :
-                    cDNAs.append(fq)
+                    self.log.debug(f'Tech provided does not match read length for {run_id}!')
+            elif all(isSSv4) : 
+                # continue as smartseq. 
+                # make manifest...
+                self.log.debug(f'starting 10xv3 processing for {run_id}')
 
-            if len(cDNAs)  == len(barcodes):
- 
-                barcodes = ','.join(barcodes)
-                cDNAs = ','.join(cDNAs)
+                manirows = [fqs if len(fqs) ==2 else fqs+['-'] for fqs in fastqs ] 
+                manifest = pd.DataFrame(manirows ,columns =['read1','read2'])
+                manifest['cell_id'] = subdirs
+                manipath = f'{self.tempdir}/{run_id}_manifest.tsv'
+                manifest.to_csv(manipath,sep="\t" ,header=None, index=None)
 
-                outdir = f'{self.tempdir}/{run_id}_10xv3_Solo.out/Gene'
-                if not os.path.isdir(outdir):
-                    try:                        
-                        outfile_prefix = ar._run_star_10x(run_id = run_id, tech = '10xv3' , 
-                            bio_readpath = cDNAs, tech_readpath=barcodes , gzipped=True)
-
-                    except:
-                        self.log.warning(f'UNABLE TO RUN STAR FOR {run_id}')
-
-                    if not self.nocleanup : 
-                        for fq in ulfastqs: 
-                            self.log.debug(f'removing {fq}')
-                            os.remove(fq) 
-                    self.log.debug(outfile_prefix)
-                else: 
-                    self.log.debug(f'Already ran STAR for {run_id}. Skipping.')
-
-            else: 
-                self.log.debug(f'Tech provided does not match read length for {run_id}!')
-        elif all(isSSv4) : 
-            # continue as smartseq. 
-            # make manifest...
-            self.log.debug(f'starting 10xv3 processing for {run_id}')
-
-            manirows = [fqs if len(fqs) ==2 else fqs+['-'] for fqs in fastqs ] 
-            manifest = pd.DataFrame(manirows ,columns =['read1','read2'])
-            manifest['cell_id'] = subdirs
-            manipath = f'{self.tempdir}/{run_id}_manifest.tsv'
-            manifest.to_csv(manipath,sep="\t" ,header=None, index=None)
-
-            # outdir = f'{self.tempdir}/{run_id}_SSv4_Solo.out'
-            # if not os.path.isdir(outdir):
-            try:
-                outfile_prefix = ar._run_star_smartseq(run_id, manipath,gzipped= True)
-            except:
-                self.log.warning(f'UNABLE TO RUN STAR FOR {run_id}')
+                # outdir = f'{self.tempdir}/{run_id}_SSv4_Solo.out'
+                # if not os.path.isdir(outdir):
+                try:
+                    outfile_prefix = ar._run_star_smartseq(run_id, manipath,gzipped= True)
+                except:
+                    self.log.warning(f'UNABLE TO RUN STAR FOR {run_id}')
 
 
 
-            # if not self.nocleanup : 
-            #     for fq in ulfastqs: 
-            #         os.remove(fq) 
+
+            else : 
+                self.log.warning(f'technology for the run is unclear for {run_id}')
+
+                
+            if self.nocleanup  == 'False' : 
+                for fq in ulfastqs: 
+                    os.remove(fq) 
+                    self.log.info(f'removing file {fq}')
             print(outfile_prefix)
-
-        else : 
-            self.log.warning(f'technology for the run is unclear for {run_id}')
-  
+    
 
 
     def untar_file(self, tarpath):
@@ -212,12 +220,12 @@ class AlignBICCN(object) :
                         os.rename(f'{self.tempdir}/{op}' , f'{self.tempdir}/{outbn}/{op}')
                     except:
                         pass
-            if not outbn == outbn2:
-                os.rename(f'{outdir}/{outbn}', f'{outdir}/{outbn2}')
+            # if not outbn == outbn2:
+            #     os.rename(f'{outdir}/{outbn}', f'{outdir}/{outbn2}')
             self.log.debug(f'untarred {tarpath}') 
 
-        if not self.nocleanup:
-            os.remove(tarpath)
+        # if not self.nocleanup:
+        #     os.remove(tarpath)
 
         # return(stderr, stdout, returncode)
 
@@ -318,7 +326,7 @@ if __name__ == '__main__' :
 
         pdf = BICCN_PROJS
         run_ids = pdf.run_id.unique()
-        donelist = glob.glob('/home/johlee/scqc/temp/*Solo.out')
+        donelist = glob.glob('/home/johlee/scqc/output/*Solo.out')
         donelist = [ os.path.basename(done).replace('_Solo.out','') for done in donelist  ]
         donelist = [ done.replace('_10xv2','') for done in donelist  ]
         donelist = [ done.replace('_10xv3','') for done in donelist  ]
@@ -335,8 +343,8 @@ if __name__ == '__main__' :
                 print(f'{run_id} failed!!!')
             
             
-            DONELIST.append(run_id)
-            writelist( f'/home/johlee/scqc/temp/biccn_align_seenlist.txt',DONELIST)
+            donelist.append(run_id)
+            writelist( f'/home/johlee/scqc/temp/biccn_align_seenlist.txt',donelist)
             
 
 

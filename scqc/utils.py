@@ -424,7 +424,7 @@ def pairwise_cell_corr(X,chunksize = 1):
     # X should be a cell x gene csr matrix 
     # be sure to onlycalculate the upper tri
     max_corr = np.zeros(X.shape[0])
-    min_corr = np.ones(X.shape[0])
+    min_corr = np.ones(X.shape[0]) *100
     
     for i in range(X.shape[0]-1 ): 
         current_corr = sparse_pairwise_corr(X[i:i+1,:] , X[i: ,:]  )
