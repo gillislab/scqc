@@ -299,7 +299,7 @@ def get_nowakowski_data(base_url ='http://data.nemoarchive.org/biccn/grant/rf1_n
 
 df = pd.read_csv('/home/johlee/biccn_fastq_paths.txt',header=None)
 
-# for f in df[0][::-1]:
+# for f in df[0]:
 #     print(f)
 #     rc = download_wget(f,destpath=f'/data/biccn/nemo/{os.path.basename(f)}')
 #     time.sleep(1)
