@@ -111,9 +111,11 @@ class Statistics(object):
                 self.log.debug(f'opening {solooutdir}')
                 # open one soloutdir, store as adata. 
                 adatas.append(self._parse_STAR_mtx(solooutdir))
+            
     
             # merge all of the datasets 
             # technology is obtained from the soloout dir name
+            
             batchnames = [ os.path.basename(dir).replace('_Solo.out','') for dir in solooutdirs ]
             ids = pd.DataFrame([ batchname.split('_') for batchname in batchnames] )
             self.log.debug(f'starting with projectid {ids}')
@@ -128,6 +130,7 @@ class Statistics(object):
     
             self.log.debug(f'joining adatas for {proj_id}')
             adata = adatas[0].concatenate(adatas[1:], batch_categories = ids.id )
+            
             adata.obs.columns = ['cell_id','id']
             ind = adata.obs.index
             tmpdf = pd.merge(adata.obs, ids, on= 'id')   # include technology in obs.
@@ -148,7 +151,8 @@ class Statistics(object):
             tmpdf.index= ind
             adata.obs = tmpdf
     
-            adata.uns['tech count'] = adata.obs.tech.value_counts()
+            adata.uns['tech_count'] = adata.obs.tech.value_counts()
+            adata.uns['tech_count' ]  = adata.uns['tech_count'].to_dict()
 
             adata = self._get_stats_scanpy(adata)
     
@@ -217,16 +221,16 @@ class Statistics(object):
         adata = sc.read_mtx(f'{path}/matrix.mtx').T
 
         
-        geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
-        geneinfo.columns = ['gene_accession', 'gene_symbol', 'type']
+        # geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
+        # geneinfo.columns = ['gene_accession', 'gene_symbol', 'type']
         # geneinfo.index = geneinfo.gene_accession
         # geneinfo.index.name =None
         genenames = pd.read_csv(f'{path}/features.tsv',
                                 sep="\t", header=None, dtype=str)
         genenames.columns = ['gene_accession', 'gene_symbol', 'source']
 
-        genenames = genenames.merge(geneinfo, how='left', on=[
-            "gene_accession", 'gene_symbol'], indicator=True)
+        # genenames = genenames.merge(geneinfo, how='left', on=[
+            # "gene_accession", 'gene_symbol'], indicator=True)
         genenames.index = genenames.gene_accession
         genenames.index.name =None
         cellids = pd.read_csv(f'{path}/barcodes.tsv', sep="\t", header=None)
@@ -238,6 +242,9 @@ class Statistics(object):
         adata.var = genenames
         adata.obs = cellids
 
+        # adata.var.type.fillna('NA')
+        
+
         # gather imputed data and append to obs
 
         return adata
@@ -247,7 +254,7 @@ class Statistics(object):
 
         # first take the log1p of adata and store else where
         alog1p = sc.pp.log1p(adata, base = np.exp(1), copy = True)
-
+        self.log.debug('computing hvg')
         # get the set of highly variable genes.
         sc.pp.highly_variable_genes(alog1p,
                                     min_mean=float(self.hvg_min_mean),
@@ -264,13 +271,15 @@ class Statistics(object):
         adata.uns['hvg'] = alog1p.uns['hvg']
 
         # consider different gene sets - ERCC  corresponds to spike ins
-        adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')
+        adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')   # 37 genes
         # adata.var['ERCC'] = adata.var.gene_symbol.str.startswith('ERCC')
         geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype='str')
-        geneinfo.columns = ['gene_accession', 'gene_symb','type_x']
+        geneinfo.columns = ['gene_accession', 'gene_symb','type_']
         tmpdf = pd.merge(adata.var, geneinfo, on = 'gene_accession',how = 'left')        
-        #tmpdf = tmpdf.fillna( 'None')
-        adata.var['ribo'] = (tmpdf['type'] == "rRNA").values
+        tmpdf = tmpdf.fillna( 'None')
+
+        adata.var['type_'] = list(tmpdf['type_'])
+        adata.var['ribo'] = (tmpdf['type_'] == "rRNA").values
         # adata.var['cytoplasm'] = None       # GO Term/kegg?
         # adata.var['metabolism'] = None      # GO Term/kegg?
         # adata.var['membrane'] = None        # GO Term/kegg?
@@ -310,10 +319,11 @@ class Statistics(object):
         self.log.debug(f"cc:{cc}")
 
         # get the type of gene - pseudogene, rRNA, etc
-        tmpdf = pd.merge(adata.var ,cc, on = 'gene_symbol',how='left' )
+        
+        tmpdf = pd.merge(adata.var ,cc, how='left', left_on = 'gene_symbol',right_on = 'gene_symbol' )
         # tmpdf.drop('gene',axis=1)
         tmpdf.index = adata.var.index
-        tmpdf.cc_cluster.fillna('None')
+        tmpdf.cc_cluster = tmpdf.cc_cluster.fillna('None')
         adata.var = tmpdf
         
         
@@ -326,7 +336,9 @@ class Statistics(object):
         sc.pp.calculate_qc_metrics(
             adata,
             expr_type='counts', var_type='genes',
-            percent_top=(50, 100, 200, 500), inplace=True, use_raw=False,
+            percent_top=(50, 100, 200, 500), 
+            log1p = False,
+            inplace=True,
             qc_vars=qcvars)
 
         self.log.debug('calculating corrtomean') # using log1p counts
@@ -342,38 +354,10 @@ class Statistics(object):
         # computes the N+M x N+M corrcoef matrix - extract off diagonal block
         adata.obs['log1p_corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X).flatten()
 
-        # batch this.
-        # X = np.random.normal(size=(10, 3))
-        # F = np.zeros((10, ))
-
-        # import multiprocessing
-        # pool = multiprocessing.Pool(processes=16)
-        # if number of processes is not specified, it uses the number of core
-        # F[:] = pool.map(my_function, (X[i,:] for i in range(10)) )
         self.log.debug('calculating gini for each cell')
         tmp = gini_coefficient_fast(adata.X)
 
         adata.obs['log1p_gini']  = tmp
-        # unstructured data - dataset specific
-        # adata.uns['gini_by_counts'] = gini_coefficient(
-        #     adata.obs['total_counts'])
-
-        self.log.debug('computing hvg')
-        # highly variable genes - expects log data
-        sc.pp.highly_variable_genes(adata,
-                                    min_mean=float(self.hvg_min_mean),
-                                    max_mean=float(self.hvg_max_mean),
-                                    min_disp=float(self.hvg_min_disp),
-                                    max_disp=float(self.hvg_max_disp),
-                                    flavor=self.hvg_flavor)
-
-
-        sc.pp.calculate_qc_metrics(
-            adata,
-            expr_type='counts', var_type='genes',
-            inplace=True, use_raw=False,
-            qc_vars=['highly_variable'])
-
         # umap coords
 
         ncomp = min(adata.shape[0] -1 , int(self.nPCA) )
@@ -386,11 +370,19 @@ class Statistics(object):
         sc.tl.umap(adata)       # umap coords are in adata.obsm['X_umap']
         
         adata.obs.cell_id = adata.obs.index
+
+
+        min_corr, max_corr = pairwise_minmax_corr(adata.X)
+        adata.obs['min_corr_with_others'] = min_corr
+        adata.obs['max_corr_with_others'] = max_corr
+
+
+
         return adata
     
     
     
-
+    # not optimized for sparse matrices
     def _run_EGAD_by_batch(self, adata, rank_standardized = False, 
         batch_column = ['run_id','exp_id','samp_id','proj_id','batch','class_predicted','subclass_predicted'] ):
 
@@ -437,7 +429,7 @@ class Statistics(object):
         # TODO verify file does not already exist. Think about what to do if it does
         # outpath = f'{self.outputdir}/{os.path.basename(h5path)}'
         #cmd = ['Rscript', f'{scriptpath}',
-        cmd = ['get_markers.R',
+        cmd = ['bin/get_markers.R',
                '--class_markerset', f'{self.class_markerset}',
                '--subclass_markerset', f'{self.subclass_markerset}',
                '--h5path', f'{h5path}',
@@ -464,9 +456,16 @@ class Statistics(object):
             elif  '_subclass_pred.tsv' in tmp_path :
                 adata.obs['subclass_label'] = tmpdf.predicted
             
+
+
+
             if not self.nocleanup:
                 os.remove(tmp_path)
-        
+
+        adata.uns['MetaMarker_class_PR'] = MetaMarkers_PR(adata.obsm['class_enrichment'], class_pred = None)
+        adata.uns['MetaMarker_subclass_PR'] = MetaMarkers_PR(adata.obsm['subclass_enrichment'], class_pred = None)
+        adata.uns['MetaMarker_subclass_PR_heir'] = MetaMarkers_PR(adata.obsm['subclass_enrichment'], class_pred = adata.obsm['class_pred'])
+
         return(adata)
 
 
@@ -618,3 +617,15 @@ if __name__ == "__main__":
         for pid in args.projectids:
             # args.projectid is a list of project ids
             q.execute(pid)
+    else:
+        q = Statistics(cp)
+        proj_ids = glob.glob('/data/hover/scqc/cache/*RP*')
+        for proj_id in proj_ids:
+            proj_id = os.path.basename(proj_id).replace('.h5ad','')
+
+            print(proj_id)
+
+            try:
+                q.execute(proj_id)
+            except:
+                pass

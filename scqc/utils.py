@@ -420,21 +420,37 @@ def sparse_pairwise_corr(A, B=None):
     denom = np.dot(sa, sb.T)
     return(np.asarray(numer/denom))
 
-# TODO chunk for speed
-def pairwise_cell_corr(X,chunksize = 1):
+def pairwise_minmax_corr(X,chunksize = 5000 ):
     # X should be a cell x gene csr matrix 
     # be sure to onlycalculate the upper tri
-    max_corr = np.zeros(X.shape[0])
-    min_corr = np.ones(X.shape[0]) *100
+    max_corr = np.ones(X.shape[0]) *-100
+    min_corr = np.ones(X.shape[0]) * 100
     
-    for i in range(X.shape[0]-1 ): 
-        current_corr = sparse_pairwise_corr(X[i:i+1,:] , X[i: ,:]  )
-        current_corr[0][1] = np.nan
-        # fmin/fmax ignores nan value where correlation is with itself. 
-        max_corr[i:] = np.fmax(current_corr[0] ,max_corr[i:] )
-        min_corr[i:] = np.fmin(current_corr[0] ,min_corr[i:] )
+    if chunksize == None:
+        chunksize = min(X.shape[0] , 5000 ) 
 
-    pass
+    nchunks = int(np.ceil(X.shape[0] /  chunksize))
+    for i in range(nchunks ): 
+        
+        A = X[i*chunksize : (i+1)*chunksize,:] 
+        for j in range(i,nchunks):
+            B = X[j*chunksize : (j+1)*chunksize ,:] 
+
+            current_corr = sparse_pairwise_corr(A,B )
+            if i == j :
+                # A ~= B distinct groups
+                np.fill_diagonal(current_corr , np.nan)
+                
+
+            # np.argpartition(current_corr, n_neighbors  )
+            cur_min = np.nanmin(current_corr,axis = 1)
+            cur_max = np.nanmax(current_corr,axis = 1)
+            
+            # fmin/fmax ignores nan value where correlation is with itself. 
+            max_corr[i*chunksize : (i+1)*chunksize] = np.fmax(cur_max ,max_corr[i*chunksize : (i+1)*chunksize] )
+            min_corr[i*chunksize : (i+1)*chunksize] = np.fmin(cur_min ,min_corr[i*chunksize : (i+1)*chunksize] )
+
+    return( min_corr, max_corr)
 
 
 def taxon_to_spec(taxid= '10090'):
