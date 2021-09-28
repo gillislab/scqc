@@ -1097,6 +1097,11 @@ class FasterqDump(object):
         Return True if done
         False if not. 
         """
+        
+        #
+        # XXX maybe extend this to explicitly look for fastqs NOT labeled with "_X"
+        # in order to notice the case where only one fastq is in SRA file. 
+        #
         found = False
         flist = glob.glob(f'{self.tempdir}/{self.run_id}_*.fastq')
         if len(flist) > 0:

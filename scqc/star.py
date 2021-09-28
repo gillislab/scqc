@@ -112,11 +112,12 @@ class AlignReads(object):
         for tech, df in rdf.groupby(by = "tech_version") :
             try:
                 if tech =="smartseq":
+                    # somedone, somefailed
                     (some, part) = self._handle_smartseq(proj_id, df)
                     if some:
                         # for smartseq, somedone means successful
                         somedone = True
-                    else:
+                    else :
                         somefailed = True
                     self.log.debug(f'{proj_id} smartseq somedone={somedone} somefailed={somefailed}')
                         
@@ -145,8 +146,14 @@ class AlignReads(object):
         
         if somedone and not somefailed:
             done = proj_id
+            part = None
         if somedone and somefailed:
+            done = None
             part = proj_id
+        else:
+            done = None
+            part = None
+        
         self.log.debug(f'{proj_id} final: done={done} part={part} seen={seen}')
         return (done, part, seen)
 
@@ -193,7 +200,7 @@ class AlignReads(object):
             outfile_prefix = self._run_star_smartseq(proj_id, manipath)
             self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id}')
             self._stage_out(proj_id, outfile_prefix)
-            # (somedone, partial) 
+            # (somedone, somefailed) 
             return (True, False)
 
         except Exception as ex:
