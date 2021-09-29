@@ -147,7 +147,7 @@ class AlignReads(object):
         if somedone and not somefailed:
             done = proj_id
             part = None
-        if somedone and somefailed:
+        elif somedone and somefailed:
             done = None
             part = proj_id
         else:
