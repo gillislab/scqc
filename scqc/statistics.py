@@ -619,9 +619,12 @@ if __name__ == "__main__":
             q.execute(pid)
     else:
         q = Statistics(cp)
-        proj_ids = glob.glob('/data/hover/scqc/cache/*RP*')
-        for proj_id in proj_ids:
-            proj_id = os.path.basename(proj_id).replace('.h5ad','')
+        proj_ids = [os.path.basename(f) for f in glob.glob('/data/hover/scqc/cache/*RP*') ]
+        donelist = [os.path.basename(f).replace('.h5ad', '') for f in glob.glob('/home/johlee/scqc/output/*RP*.h5ad') ]
+
+        listdiff(proj_ids, donelist)
+        for proj_id in proj_ids[::-1]:
+            # proj_id = os.path.basename(proj_id).replace('.h5ad','')
 
             print(proj_id)
 
@@ -629,3 +632,45 @@ if __name__ == "__main__":
                 q.execute(proj_id)
             except:
                 pass
+
+
+
+# SRP066963.h5ad
+# SRP071876.h5ad
+# SRP106908.h5ad
+# SRP108034.h5ad
+# SRP112343.h5ad
+# SRP126648.h5ad
+# SRP144462.h5ad
+# SRP144582.h5ad
+# SRP150630.h5ad
+# SRP150863.h5ad
+# SRP163267.h5ad
+# SRP163269.h5ad
+# SRP166780.h5ad
+# SRP167086.h5ad
+# SRP172768.h5ad
+# SRP179101.h5ad
+# SRP212632.h5ad
+# SRP212893.h5ad
+# SRP227978.h5ad
+# SRP228572.h5ad
+# SRP233496.h5ad
+# SRP237263.h5ad
+# SRP243870.h5ad
+# SRP244448.h5ad
+# SRP250815.h5ad
+# SRP256383.h5ad
+# SRP268666.h5ad
+# SRP271182.h5ad
+# SRP288787.h5ad
+# SRP290191.h5ad
+# SRP298453.h5ad
+# SRP298963.h5ad
+# SRP303200.h5ad
+# SRP303343.h5ad
+# SRP304784.h5ad
+# SRP306127.h5ad
+# SRP308387.h5ad
+# SRP322384.h5ad
+# SRP323187.h5ad
