@@ -407,6 +407,8 @@ def sparse_pairwise_corr(A, B=None):
 
     n = A.shape[1]
     m = B.shape[1]
+    logging.debug(f'B.shape={B.shape} ')
+
     assert n == m
 
     numer = np.dot(A,B.T).todense() 
@@ -430,13 +432,17 @@ def pairwise_minmax_corr(X,chunksize = 5000 ):
         chunksize = min(X.shape[0] , 5000 ) 
 
     nchunks = int(np.ceil(X.shape[0] /  chunksize))
+
+    logging.debug(f'nchunks={nchunks}, chunksize={chunksize} ')
+
     for i in range(nchunks ): 
         
         A = X[i*chunksize : (i+1)*chunksize,:] 
         for j in range(i,nchunks):
             B = X[j*chunksize : (j+1)*chunksize ,:] 
-
+            print(i,j)
             current_corr = sparse_pairwise_corr(A,B )
+
             if i == j :
                 # A ~= B distinct groups
                 np.fill_diagonal(current_corr , np.nan)
