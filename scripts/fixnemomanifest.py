@@ -35,10 +35,10 @@ for infile in infiles:
     # print(f"{infile}")
     try:
         df = pd.read_csv(infile, index_col=0, sep='\t', comment="#")
-        newdf = df[['md5', 'md5', 'size','urls']]
-        newdf.drop_duplicates(inplace=True)
-        newdf = newdf.reset_index(drop=True)
-        newdf.to_csv(sys.stdout, sep='\t')     
+        newdf = df[['sample_id', 'md5', 'size','urls']]
+        newdf.reset_index(drop=True, inplace=True)
+        newdf.rename(columns={'sample_id':'id'}, inplace=True) 
+        newdf.to_csv(sys.stdout, sep='\t', index=False)     
    
     except Exception as ex:
         print(traceback.format_exc(None))

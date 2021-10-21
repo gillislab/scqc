@@ -1033,7 +1033,6 @@ class FasterqDump(object):
      
 
     def run_fasterq_dump(self):
- 
         self.log.debug(f'extracting id {self.run_id}')
         loglev = LOGLEVELS[self.log.getEffectiveLevel()]
         cmd = ['fasterq-dump', 
