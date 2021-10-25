@@ -7,6 +7,7 @@ import argparse
 import io
 import logging
 import os
+import re
 import subprocess
 import sys
 from configparser import ConfigParser
@@ -19,6 +20,7 @@ import scanpy as sc
 from scipy.io import mmread
 from scipy.sparse import base
 import matplotlib.pyplot as plt
+
 import seaborn as sns       # inputs as dataframes
 from sklearn.metrics.pairwise import euclidean_distances
 # import matplotlib.cbook as cbook
@@ -104,65 +106,109 @@ class Statistics(object):
         part = None
         seen = proj_id
 
+
         try:
-            solooutdirs = glob.glob(f'{self.cachedir}/{proj_id}/*Solo.out')
+            h5file = f'{self.outputdir}/{proj_id}.h5ad'
+            # solooutdirs = glob.glob(f'{self.cachedir}/{proj_id}/*Solo.out')
+            solooutdirs = glob.glob(f'/data/johlee/scqc/output/*Solo.out')
+            solooutdirs = [solooutdir for solooutdir in solooutdirs if proj_id.lower() in solooutdir.lower()]
             adatas = []   # loops through all star runs in the project
             for solooutdir in solooutdirs:
                 self.log.debug(f'opening {solooutdir}')
                 # open one soloutdir, store as adata. 
-                adatas.append(self._parse_STAR_mtx(solooutdir))
+                try:
+                    tmpadata = self._parse_STAR_mtx(solooutdir)
+                    # adatas.append(tmpadata)
+                    print(f'savin {solooutdir} as h5ad')
+                    tmpadata.write_h5ad( f'{self.tempdir}2/{os.path.basename(solooutdir)}.h5ad')
+                except : 
+                    self.log.warn(f'File doesn`t exist : {solooutdir}')
             
+
     
             # merge all of the datasets 
             # technology is obtained from the soloout dir name
-            
+            ################################
+            # Fails for biccn data 
+            ################################
             batchnames = [ os.path.basename(dir).replace('_Solo.out','') for dir in solooutdirs ]
-            ids = pd.DataFrame([ batchname.split('_') for batchname in batchnames] )
-            self.log.debug(f'starting with projectid {ids}')
-    
-            ids.columns = ['id','tech']
-            # which are runs and which are projects? 
-            ids['run_id'] = ids.id[ids.id.str.contains('RR')]
-            ids['proj_id'] = ids.id[ids.id.str.contains('RP')]
-            
+
+            if 'u19_' in proj_id.lower() :  # biccn
+                # create a run -> tech df
+                runids = [ bn[::-1].split('_',1) for bn in batchnames ]
+                tech = [ ri[0][::-1] for ri in runids]
+                runids = [ ri[1][::-1] for ri in runids]
+
+                ids = pd.DataFrame( {'id': runids,'tech':tech } )
+                ids['run_id'] = ids.id
+                ids['proj_id'] = [ bn.split('-',1)[0] for bn in batchnames ]
+
+            else:   # SRA
+
+                ids = pd.DataFrame([ batchname.split('_') for batchname in batchnames] )
+                self.log.debug(f'starting with projectid {ids}')
+        
+                ids.columns = ['id','tech']
+                # which are runs and which are projects? 
+                ids['run_id'] = ids.id[ids.id.str.contains('RR')]
+                ids['proj_id'] = ids.id[ids.id.str.contains('RP')]
+                
             # fill in proj_id NaNs
             ids.proj_id[ids.proj_id.isnull()] = proj_id
     
             self.log.debug(f'joining adatas for {proj_id}')
             adata = adatas[0].concatenate(adatas[1:], batch_categories = ids.id )
-            
+            adata.write_h5ad(h5file)
+            adatas  = None
             adata.obs.columns = ['cell_id','id']
             ind = adata.obs.index
             tmpdf = pd.merge(adata.obs, ids, on= 'id')   # include technology in obs.
-            tmpdf.index = tmpdf.cell_id
+            tmpdf.index = list(tmpdf.cell_id)
+
             
 
             adata.obs = tmpdf 
-            adata.obs.index=ind
-    
+
+
             # fill in missing run_ids with the cell_id. (typically smart seq experiments)
             adata.obs.run_id[adata.obs.run_id.isnull()] = adata.obs.cell_id[adata.obs.run_id.isnull()]
     
             # get batch information
-            self.log.debug(f'getting batch info for {proj_id}')
-            impute = load_df(f'{self.metadir}/impute.tsv')
-            impute = impute.loc[impute.proj_id == proj_id,: ]
-            tmpdf =  pd.merge(adata.obs, impute )[['cell_id','run_id','exp_id', 'samp_id','proj_id','tech', 'batch' ]]
+            # not available for biccn
+            if 'u19_' in proj_id.lower():
+                rundf_biccn = load_df(f'{self.metadir}/biccn_runs.tsv')
+                rundf_biccn = rundf_biccn.loc[rundf_biccn.run_id.isin(adata.obs.run_id), ['run_id','exp_id','samp_id'] ].reset_index(drop=True)
+
+                tmpdf =  pd.merge(adata.obs, rundf_biccn ,on='run_id',how ='left')[['cell_id','run_id','exp_id', 'samp_id','proj_id','tech' ]]
+                tmpdf['batch'] = '0'
+            else:
+                self.log.debug(f'getting batch info for {proj_id}')
+                impute = load_df(f'{self.metadir}/impute.tsv')
+                impute = impute.loc[impute.proj_id == proj_id,: ]
+                tmpdf =  pd.merge(adata.obs, impute,how ='left' )[['cell_id','run_id','exp_id', 'samp_id','proj_id','tech', 'batch' ]]
+
+            
             tmpdf.index= ind
             adata.obs = tmpdf
     
             adata.uns['tech_count'] = adata.obs.tech.value_counts()
             adata.uns['tech_count' ]  = adata.uns['tech_count'].to_dict()
 
+            
+            adata.write_h5ad(h5file)
+
+
+            print('getting stats')
             adata = self._get_stats_scanpy(adata)
     
-            h5file = f'{self.outputdir}/{proj_id}.h5ad'
             adata.var.index.name = None
             self.log.debug(adata.obs)
             self.log.debug(adata.var)
             self.log.debug(f'saving to {self.outputdir}/{proj_id}.h5ad ')
+            print('saving')
             adata.write_h5ad(h5file)
     
+            print('running metamarkers')
             self.log.debug(f'assigning cell types using metamarkers for {proj_id}')
             adata = self._run_MetaMarkers(h5file,adata)
             self.log.debug(f'done with metamarkers for {proj_id} - saving to h5file')
@@ -342,7 +388,7 @@ class Statistics(object):
             qc_vars=qcvars)
 
         self.log.debug('calculating corrtomean') # using log1p counts
-        adata.obs['corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X).flatten()
+        # adata.obs['corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X).flatten()
 
 
         tmp = gini_coefficient_fast(adata.X)
@@ -352,7 +398,7 @@ class Statistics(object):
         # use the log transformed now 
         adata.X = alog1p.X
         # computes the N+M x N+M corrcoef matrix - extract off diagonal block
-        adata.obs['log1p_corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X).flatten()
+        # adata.obs['log1p_corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X).flatten()
 
         self.log.debug('calculating gini for each cell')
         tmp = gini_coefficient_fast(adata.X)
@@ -372,9 +418,9 @@ class Statistics(object):
         adata.obs.cell_id = adata.obs.index
 
 
-        min_corr, max_corr = pairwise_minmax_corr(adata.X)
-        adata.obs['min_corr_with_others'] = min_corr
-        adata.obs['max_corr_with_others'] = max_corr
+        # min_corr, max_corr = pairwise_minmax_corr(adata.X)
+        # adata.obs['min_corr_with_others'] = min_corr
+        # adata.obs['max_corr_with_others'] = max_corr
 
 
 
@@ -511,7 +557,7 @@ def parse_STAR_mtx(solooutdir, resourcedir='./resource' ,species='mouse'):
     # mtx_files = os.listdir(path)
     adata = sc.read_mtx(f'{path}/matrix.mtx').T
     
-    geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
+    geneinfo = pd.read_csv(f'{resourcedir}/{species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
     geneinfo.columns = ['gene_accession', 'gene_symbol', 'type']
     # geneinfo.index = geneinfo.gene_accession
     # geneinfo.index.name =None
