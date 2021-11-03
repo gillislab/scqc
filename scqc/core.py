@@ -4,6 +4,7 @@
 
 import argparse
 import fcntl
+import importlib
 import io
 import logging
 import os
@@ -14,7 +15,7 @@ import traceback
 from configparser import ConfigParser
 from queue import Queue
 
-from scqc import sra, star, statistics
+#from scqc import sra, star, statistics
 from scqc.utils import *
 
 
@@ -34,11 +35,16 @@ class Stage(object):
     .run() should not be overriden. 
     .execute() can be overriden, but doesn't need to be for normal case. 
 
-
     Multi-server setup. Hash on proj_id list. Need stable hash.
     https://death.andgravity.com/stable-hashing
-    
 
+    Backend handled by importlib:
+    import importlib
+
+    module = importlib.import_module('my_package.my_module')
+    my_class = getattr(module, 'MyClass')
+    my_instance = my_class()
+    
     '''
 
     def __init__(self, config, name):
@@ -198,6 +204,7 @@ class Query(Stage):
 
     def __init__(self, config):
         super(Query, self).__init__(config, 'query')
+        self.backend = self.config.get('query', 'backend')
         self.log.debug('super() ran. object initialized.')
 
     def execute(self, dolist):
@@ -209,10 +216,14 @@ class Query(Stage):
         donelist = []
         partlist = []
         seenlist = []
+        
+        self.log.debug(f'importing backend {self.backend}')
+        be = importlib.import_module(f'scqc.{self.backend}')       
+        
         for proj_id in dolist:
             self.log.debug(f'handling id {proj_id}...')
             try:
-                sq = sra.Query(self.config)
+                sq = be.Query(self.config)
                 (done, part, seen) = sq.execute(proj_id)
                 self.log.debug(f'done with {proj_id}')
                 if done is not None:
@@ -242,6 +253,7 @@ class Impute(Stage):
     """
     def __init__(self, config):
         super(Impute, self).__init__(config, 'impute')
+        self.backend = self.config.get('impute', 'backend')
         self.log.debug('super() ran. object initialized.')
 
     def execute(self, dolist):
@@ -253,10 +265,15 @@ class Impute(Stage):
         donelist = []
         partlist = []
         seenlist = []
+        
+        self.log.debug(f'importing backend {self.backend}')
+        be = importlib.import_module(f'scqc.{self.backend}')
+        
+        
         for proj_id in dolist:
             self.log.debug(f'handling id {proj_id}...')
             try:
-                si = sra.Impute(self.config)
+                si = be.Impute(self.config)
                 (done, part, seen) = si.execute(proj_id)
                 self.log.debug(f'done with {proj_id}')
                 if done is not None:
@@ -281,6 +298,7 @@ class Download(Stage):
     def __init__(self, config):
         super(Download, self).__init__(config, 'download')
         self.log.debug('super() ran. object initialized.')
+        self.backend = self.config.get('download', 'backend')
         self.max_downloads = int(self.config.get('download', 'max_downloads'))
         self.num_streams = int(self.config.get('download', 'num_streams'))
 
@@ -294,10 +312,15 @@ class Download(Stage):
         donelist = []
         partlist = []
         seenlist = []
+        
+        self.log.debug(f'importing backend {self.backend}')
+        be = importlib.import_module(f'scqc.{self.backend}')
+        
+        
         for projectid in dolist:
             self.log.debug(f'handling id {projectid}...')
             try:
-                sd = sra.Download(self.config)
+                sd = be.Download(self.config)
                 (done, part, seen) = sd.execute(projectid)
                 self.log.debug(f'done with {projectid}')
                 if done is not None:
@@ -320,6 +343,7 @@ class Analyze(Stage):
 
     def __init__(self, config):
         super(Analyze, self).__init__(config, 'analyze')
+        self.backend = self.config.get('analyze', 'backend')
         self.log.debug('super() ran. object initialized.')
 
     def execute(self, dolist):
@@ -331,10 +355,14 @@ class Analyze(Stage):
         donelist = []
         partlist = []
         seenlist = []
+        
+        self.log.debug(f'importing backend {self.backend}')
+        be = importlib.import_module(f'scqc.{self.backend}')       
+        
         for projectid in dolist:
             self.log.debug(f'handling id {projectid}...')
             try:
-                ar = star.AlignReads(self.config)
+                ar = be.AlignReads(self.config)
                 (done, part, seen) = ar.execute(projectid)
                 self.log.debug(f'done with {projectid}')
                 if done is not None:
@@ -527,7 +555,8 @@ class CLI(object):
  
         """
         self.log = logging.getLogger()
-
+        if command is None:
+            command = 'setup'
         logfile = os.path.expanduser(self.cp.get(command, 'logfile'))
         if logfile == 'syslog':
             logStream = logging.handlers.SysLogHandler('/dev/log')

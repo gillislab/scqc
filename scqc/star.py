@@ -103,6 +103,8 @@ class AlignReads(object):
         # bring in all fastqs possible to <tempdir>
         self._stage_in(proj_id, runlist)
         
+        
+        
         # Overall flags. 
         somedone = False
         partial = False
@@ -159,7 +161,7 @@ class AlignReads(object):
 
     def _known_tech(self, df):
         """
-        Filters impute df by known tech. 
+        Filters df by known tech. 
         """
         KNOWN = ['smartseq','10xv3', '10xv2','10xv1']
         self.log.debug(f'filter by known tech. inlength={len(df)}')
@@ -171,7 +173,6 @@ class AlignReads(object):
     def _stage_in(self, proj_id, runlist):
         """
         bring in fastq files to <tempdir> for all exp_ids in this project.
-        
         throws FasterqFailureException if there is a problem. 
         
         """
@@ -327,7 +328,7 @@ class AlignReads(object):
         return(d[tech])
    
     # impute stage will obtain tech, and bio/tech_readpaths for 10x runs
-    def _run_star_10x(self, run_id, tech, bio_readpath, tech_readpath,gzipped = False):
+    def _run_star_10x(self, run_id, tech, bio_readpath, tech_readpath, gzipped = False):
         '''
         saves to temp directory
         '''

@@ -41,7 +41,7 @@ class AlignBICCN(object) :
 
 
 
-    def execute(self,run_id ) : 
+    def execute(self, run_id ) : 
            
         # needs to be able to deal with multiple lanes. 
         ar = AlignReads(self.config)

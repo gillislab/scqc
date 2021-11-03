@@ -140,6 +140,7 @@ class SraSearch(object):
                         alluids.append(id)
                     query_start += query_max
                 else:
+                    log.debug(f'id length zero. break..')
                     break
             except Exception as ex:
                 #log.error(f'problem with NCBI uid {id}')
