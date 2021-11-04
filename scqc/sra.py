@@ -223,7 +223,7 @@ class Query(object):
             
             # XXX batched this - JL
             # intersect explist (project specific) and global expids 
-            explist = list(set(explist) & self.expids)
+            # explist = list(set(explist) & self.expids)
             nexps = len(explist)
             nbatches = int(np.ceil(nexps / self.xid_batchsize ))
             for i in range(nbatches): 
