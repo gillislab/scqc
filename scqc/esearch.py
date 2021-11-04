@@ -228,12 +228,6 @@ class SearchCLI(object):
                             default="'single cell','brain'",
                             help='comma-separated list of key words'
                             )
-
-        parser_search.add_argument('-o', '--outfile',
-                        metavar='outfile',
-                        type=str,
-                        default='stdout',
-                        help='Outfile. ')
         
         args = parser.parse_args()
 
