@@ -3,6 +3,15 @@
 # Core utility to query esearch and create input project lists/ and 
 # experiment lists that match search. 
 #
+#  E.g. ~/git/scqc/bin/scqcsearch 
+#              -c ~/git/scqc/etc/scqc.conf 
+#              -o bos_taurus.txt 
+#              search
+#              -s "bos taurus" 
+#              -r "rna seq" 
+#              -t "single cell"
+#
+#
 
 import argparse
 import logging

@@ -2,6 +2,16 @@
 #
 # Very simple wrapper to go in /usr/bin to be executed by init.
 #
+#  E.g. ~/git/scqc/bin/scqcsearch 
+#              -c ~/git/scqc/etc/scqc.conf 
+#              -o bos_taurus.txt 
+#              search
+#              -s "bos taurus" 
+#              -r "rna seq" 
+#              -t "single cell"
+#
+#
+#
 
 import os
 import sys
