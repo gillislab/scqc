@@ -57,7 +57,7 @@ class SraSearch(object):
         self.efetch_sleep = float(config.get('sra','query_sleep'))
         self.full_url = self.build_searchurl(species, strategy, textword)
         self.outfile = outfile               
-        self.log.debug('SraSearch initted. ')
+        self.log.debug(f'SraSearch initted. outfile={self.outfile} species={species} strategy={strategy} textword={textword}')
 
 
     def build_searchurl(self, species=["mus musculus"], 
@@ -112,8 +112,10 @@ class SraSearch(object):
         self.log.debug(f'got {len(tuplist)} tuples.')
         
         if self.outfile == 'stdout':
+            self.log.debug('outfile is stdout...')
             f = sys.stdout
         else:
+            self.log.debug(f'outfile is {self.outfile} opening...')
             f = open(self.outfile, 'w', encoding='utf-8')
               
         for (exp_id, proj_id ) in tuplist:
@@ -187,6 +189,7 @@ class SearchCLI(object):
 
         parser.add_argument('-o', '--outfile',
                         metavar='outfile',
+                        dest='outfile',
                         type=str,
                         default='stdout',
                         help='Outfile. ')
