@@ -2,9 +2,10 @@
 #
 
 
-
 import logging
 import os 
+
+
 
 def setup(config):
     '''
@@ -22,7 +23,7 @@ def setup(config):
     figuredir =os.path.expanduser(config.get('setup', 'figuredir'))
 
     dirs_to_make = [metadir, 
-                    f'{cachedir}/biccn', 
+                    f'{cachedir}/nemo', 
                     tempdir, 
                     resourcedir, 
                     outputdir, 

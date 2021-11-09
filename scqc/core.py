@@ -343,7 +343,7 @@ class Analyze(Stage):
 
     def __init__(self, config):
         super(Analyze, self).__init__(config, 'analyze')
-        self.backend = self.config.get('analyze', 'backend')
+        self.aligner = self.config.get('analyze', 'aligner')
         self.log.debug('super() ran. object initialized.')
 
     def execute(self, dolist):
@@ -356,13 +356,13 @@ class Analyze(Stage):
         partlist = []
         seenlist = []
         
-        self.log.debug(f'importing backend {self.backend}')
-        be = importlib.import_module(f'scqc.{self.backend}')       
+        self.log.debug(f'importing backend {self.aligner}')
+        algn = importlib.import_module(f'scqc.{self.aligner}')       
         
         for projectid in dolist:
             self.log.debug(f'handling id {projectid}...')
             try:
-                ar = be.AlignReads(self.config)
+                ar = algn.AlignReads(self.config)
                 (done, part, seen) = ar.execute(projectid)
                 self.log.debug(f'done with {projectid}')
                 if done is not None:

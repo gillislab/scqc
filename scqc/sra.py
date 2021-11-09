@@ -45,19 +45,19 @@ LOGLEVELS = {
     50: 'fatal',
 }
 
-PROJ_COLUMNS = ['proj_id', 'ext_ids', 'title', 'abstract', 'submission_id']
+PROJ_COLUMNS = ['proj_id', 'ext_ids', 'title', 'abstract', 'submission_id', 'data_source']
 
 SAMP_COLUMNS = ['samp_id', 'ext_ids',  'taxon',
-                'sciname', 'title', 'attributes', 'proj_id', 'submission_id']
+                'sciname', 'title', 'attributes', 'proj_id', 'submission_id', 'data_source']
 
 EXP_COLUMNS = ['exp_id', 'ext_ids',  'strategy',
-               'source', 'lcp', 'samp_id', 'proj_id', 'submission_id']
+               'source', 'lcp', 'samp_id', 'proj_id', 'submission_id', 'data_source']
 
 RUN_COLUMNS = ['run_id', 'ext_ids', 'tot_spots', 'tot_bases', 'run_size', 'publish_date',
                'taxon', 'organism', 'nreads',  'basecounts', 'file_url','file_size','exp_id', 'samp_id', 'proj_id', 
-               'submission_id' ]
+               'submission_id', 'data_source' ]
 
-IMPUTE_COLUMNS = ['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon','batch']
+IMPUTE_COLUMNS = ['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon','batch', 'data_source']
 
 
 TECH_RES = {
@@ -248,6 +248,10 @@ class Query(object):
             self.log.debug(f'final samp_rows: {samp_rows}')
             self.log.debug(f'final exp_rows: {exp_rows}')
             self.log.debug(f'final run_rows: {run_rows}')
+            
+            # add data_source column
+            for rlist in [proj_rows, samp_rows, exp_rows, run_rows]:
+                add_rowlist_column(rlist, 'sra')
             
             # make dataframes
             pdf = pd.DataFrame(proj_rows, columns=PROJ_COLUMNS)
@@ -1115,7 +1119,6 @@ def get_runs_for_project(config, proj_id):
     """
     
     """
-    
     metadir = os.path.expanduser(config.get('sra', 'metadir'))
     filepath = f"{metadir}/runs.tsv"
     if os.path.isfile(filepath):
@@ -1123,6 +1126,16 @@ def get_runs_for_project(config, proj_id):
         return list(pdf[pdf.proj_id == proj_id].run_id)
     else:
         return []
+
+def parse_expidfile(expidfile):
+    pairs =  readlist(expidfile)
+    exps = []
+    projs = set()
+    for t in pairs:
+        (e,p) = t.split()
+        exps.append(e)
+        projs.add(p)
+    return(exps, projs)
 
 
 def query_project_metadata(project_id):
@@ -1159,6 +1172,7 @@ def query_project_metadata(project_id):
     r = requests.put(url, data=payload, headers=headers, stream=True)
     if r.status_code == 200:
         log.info('got good return. reading CSV to dataframe.')
+        #log.debug(r.content)
         with io.BytesIO(r.content) as imf:
             df = pd.read_csv(imf)
         log.debug(f'dataframe read from CSV.: {df}')

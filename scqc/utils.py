@@ -90,7 +90,15 @@ def load_df(filepath):
     df = pd.read_csv(filepath, sep='\t', index_col=0)
     return df
 
-
+def add_rowlist_column(rowlist, colval):
+    """
+    For use during dataframe construction. Adds col to list of rows with specified.
+       
+    """
+    for row in rowlist:
+        row.append(colval)
+    return rowlist
+    
 
 def merge_write_df(newdf, filepath,  mode=0o644):
     """
