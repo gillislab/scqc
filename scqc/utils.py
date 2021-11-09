@@ -108,12 +108,16 @@ def merge_write_df(newdf, filepath,  mode=0o644):
     log.debug(f'inbound new df: {newdf}')
     if os.path.isfile(filepath):
         df = pd.read_csv(filepath, sep='\t', index_col=0) #, comment="#"
+        #df = pd.read_csv(filepath, sep='\t') #, comment="#"
         log.debug(f'read df: {df}')
         df = df.append(newdf, ignore_index=True)
         log.debug(f'appended df: {df}')
     else:
         df = newdf
-    df.drop_duplicates(inplace=True)
+    logging.debug(f"df length before dropping dupes is {len(df)}")
+    #df.drop_duplicates(inplace=True, ignore_index=True)
+    df = df.drop_duplicates(ignore_index=True)
+    logging.debug(f"df length after dropping dupes is {len(df)}")
     df = df.reset_index(drop=True)
     rootpath = os.path.dirname(filepath)
     basename = os.path.basename(filepath)

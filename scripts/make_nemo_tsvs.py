@@ -9,7 +9,17 @@ gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 from scqc.utils import *
 
-def make_dfs(manifest, metadata):
+
+def make_dfs(manifest, metadata, prefix):
+    
+    rdf, edf, sdf, pdf =  parse_files(manifest=args.manifest, 
+                                   metadata=args.metadata)
+    logging.info(f'got DFs: {pdf}\n{rdf}\n{edf}\n{sdf}')
+    write_dfs(rdf, edf, sdf, pdf, prefix)
+    
+    
+
+def parse_files(manifest, metadata):
 
     allmd = pd.read_csv(metadata,sep='\t')
     #allmd = pd.concat([allmd,tmpdf],axis=0)
@@ -103,7 +113,14 @@ def make_dfs(manifest, metadata):
     return(rdf, edf, sdf, pdf)
 
 
-
+def write_dfs(rdf, edf, sdf, pdf, prefix='./'):
+    """
+    projects.tsv, samples.tsv, experiments.tsv, runs.tsv
+    """
+    merge_write_df(rdf, f'{prefix}runs.tsv') 
+    merge_write_df(edf, f'{prefix}experiments.tsv') 
+    merge_write_df(sdf, f'{prefix}samples.tsv') 
+    merge_write_df(pdf, f'{prefix}projects.tsv') 
 
     
 def dummy():
@@ -145,6 +162,14 @@ if __name__ == "__main__":
                         required=True,  
                         type=str, 
                         help='a Nemo metadata file TSV. ') 
+    
+    parser.add_argument('-p', '--outprefix',
+                        metavar='outprefix',
+                        required=False,
+                        type=str,
+                        default='./',
+                        help='prefix for all output dataframe TSVs'
+                        )
 
     args = parser.parse_args()
 
@@ -153,8 +178,10 @@ if __name__ == "__main__":
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)
 
-    rdf, edf, sdf, pdf =  make_dfs(manifest=args.manifest, 
-                                   metadata=args.metadata)
-    logging.info(f'got DFs: {pdf}\n{rdf}\n{edf}\n{sdf}')
+    make_dfs( manifest=args.manifest, 
+              metadata=args.metadata, 
+              prefix=args.outprefix)
+
+    
 
 
