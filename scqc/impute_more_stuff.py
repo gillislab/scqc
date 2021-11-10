@@ -12,11 +12,6 @@ gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 from scqc.utils import *
 
-
-
-
-
-
 # look for 10x runs  
 def get_vdb_data(runfile, outfile):
     runs = pd.read_csv(runfile, sep="\t")

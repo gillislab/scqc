@@ -250,7 +250,7 @@ class AlignReads(object):
         '''
         example proj_id="SRP114926"
         '''
-        impute = pd.read_csv(f'{self.metadir}/impute.tsv',sep="\t" ,index_col=0)
+        impute = load_df(f'{self.metadir}/impute.tsv')
         # filter to include only requested project id
         impute = impute.loc[ impute.proj_id==proj_id ,:]
         # filter to include only requested species and only keep run ids

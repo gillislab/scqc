@@ -7,7 +7,9 @@ import os
 import sys
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
+
 from scqc.utils import *
+from scqc.nemo import *
 
 
 def make_dfs(manifest, metadata, prefix):
@@ -15,13 +17,21 @@ def make_dfs(manifest, metadata, prefix):
     rdf, edf, sdf, pdf =  parse_files(manifest=args.manifest, 
                                    metadata=args.metadata)
     logging.info(f'got DFs: {pdf}\n{rdf}\n{edf}\n{sdf}')
+    
+    
+    
+    
+    
+    
     write_dfs(rdf, edf, sdf, pdf, prefix)
     
+
+
     
 
 def parse_files(manifest, metadata):
 
-    allmd = pd.read_csv(metadata,sep='\t')
+    allmd = load_df(metadata)
     #allmd = pd.concat([allmd,tmpdf],axis=0)
 
     allmd = allmd.drop_duplicates().reset_index(drop=True)
@@ -63,7 +73,7 @@ def parse_files(manifest, metadata):
     pdf['abstract'] = ''
     pdf['submission_id'] = tmpdf.project_grant
 
-    mdf = pd.read_csv(manifest,sep='\t')
+    mdf = load_df(manifest)
     #manifest = pd.concat([manifest,tmpdf],axis=0)
     mdf = mdf[ ~ mdf.md5.isna() ]
     mdf=mdf.drop_duplicates().reset_index(drop=True)
@@ -128,10 +138,10 @@ def dummy():
     print(rdf.shape, edf.shape, sdf.shape, pdf.shape)
     outdir = '/data/johlee'
     # outdir = '/data/hover/scqc/metadata'
-    merge_write_df(rdf,f'{outdir}/nemo_runs.tsv')
-    merge_write_df(edf,f'{outdir}/nemo_experiments.tsv')
-    merge_write_df(sdf,f'{outdir}/nemo_samples.tsv')
-    merge_write_df(pdf,f'{outdir}/nemo_projects.tsv')
+    merge_write_df(rdf, f'{outdir}/nemo_runs.tsv')
+    merge_write_df(edf, f'{outdir}/nemo_experiments.tsv')
+    merge_write_df(sdf, f'{outdir}/nemo_samples.tsv')
+    merge_write_df(pdf, f'{outdir}/nemo_projects.tsv')
 
 
 if __name__ == "__main__":

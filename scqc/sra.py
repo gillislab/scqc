@@ -595,7 +595,7 @@ class Impute(object):
             idf = self.impute_tech_from_lcp(edf)    
             
             # gather manually-curated smartseq tech
-            ss_manual = pd.read_csv(f'{self.resourcedir}/smartseq_projs.tsv' , header=None)
+            ss_manual = load_df(f'{self.resourcedir}/smartseq_projs.tsv')
             ss_manual.columns = ['proj_id']
             if proj_id in ss_manual.proj_id.unique() :
                 # read the vdb dump data
@@ -611,7 +611,7 @@ class Impute(object):
                 idf.tech[idf.exp_id.isin(vdf.exp_id)] = 'smartseq'
             
             # gather manually-curated 10x tech            
-            tx_manual = pd.read_csv(f'{self.resourcedir}/tenx_projs.tsv' , header=None)
+            tx_manual = load_df(f'{self.resourcedir}/tenx_projs.tsv')
             tx_manual.columns = ['proj_id']
             if proj_id in tx_manual.proj_id.unique() :
                 vdf = load_df(f'{self.resourcedir}/vdb_dump.tsv')
@@ -1122,7 +1122,7 @@ def get_runs_for_project(config, proj_id):
     metadir = os.path.expanduser(config.get('sra', 'metadir'))
     filepath = f"{metadir}/runs.tsv"
     if os.path.isfile(filepath):
-        pdf = pd.read_csv(filepath, sep='\t', index_col=0)
+        pdf = load_df(filepath)
         return list(pdf[pdf.proj_id == proj_id].run_id)
     else:
         return []

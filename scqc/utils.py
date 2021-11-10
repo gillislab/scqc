@@ -85,9 +85,9 @@ def writelist(filepath, dlist, mode=0o644):
 
 def load_df(filepath):
     """
-    Convenience method to load DF
+    Convenience method to load DF consistently accross modules. 
     """
-    df = pd.read_csv(filepath, sep='\t', index_col=0)
+    df = pd.read_csv(filepath, sep='\t',index_col=0, keep_default_na=False, comment="#")
     return df
 
 def add_rowlist_column(rowlist, colval):
@@ -105,18 +105,16 @@ def merge_write_df(newdf, filepath,  mode=0o644):
     Reads existing, merges new, drops duplicates, writes to temp, renames temp. 
     """
     log = logging.getLogger('utils')
-    log.debug(f'inbound new df: {newdf}')
+    log.debug(f'inbound new df:\n{newdf}')
     if os.path.isfile(filepath):
-        df = pd.read_csv(filepath, sep='\t', index_col=0) #, comment="#"
-        #df = pd.read_csv(filepath, sep='\t') #, comment="#"
-        log.debug(f'read df: {df}')
+        df = pd.read_csv(filepath, sep='\t', index_col=0, keep_default_na=False) #, comment="#"
+        log.debug(f'read df:\n{df}')
         df = df.append(newdf, ignore_index=True)
-        log.debug(f'appended df: {df}')
+        log.debug(f'appended df:\n{df}')
     else:
         df = newdf
     logging.debug(f"df length before dropping dupes is {len(df)}")
-    #df.drop_duplicates(inplace=True, ignore_index=True)
-    df = df.drop_duplicates(ignore_index=True)
+    df.drop_duplicates(inplace=True, ignore_index=True)
     logging.debug(f"df length after dropping dupes is {len(df)}")
     df = df.reset_index(drop=True)
     rootpath = os.path.dirname(filepath)

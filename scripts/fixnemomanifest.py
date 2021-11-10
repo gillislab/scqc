@@ -16,12 +16,15 @@
 
 import os
 import sys
-#gitpath=os.path.expanduser("~/git/cshlwork")
-#sys.path.append(gitpath)
+gitpath = os.path.expanduser("~/git/scqc")
+sys.path.append(gitpath)
+
 
 import pandas as pd
 import numpy as np
 import traceback
+
+from scqc.utils import *
 
 if not len(sys.argv) > 1:
     print("need input file arg(s)")
@@ -34,7 +37,7 @@ for infile in infiles:
     basename = os.path.basename(infile)
     # print(f"{infile}")
     try:
-        df = pd.read_csv(infile, index_col=None, sep='\t', comment="#")
+        df = load_df(infile)
         newdf = df[['file_id', 'md5', 'size','urls', 'sample_id']]
         newdf.reset_index(drop=True, inplace=True)
         #newdf.rename(columns={'file_id':'id'}, inplace=True) 

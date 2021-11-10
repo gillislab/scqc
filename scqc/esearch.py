@@ -378,7 +378,7 @@ def query_project_metadata(project_id):
     if r.status_code == 200:
         log.info('got good return. reading CSV to dataframe.')
         with io.BytesIO(r.content) as imf:
-            df = pd.read_csv(imf)
+            df = load_df(imf)
         return df
 
     else:
