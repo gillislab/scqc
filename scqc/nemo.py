@@ -9,46 +9,12 @@ import sys
 import tarfile
 
 from configparser import ConfigParser
-
+from urllib.parse import urlparse
 
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 from scqc.utils import *
-
-
-PROJ_COLUMNS = ['proj_id', 'ext_ids', 'title', 'abstract', 'submission_id', 'data_source']
-
-SAMP_COLUMNS = ['samp_id', 'ext_ids',  'taxon',
-                'sciname', 'title', 'attributes', 'proj_id', 'submission_id', 'data_source']
-
-EXP_COLUMNS = ['exp_id', 'ext_ids',  'strategy',
-               'source', 'lcp', 'samp_id', 'proj_id', 'submission_id', 'data_source']
-
-RUN_COLUMNS = ['run_id', 'ext_ids', 'tot_spots', 'tot_bases', 'run_size', 'publish_date',
-               'taxon', 'organism', 'nreads',  'basecounts', 'file_url','file_size','exp_id', 'samp_id', 'proj_id', 
-               'submission_id', 'data_source' ]
-
-IMPUTE_COLUMNS = ['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon','batch', 'data_source']
-
-TECH_RES = {
-    '10x'   : re.compile("10x Genomics|chromium|10X protocol|Chrominum|10X 3' gene|10X Single|10x 3'|Kit v1|PN-120233|10X V1", re.IGNORECASE),
-    #'10xv1' : re.compile("", re.IGNORECASE),
-    #'10xv2' : re.compile("v2 chemistry|v2 reagent|V2 protocol|P/N 120230|Single Cell 3' v2|Reagent Kits v2|10X V2", re.IGNORECASE),
-    #'10xv3' : re.compile("v3 chemistry|v3 reagent|V3 protocol|CG000206|Single Cell 3' Reagent Kit v3|10X V3|1000078", re.IGNORECASE),
-    'smartseq' : re.compile("Smart-Seq|SmartSeq|Picelli|SMART Seq", re.IGNORECASE),
-    'smarter' : re.compile("SMARTer", re.IGNORECASE),
-    'dropseq' : re.compile("Cell 161, 1202-1214|Macosko|dropseq|drop-seq", re.IGNORECASE),
-    'celseq'  : re.compile("CEL-Seq2|Muraro|Cell Syst 3, 385|Celseq2|Celseq1|Celseq|Cel-seq", re.IGNORECASE),
-    'sortseq' : re.compile("Sort-seq|Sortseq|Sort seq", re.IGNORECASE),
-    'seqwell' : re.compile("Seq-Well|seqwell", re.IGNORECASE),
-    'biorad'  : re.compile("Bio-Rad|ddSeq", re.IGNORECASE),
-    'indrops' : re.compile("inDrop|Klein|Zilionis", re.IGNORECASE),
-    'marsseq2': re.compile("MARS-seq|MARSseq|Jaitin et al|jaitin", re.IGNORECASE),
-    'tang'    : re.compile("Tang", re.IGNORECASE),
-    # 'TruSeq':re.compile("TruSeq", re.IGNORECASE),
-    'splitseq': re.compile("SPLiT-seq", re.IGNORECASE),
-    'microwellseq': re.compile("Microwell-seq", re.IGNORECASE)
-}
+from scqc.common import *
 
 class Impute(object):
     """
@@ -58,6 +24,7 @@ class Impute(object):
     def __init__(self, config):
         self.log = logging.getLogger('impute')
         self.config = config
+        self.cachedir = os.path.expanduser(self.config.get('impute','cachedir'))
         self.metadir = os.path.expanduser(self.config.get('impute', 'metadir'))
         self.resourcedir = os.path.expanduser(self.config.get('impute', 'resourcedir'))
 
@@ -79,22 +46,40 @@ class Impute(object):
             edf = edf[edf.proj_id == proj_id].reset_index(drop=True) # rename pdf -> edf 
             self.log.debug(f'got project-specific experiment df: \n{edf}')
             # auto impute technology  -  exp_id|tech
-
             idf = self.impute_tech_from_lcp(edf)              
             self.log.debug(f'got initial impute df: \n{idf}')
-            # gather manually-curated smartseq tech
-      
-            # match run to tech
+
+            # get runs
             runfile = f'{self.metadir}/runs.tsv'
             rdf = load_df(runfile)
             rdf = rdf[rdf.proj_id == proj_id].reset_index(drop=True)
             self.log.debug(f'got project-specific runs df: \n{rdf}')
             
+            # initial full def. default to whatever is in exp file (from LCP)
+            idf = pd.merge(idf,rdf, left_on='exp_id',right_on='exp_id', how='left')
+            idf['read1'] = ''
+            idf['read2'] = ''
+            idf['batch'] = '' 
+                                 
             # impute 10x version
-                
-                        
+            idf = idf[IMPUTE_COLUMNS]
+            #outdf.columns = IMPUTE_COLUMNS  # renames the columns from global 
+            
+            self.log.debug(f'initial full impute df: \n{idf}')            
+            #outdf = self._known_tech(outdf)
+            #idf.fillna(value='', inplace=True)
+            
+            idf = self.impute_tech_from_url(rdf, idf)
+            self.log.debug(f'impute df after url inference: \n{idf}')            
+            
+            if len(idf) > 0:
+                merge_write_df(idf, f'{self.metadir}/impute.tsv')  
+            else :
+                self.log.warn(f'Unable to predict tech for:{proj_id} ')
+                return (None, None, proj_id)
+            
             self.log.info(f'completed imputation for proj_id {proj_id}')
-            #return (proj_id, proj_id, proj_id)          
+            return (proj_id, proj_id, proj_id)              
 
         except Exception as ex:
             self.log.error(f'problem with NCBI proj_id {proj_id}')
@@ -102,7 +87,7 @@ class Impute(object):
             return (None, None, proj_id)
         
         
-    def impute_tech_from_lcp(self, df):
+    def impute_tech_from_lcp(self, edf):
         '''
         Take in experiment df for specific project.  
             Get unique library construction protocol (lcp) values. 
@@ -111,14 +96,13 @@ class Impute(object):
             Create impute DF
         
         '''
-        logging.debug(f'got df: \n{df}')
-        df.lcp= df.lcp.fillna('None').values
+        self.log.debug(f'got edf: \n{edf}')
+        edf.lcp = edf.lcp.fillna('').values
 
-        ulcp = pd.DataFrame({"lcp": df.lcp.unique()})
-        ulcp['tech'] ='unknown'
-        ulcp['techcount'] =0
-        # ulcp= ulcp.loc[1:,:].reset_index(drop=True) 
-        
+        ulcp = pd.DataFrame({"lcp": edf.lcp.unique()})
+        ulcp['tech_version'] ='unknown'
+        ulcp['techcount'] = 0
+        # ulcp= ulcp.loc[1:,:].reset_index(drop=True)         
         # search for the keywords
         # doesn't play nice with NaN lcp - fill with a str
 
@@ -127,16 +111,92 @@ class Impute(object):
             kw = TECH_RES[key]
             ulcp[key] = ulcp.lcp.str.contains(kw)
         
-            ulcp.loc[ulcp[key],'tech'] = key
+            ulcp.loc[ulcp[key],'tech_version'] = key
             ulcp.loc[ulcp[key],'techcount'] +=1
         
         ulcp.loc[ulcp['techcount'] > 1,'tech'] = 'multiple'
-        dfout = ulcp[['lcp','tech']]
+        dfout = ulcp[['lcp','tech_version']]
         self.log.debug(f'keyword hits: {ulcp.tech.values}')
 
-        dfout = dfout.merge(df[['exp_id','lcp']], on="lcp")
-        return dfout[['exp_id','tech']]
+        dfout = dfout.merge(edf[['exp_id','lcp']], on="lcp")
+        return dfout[['exp_id','tech_version']]
+    
 
+    def impute_tech_from_url(self, rdf, idf):
+        """
+        need file_url and run_id from rdf. 
+        set tech_version in idf 
+        """
+        #tdf = pd.merge(idf, rdf, left_on='run_id',right_on='run_id', how='left')
+        idf.exp_id = idf.exp_id.astype('str')
+        idf.samp_id = idf.samp_id.astype('str')
+        tdf = pd.merge(idf, rdf, on=['run_id','proj_id','data_source','taxon','exp_id','samp_id'], how='left')
+        
+        for index, row in tdf.iterrows():
+            runid = row['run_id']
+            file_url = row['file_url']
+            read1, read2, tech_version = self.process_tarfile(file_url) 
+            tdf['read1'][index] = read1
+            tdf['read2'][index] = read2
+            tdf['tech_version'][index] = tech_version
+        self.log.debug(f'got impute tech df:\n{tdf}')
+        tdf = tdf[['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id','taxon' ,'batch', 'data_source']]
+        return tdf    
+                
+                
+    def process_tarfile(self, file_url):
+        """
+        E.g.
+        file_url = 'https://data.nemoarchive.org/biccn/grant/u19_zeng/zeng/transcriptome/scell/SSv4/mouse/raw/MOp/SM-DD44D_S32_E1-50.fastq.tar'
+        ->    <cachedir>/nemo/<runid>.fastq.tar
+        
+        @return     read1,  read2,  tech_version -> 10xv1 | 10xv2 | 10xv3
+        
+        Strings, sequence length:
+
+            SSv4     -> smargseq      >28
+            10x_v1   -> 10xv1         24
+            10x_v2   -> 10xv2         26
+            10x_v3   -> 10xv3         28
+        
+        E.g.
+        @D00201:CBDMVANXX170812:CBDMVANXX:7:1101:10000:57844 1:N:0:TAGCGCTCCTCTCTAT
+        ATTAAAAGCAGTACTTAATTTGTGTTTCTCTGGCGCAAGTTTTTATCTTTG
+        +
+        BB/<BF<FBFFFFFFFFFFFBFFFFFFFFFFBFFFFFBFFFFFFFFFFFF#
+        """
+        self.log.debug(f'handling file_url: {file_url}')
+        o = urlparse(file_url)
+        tbase = o.path.split('/')[-1:][0]
+        tf = f"{self.cachedir}/nemo/{tbase}"
+        self.log.debug(f"handling tarfile {tf}")
+        read1 = ''
+        read2 = ''
+        tech_version = self.scan_url_tech(o.path)
+        to = tarfile.open(tf)
+        subfiles = to.getnames()
+        for f in subfiles:
+            self.log.debug(f'handling subfile {f}')
+            (err, out, rc) = peek_tarball(tf, f, 3)
+            sline = out.split('\n')[1]
+            self.log.info(f'got line 2:\n{sline}')        
+        return read1, read2, tech_version
+
+    def scan_url_tech(self, path):
+        """
+          E.g. path  '/biccn/grant/u19_zeng/zeng/transcriptome/scell/SSv4/mouse/raw/MOp/SM-DD44D_S32_E1-50.fastq.tar'
+            SSv4     -> smartseq      >28
+            10x_v1   -> 10xv1         24
+            10x_v2   -> 10xv2         26
+            10x_v3   -> 10xv3 
+        """
+        tech = ''
+        for k in NEMO_URL_TECH_MAP.keys():
+            if k in path:
+                self.log.debug(f"found {k} in {path}, returning tech={NEMO_URL_TECH_MAP[k]}")
+                return NEMO_URL_TECH_MAP[k]
+        return tech
+    
 
 def setup(config):
     '''
@@ -165,6 +225,7 @@ def setup(config):
             os.makedirs(direc)
         except FileExistsError:
             pass
+
 
 
 

@@ -34,6 +34,8 @@ gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 
 from scqc.utils import *
+from scqc.common import *
+
 
 # inputs should be runs  identified as 'some10x'
 # .sra files should already downloaded.
@@ -109,7 +111,10 @@ class AlignReads(object):
         seen = proj_id
         
         # bring in all fastqs possible to <tempdir>
-        self._stage_in(proj_id, runlist)
+        backstr = 
+        self.log.debug(f'got backend {backstr} for project {proj_id} ')
+        self.backends[backstr].stage_in(proj_id, runlist)
+        
         
         # Overall flags. 
         somedone = False
