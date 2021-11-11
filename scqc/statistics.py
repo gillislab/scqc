@@ -8,6 +8,7 @@ import io
 import logging
 import os
 import re
+from ast import literal_eval
 import subprocess
 import sys
 from configparser import ConfigParser
@@ -196,19 +197,15 @@ class Statistics(object):
             tmpdf.index= ind
             adata.obs = tmpdf
     
-            adata.uns['header_box'] = dict()
-            adata.uns['header_box']['tech_count'] = adata.obs.tech.value_counts().to_dict()
-
-
             adata = self._get_stats_scanpy(adata)
     
             adata.var.index.name = None
             self.log.debug(adata.obs)
             self.log.debug(adata.var)
             self.log.debug(f'saving to {self.outputdir}/{proj_id}.h5ad ')
-            print('saving')
             adata.write_h5ad(h5file)
-    
+
+
             print('running metamarkers')
             self.log.debug(f'assigning cell types using metamarkers for {proj_id}')
             adata = self._run_MetaMarkers(h5file,adata)
@@ -372,8 +369,8 @@ class Statistics(object):
         adata.var['cell_cycle'] = tmpdf.cc_cluster != 'None'
         
 
-        adata.var['total_counts'] = adata.X.sum(0)
-        adata.var['n_cells_by_counts'] = (adata.X>0).sum(0)
+        adata.var['total_counts'] = adata.X.sum(0).flat
+        adata.var['n_cells_by_counts'] = (adata.X>0).sum(0).flat
 
 
 
@@ -393,9 +390,9 @@ class Statistics(object):
         label_matrix = sparse.csc_matrix(adata.var[qcvars])
         # TODO fix tie correction and set true
         aurocs = compute_aurocs(adata.X, label_matrix,
-                index =adata.obs.cell_id, columns = qcvars ,
+                index =adata.obs.index, columns = qcvars ,
                 compute_tie_correction=False)
-        
+        adata.obs = pd.merge(adata.obs, aurocs ,left_index=True, right_index=True,how = 'left')
         # adata.var['cell_cycle'] = adata.var.cc_cluster != 'None'
         # for i in cc.cc_cluster.unique():
         #     adata.var[f'cc_cluster_{i}'] = adata.var.cc_cluster == i 
@@ -410,7 +407,7 @@ class Statistics(object):
         #     inplace=True)
 
         self.log.debug('calculating corrtomean') # using log1p counts
-        # adata.obs['corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X).flatten()
+        adata.obs['corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X).flat
 
 
         tmp = gini_coefficient_fast(adata.X)
@@ -437,12 +434,12 @@ class Statistics(object):
         # print('getting umap\n')
         sc.tl.umap(adata)       # umap coords are in adata.obsm['X_umap']
         
-        adata.obs.cell_id = adata.obs.index
+        # adata.obs.cell_id = adata.obs.index
 
-
-        # min_corr, max_corr = pairwise_minmax_corr(adata.X)
-        # adata.obs['min_corr_with_others'] = min_corr
-        # adata.obs['max_corr_with_others'] = max_corr
+        # trades memory intensity with computational time
+        min_corr, max_corr = pairwise_minmax_corr(adata.X,chunksize=10000)
+        adata.obs['min_corr_with_others'] = min_corr
+        adata.obs['max_corr_with_others'] = max_corr
 
 
 
@@ -485,54 +482,35 @@ class Statistics(object):
 
 
     
-    def _run_MetaMarkers(self, h5path, adata):
+    def _run_MetaMarkers(self, adata):
         '''
         h5path should be saved in the output directory before this stage. 
         After MetaMarkers, move completed h5ad file to output/
         '''
+        a = Annotate()
+        class_scores, class_enr, class_assign = a.execute(adata, self.class_markerset)
+        subclass_scores, subclass_enr, subclass_assign = a.execute(
+                adata, self.subclass_markerset)
+        subclass_scores_hier, subclass_enr_hier, subclass_assign_hier  =a.execute(
+            adata, self.subclass_markerset, class_assign.predicted)
+        
+        adata.uns['MetaMarkers'] = dict()
+        adata.uns['MetaMarkers']['class_scores'] = class_scores
+        adata.uns['MetaMarkers']['subclass_scores'] = subclass_scores
+        adata.uns['MetaMarkers']['subclass_scores_hier'] = subclass_scores_hier
 
+        adata.uns['MetaMarkers']['class_enr'] = class_enr
+        adata.uns['MetaMarkers']['subclass_enr'] = subclass_enr
+        adata.uns['MetaMarkers']['subclass_enr_hier'] = subclass_enr_hier
+        
+        adata.uns['MetaMarkers']['class_assign'] = class_assign
+        adata.uns['MetaMarkers']['subclass_assign'] = subclass_assign
+        adata.uns['MetaMarkers']['subclass_assign_hier'] = subclass_assign_hier
 
-        #scriptpath = '/home/johlee/git/scqc/scqc/get_markers.R'    # should already be in path
-        # should have only one outpath per dataset. 
-        # TODO verify file does not already exist. Think about what to do if it does
-        # outpath = f'{self.outputdir}/{os.path.basename(h5path)}'
-        #cmd = ['Rscript', f'{scriptpath}',
-        cmd = ['bin/get_markers.R',
-               '--class_markerset', f'{self.class_markerset}',
-               '--subclass_markerset', f'{self.subclass_markerset}',
-               '--h5path', f'{h5path}',
-               '--max_rank', f'{self.max_rank}',
-               '--outprefix', f'{self.tempdir}'
-               ] 
-        run_command(cmd)
+        adata.uns['MetaMarkers']['class_PR'] = MetaMarkers_PR(class_enr, class_pred = None)
+        adata.uns['MetaMarkers']['subclass_PR']= MetaMarkers_PR(subclass_enr, class_pred = None)
+        adata.uns['MetaMarkers']['subclass_PR_hier'] = MetaMarkers_PR(subclass_enr_hier, class_pred = class_assign)
 
-        file_exts = ['_class_pred.tsv','_subclass_pred.tsv',
-                     '_class_scores.tsv','_subclass_scores.tsv',
-                     '_class_enrichment.tsv','_subclass_enrichment.tsv']
-        tmp_paths = [ f"{self.tempdir}/{os.path.basename(h5path.replace('.h5ad',suff))}" for suff in file_exts ]
-        for tmp_path in tmp_paths:
-            ky = tmp_path.split('_',maxsplit=1)[1].replace('.tsv','')
-            tmpdf = pd.read_csv(tmp_path ,sep="\t", index_col =0,dtype='str')
-            # failsafe - some cells may be ignored in the pred file... 
-            tmpdf = pd.merge(adata.obs[['cell_id']], tmpdf,how='left' , left_index = True, right_index=True)
-            tmpdf = tmpdf.drop('cell_id',axis=1)
-            tmpdf = tmpdf.fillna('NA')
-            adata.obsm[ky] = tmpdf
-
-            if '_class_pred.tsv' in tmp_path :
-                adata.obs['class_label'] = tmpdf.predicted
-            elif  '_subclass_pred.tsv' in tmp_path :
-                adata.obs['subclass_label'] = tmpdf.predicted
-            
-
-
-
-            if not self.nocleanup:
-                os.remove(tmp_path)
-
-        adata.uns['MetaMarker_class_PR'] = MetaMarkers_PR(adata.obsm['class_enrichment'], class_pred = None)
-        adata.uns['MetaMarker_subclass_PR'] = MetaMarkers_PR(adata.obsm['subclass_enrichment'], class_pred = None)
-        adata.uns['MetaMarker_subclass_PR_heir'] = MetaMarkers_PR(adata.obsm['subclass_enrichment'], class_pred = adata.obsm['class_pred'])
 
         return(adata)
 
@@ -540,31 +518,51 @@ class Statistics(object):
     def _get_metadata(self, proj_id, adata):
         rdf = load_df( f'{self.metadir}/runs.tsv' )
         rdf = rdf.loc[rdf.proj_id == proj_id, :]
+        rdf = pd.merge(adata.obs.run_id , rdf).drop_duplicates(ignore_index=True)
 
         edf = load_df( f'{self.metadir}/experiments.tsv' )
         edf = edf.loc[edf.proj_id == proj_id, :]
+        edf = pd.merge(adata.obs.exp_id , edf).drop_duplicates(ignore_index=True)
 
         sdf = load_df( f'{self.metadir}/samples.tsv' )
         sdf = sdf.loc[sdf.proj_id == proj_id, :]
+        sdf = pd.merge(adata.obs.samp_id , sdf).drop_duplicates(ignore_index=True)
 
         pdf = load_df( f'{self.metadir}/projects.tsv' )
         pdf = pdf.loc[pdf.proj_id == proj_id, :]
 
-        adata.uns['title'] = pdf.title.values[0]
-        adata.uns['abstract'] = pdf.abstract.values[0]
-        adata.uns['ext_ids'] =  pdf.ext_ids.values[0]
-        # TODO include external links
-        # adata.uns['ext_link'] = pdf.ext_link.values[0]
+        adata.uns['header_box'] = dict()
+        adata.uns['header_box']['title'] = pdf.title.values[0]
+        adata.uns['header_box']['abstract'] = pdf.abstract.values[0]
+        adata.uns['header_box']['ext_ids'] = pdf.ext_ids.values[0]
+        adata.uns['header_box']['tech_count'] = adata.obs.tech.value_counts().to_dict()
 
-        adata.uns['n_cell'] = adata.shape[0]
-        adata.uns['n_runs'] = rdf.shape[0]
-        adata.uns['n_exps'] = edf.shape[0]
-        adata.uns['n_samp'] = sdf.shape[0]
+        adata.uns['header_box']['n_cell'] = adata.shape[0]
+        adata.uns['header_box']['n_runs'] = len(set(adata.obs.run_id))
+        adata.uns['header_box']['n_exps'] = len(set(adata.obs.exp_id))
+        adata.uns['header_box']['n_samp'] = len(set(adata.obs.samp_id))
         
         adata.uns['run_df'] = rdf
         adata.uns['exp_df'] = edf
         adata.uns['samp_df'] = sdf
+        samp_attr = [ literal_eval(sa) for sa in adata.uns['samp_df'].attributes ]
+        
+        samp_attr = pd.DataFrame(samp_attr)
+        samp_attr.index = adata.uns['samp_df'].samp_id
 
+        # get cell counts per sample - key/value pair
+        cell_count = pd.merge( adata.obs[['cell_id' ,'samp_id'] ] ,samp_attr  , left_on = 'samp_id',right_index=True , how = 'left')
+        
+        attr_counts = list()
+        for colname in samp_attr.columns :
+            tmp_cell = cell_count[[colname]].value_counts()
+            attr_counts.append(pd.DataFrame({'Attribute' :colname,'Value':  tmp_cell.index.get_level_values(colname),'Count': tmp_cell.values}  ))
+
+        attr_counts = pd.concat(attr_counts)
+        # drop counts of 1
+        attr_counts = attr_counts.loc[attr_counts.Count > 1,:].sort_values('Count',ascending = False).reset_index(drop=True)
+        
+        adata.uns['header_box']['samp_attr_counts'] = attr_counts
         return(adata)            
 
 def parse_STAR_mtx(solooutdir, resourcedir='./resource' ,species='mouse'):
@@ -687,11 +685,11 @@ if __name__ == "__main__":
             q.execute(pid)
     else:
         q = Statistics(cp)
-        proj_ids = [os.path.basename(f) for f in glob.glob('/data/hover/scqc/cache/*RP*') ]
+        proj_ids = [os.path.basename(f) for f in glob.glob('/home/johlee/scqc/cache/*RP*') ]
         donelist = [os.path.basename(f).replace('.h5ad', '') for f in glob.glob('/home/johlee/scqc/output/*RP*.h5ad') ]
 
         listdiff(proj_ids, donelist)
-        for proj_id in proj_ids[::-1]:
+        for proj_id in np.random.choice(proj_ids,size = len(proj_ids), replace =False):
             # proj_id = os.path.basename(proj_id).replace('.h5ad','')
 
             print(proj_id)
@@ -700,45 +698,3 @@ if __name__ == "__main__":
                 q.execute(proj_id)
             except:
                 pass
-
-
-
-# SRP066963.h5ad
-# SRP071876.h5ad
-# SRP106908.h5ad
-# SRP108034.h5ad
-# SRP112343.h5ad
-# SRP126648.h5ad
-# SRP144462.h5ad
-# SRP144582.h5ad
-# SRP150630.h5ad
-# SRP150863.h5ad
-# SRP163267.h5ad
-# SRP163269.h5ad
-# SRP166780.h5ad
-# SRP167086.h5ad
-# SRP172768.h5ad
-# SRP179101.h5ad
-# SRP212632.h5ad
-# SRP212893.h5ad
-# SRP227978.h5ad
-# SRP228572.h5ad
-# SRP233496.h5ad
-# SRP237263.h5ad
-# SRP243870.h5ad
-# SRP244448.h5ad
-# SRP250815.h5ad
-# SRP256383.h5ad
-# SRP268666.h5ad
-# SRP271182.h5ad
-# SRP288787.h5ad
-# SRP290191.h5ad
-# SRP298453.h5ad
-# SRP298963.h5ad
-# SRP303200.h5ad
-# SRP303343.h5ad
-# SRP304784.h5ad
-# SRP306127.h5ad
-# SRP308387.h5ad
-# SRP322384.h5ad
-# SRP323187.h5ad

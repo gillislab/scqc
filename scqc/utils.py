@@ -88,7 +88,7 @@ def load_df(filepath):
     """
     Convenience method to load DF consistently accross modules. 
     """
-    df = pd.read_csv(filepath, sep='\t',index_col=0, keep_default_na=False, comment="#")
+    df = pd.read_csv(filepath, sep='\t',index_col=0, keep_default_na=False,dtype =str, comment="#")
     df.fillna(value='', inplace=True)
     df = df.astype('str', copy=False)
     return df
@@ -561,7 +561,7 @@ def pairwise_minmax_corr(X,chunksize = 5000 ):
         A = X[i*chunksize : (i+1)*chunksize,:] 
         for j in range(i,nchunks):
             B = X[j*chunksize : (j+1)*chunksize ,:] 
-            print(i,j)
+            logging.debug(f'working on: {i}/{j} of {nchunks}' )
             current_corr = sparse_pairwise_corr(A,B )
 
             if i == j :
@@ -747,8 +747,8 @@ def MetaMarkers_PR(enrichment, class_pred = None):
     enr = enr.astype(float)
     pr = enr.T.melt().sort_values('value',ascending=False)
     pr = pr.reset_index(drop=True)
-    pr['dup_cell'] = ~ pr.variable.duplicated()
-    pr['TP'] = np.cumsum(pr['dup_cell'])
+    pr['first_occurence'] = ~ pr.cell_id.duplicated()
+    pr['TP'] = np.cumsum(pr['first_occurence'])
     pr['P'] = pr.index +1
     pr['Recall'] = pr.TP / enr.shape[0]
     pr['Precision'] = pr.TP / pr.P
