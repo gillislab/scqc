@@ -86,27 +86,44 @@ def writelist(filepath, dlist, mode=0o644):
 
 def load_df(filepath):
     """
-    Convenience method to load DF
+    Convenience method to load DF consistently accross modules. 
     """
-    df = pd.read_csv(filepath, sep='\t', index_col=0)
+    df = pd.read_csv(filepath, sep='\t',index_col=0, keep_default_na=False, comment="#")
+    df.fillna(value='', inplace=True)
+    df = df.astype('str', copy=False)
     return df
 
 
+def add_rowlist_column(rowlist, colval):
+    """
+    For use during dataframe construction. Adds col to list of rows with specified.
+       
+    """
+    for row in rowlist:
+        row.append(colval)
+    return rowlist
+    
 
 def merge_write_df(newdf, filepath,  mode=0o644):
     """
     Reads existing, merges new, drops duplicates, writes to temp, renames temp. 
     """
     log = logging.getLogger('utils')
-    log.debug(f'inbound new df: {newdf}')
+    log.debug(f'inbound new df:\n{newdf}')
     if os.path.isfile(filepath):
-        df = pd.read_csv(filepath, sep='\t', index_col=0) #, comment="#"
-        log.debug(f'read df: {df}')
+        df = load_df(filepath)
+        log.debug(f'read df:\n{df}')
         df = df.append(newdf, ignore_index=True)
-        log.debug(f'appended df: {df}')
+        df.fillna(value='', inplace=True)
+        df = df.astype('str', copy=False)
+        log.debug(f'appended df:\n{df}')
     else:
         df = newdf
-    df.drop_duplicates(inplace=True)
+        df.fillna(value='', inplace=True)
+        df = df.astype('str', copy=False)
+    logging.debug(f"df length before dropping dupes is {len(df)}")
+    df.drop_duplicates(inplace=True, ignore_index=True, keep='first')
+    logging.debug(f"df length after dropping dupes is {len(df)}")
     df = df.reset_index(drop=True)
     rootpath = os.path.dirname(filepath)
     basename = os.path.basename(filepath)
@@ -231,6 +248,7 @@ def download_wget(srcurl, destpath, finalname=None, overwrite=True, decompress=T
         logging.error(f'non-zero return code for src {srcurl}')
     return cp.returncode
 
+
 def parse_wget_output_bytes(outstr):
     """
     E.g. 2021-07-20 14:33:09 URL:https://sra-pub-run-odp.s3.amazonaws.com/sra/SRR5529542/SRR5529542 [17019750/17019750] -> "SRR5529542.sra" [1]
@@ -240,6 +258,7 @@ def parse_wget_output_bytes(outstr):
     bstr = fields[3][1:-1]
     dlbytes = int(bstr.split('/')[0])
     return dlbytes
+
 
 def download_ftpurl(srcurl, destpath, finalname=None, overwrite=True, decompress=True):
     """
@@ -306,6 +325,36 @@ def gzip_decompress(filename):
         log.warn(
             f'tried to gunzip file without .gz extension {filename}. doing nothing.')
 
+ 
+def peek_tarball(tfile, subfile, numlines):
+    """
+    reads start of subfile in tarball without extracting.
+    """
+    
+    cmd = ['tar', 
+           '-xOf', 
+           tfile,
+           subfile, 
+           '|',
+           'zcat',
+           '-d',
+           '|',
+           'head',
+           f'-{numlines}'
+           ]
+    cmdstr = " ".join(cmd)
+    logging.info(f"command: {cmdstr} running...")
+    
+    try:
+        err, out, returncode = run_command_shell(cmd)
+        out = out.decode()
+        logging.debug(f"got output:\n{out}")
+        return err, out, returncode
+        
+    except Exception as e:
+        logging.error(f'problem with {tfile}')
+        logging.error(traceback.format_exc(None))
+
 
 def remove_pathlist(pathlist):
     """
@@ -346,18 +395,89 @@ def run_command(cmd):
     if cp.stderr is not None:
         logging.debug(f"got stderr: {cp.stderr}")
     if cp.stdout is not None:
-        logging.debug(f"got stdout: {cp.stdout}")
-    
+        logging.debug(f"got stdout: {cp.stdout}")   
     if str(cp.returncode) == '0':
         logging.info(f'successfully ran {cmdstr}')
-        return(cp.stderr, cp.stdout,cp.returncode)
-
+        return(cp.stderr, cp.stdout, cp.returncode)
     else:
         logging.warn(f'non-zero return code for cmd {cmdstr}')
         # raise NonZeroReturnException()
 
 
+def run_command_shell(cmd):
+    """
+    maybe subprocess.run(" ".join(cmd), shell=True)
+    cmd should be standard list of tokens...  ['cmd','arg1','arg2'] with cmd on shell PATH.
+    
+    """
+    cmdstr = " ".join(cmd)
+    logging.info(f"running command: {cmdstr} ")
+    start = dt.datetime.now()
+    cp = subprocess.run(" ".join(cmd), 
+                    shell=True, 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.STDOUT)
+    #cp = subprocess.run(cmd, 
+    #                shell=True, 
+    #                stdout=subprocess.PIPE, 
+    #                stderr=subprocess.STDOUT)
+    end = dt.datetime.now()
+    elapsed =  end - start
+    logging.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {elapsed.seconds} seconds.")
+    
+    if cp.stderr is not None:
+        logging.debug(f"got stderr: {cp.stderr}")
+    if cp.stdout is not None:
+        logging.debug(f"got stdout: {cp.stdout}")
+    
+    if str(cp.returncode) == '0':
+        logging.info(f'successfully ran {cmdstr}')
+        return(cp.stderr, cp.stdout, cp.returncode)
+    else:
+        logging.error(f'non-zero return code for cmd {cmdstr}')
+        raise NonZeroReturnException(f'For cmd {cmdstr}')
 
+
+def string_modulo(instring, divisor):
+    """
+    Takes instring. Converts to bytes. Takes hex() value of bytes. converts to integer. 
+    returns final integer % modbase
+    
+    """
+    encoded = instring.encode('utf-8')
+    hstring = encoded.hex()
+    intval = int(hstring)
+    return intval % divisor
+
+def modulo_filter(inlist, divisor, remainder):
+    """
+    Takes a list, returns list containing items in inlist that 
+    have the given remainder modulo divisor. 
+    """
+    newlist = []
+    for e in inlist:
+        if string_modulo(e, divisor) == remainder:
+            newlist.append(e)
+    logging.debug(f'inlist len={len(inlist)}, {divisor} servers, {remainder} server idx. outlist len={len(newlist)}')
+    return newlist
+    
+
+def get_default_config():
+    cp = ConfigParser()
+    cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
+    return cp
+
+
+def get_configstr(cp):
+    with io.StringIO() as ss:
+        cp.write(ss)
+        ss.seek(0)  # rewind
+        return ss.read()
+
+
+#
+#  Statistical functions...
+#
 
 def gini_coefficient_fast(X):
     """ 
@@ -386,7 +506,6 @@ def gini_coefficient_fast(X):
         else :
             g[i] =(n + 1 - 2 * np.sum(cumx) / cumx[-1]) / n
     return g
-
 
 
 def sparse_pairwise_corr(A, B=None):
@@ -423,6 +542,7 @@ def sparse_pairwise_corr(A, B=None):
     denom = np.dot(sa, sb.T)
     return(np.asarray(numer/denom))
 
+
 def pairwise_minmax_corr(X,chunksize = 5000 ):
     # X should be a cell x gene csr matrix 
     # be sure to onlycalculate the upper tri
@@ -458,18 +578,6 @@ def pairwise_minmax_corr(X,chunksize = 5000 ):
             min_corr[i*chunksize : (i+1)*chunksize] = np.fmin(cur_min ,min_corr[i*chunksize : (i+1)*chunksize] )
 
     return( min_corr, max_corr)
-
-
-def taxon_to_spec(taxid= '10090'):
-    d = {   '10090': "mouse",
-            '9606':"human"}
-    return(d[taxid])
-
-
-def spec_to_taxon(spec="mouse"):
-    d = {   "mouse":"10090",
-            "human":"9606"}         
-    return(d[spec])
 
 
 # EGAD functions compliments of Ben
@@ -649,41 +757,16 @@ def MetaMarkers_PR(enrichment, class_pred = None):
     return(pr)
 
 
-def string_modulo(instring, divisor):
-    """
-    Takes instring. Converts to bytes. Takes hex() value of bytes. converts to integer. 
-    returns final integer % modbase
-    
-    """
-    encoded = instring.encode('utf-8')
-    hstring = encoded.hex()
-    intval = int(hstring)
-    return intval % divisor
-
-def modulo_filter(inlist, divisor, remainder):
-    """
-    Takes a list, returns list containing items in inlist that 
-    have the given remainder modulo divisor. 
-    """
-    newlist = []
-    for e in inlist:
-        if string_modulo(e, divisor) == remainder:
-            newlist.append(e)
-    logging.debug(f'inlist len={len(inlist)}, {divisor} servers, {remainder} server idx. outlist len={len(newlist)}')
-    return newlist
-    
-
-def get_default_config():
-    cp = ConfigParser()
-    cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
-    return cp
+#
+#  SCQC/Bionformatic-specific functions. 
+#  Assumes knowledge of dataframe formats. 
+#
 
 
-def get_configstr(cp):
-    with io.StringIO() as ss:
-        cp.write(ss)
-        ss.seek(0)  # rewind
-        return ss.read()
+def taxon_to_spec(taxid= '10090'):
+    d = {   '10090': "mouse",
+            '9606':"human"}
+    return(d[taxid])
 
 
 def compare_barcode_to_whitelists(barcodes, 

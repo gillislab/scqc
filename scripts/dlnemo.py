@@ -20,7 +20,7 @@ import traceback
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 
-from scqc.utils import download_wget
+from scqc.utils import *
 
 def parse_urllist(urls, prot='http'):
     out = None
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)
 
-    df = pd.read_csv(args.manifest, index_col=0, sep='\t', comment="#")
+    df = load_df(args.manifest)
     logging.info(f'got list of {len(df)} file_urls.')
     
     for index, row in df.iterrows():

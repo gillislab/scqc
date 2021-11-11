@@ -178,10 +178,6 @@ class AlignBICCN(object) :
                     outfile_prefix = ar._run_star_smartseq(run_id, manipath,gzipped= True)
                 except:
                     self.log.warning(f'UNABLE TO RUN STAR FOR {run_id}')
-
-
-
-
             else : 
                 self.log.warning(f'technology for the run is unclear for {run_id}')
 
@@ -215,7 +211,6 @@ class AlignBICCN(object) :
                         os.makedirs(f'{self.tempdir}/{outbn}/')
                     except:
                         pass
-
                     try: 
                         os.rename(f'{self.tempdir}/{op}' , f'{self.tempdir}/{outbn}/{op}')
                     except:

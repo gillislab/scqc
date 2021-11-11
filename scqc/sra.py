@@ -34,89 +34,7 @@ import numpy as np
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 from scqc.utils import *
-
-# Translate between Python and SRAToolkit log levels for wrapped commands.
-#  fatal|sys|int|err|warn|info|debug
-LOGLEVELS = {
-    10: 'debug',
-    20: 'info',
-    30: 'warn',
-    40: 'err',
-    50: 'fatal',
-}
-
-PROJ_COLUMNS = ['proj_id', 'ext_ids', 'title', 'abstract', 'submission_id']
-
-SAMP_COLUMNS = ['samp_id', 'ext_ids',  'taxon',
-                'sciname', 'title', 'attributes', 'proj_id', 'submission_id']
-
-EXP_COLUMNS = ['exp_id', 'ext_ids',  'strategy',
-               'source', 'lcp', 'samp_id', 'proj_id', 'submission_id']
-
-RUN_COLUMNS = ['run_id', 'ext_ids', 'tot_spots', 'tot_bases', 'run_size', 'publish_date',
-               'taxon', 'organism', 'nreads',  'basecounts', 'file_url','file_size','exp_id', 'samp_id', 'proj_id', 
-               'submission_id' ]
-
-IMPUTE_COLUMNS = ['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon','batch']
-
-
-TECH_RES = {
-    '10x'   : re.compile("10x Genomics|chromium|10X protocol|Chrominum|10X 3' gene|10X Single|10x 3'|Kit v1|PN-120233|10X V1", re.IGNORECASE),
-    #'10xv1' : re.compile("", re.IGNORECASE),
-    #'10xv2' : re.compile("v2 chemistry|v2 reagent|V2 protocol|P/N 120230|Single Cell 3' v2|Reagent Kits v2|10X V2", re.IGNORECASE),
-    #'10xv3' : re.compile("v3 chemistry|v3 reagent|V3 protocol|CG000206|Single Cell 3' Reagent Kit v3|10X V3|1000078", re.IGNORECASE),
-    'smartseq' : re.compile("Smart-Seq|SmartSeq|Picelli|SMART Seq", re.IGNORECASE),
-    'smarter' : re.compile("SMARTer", re.IGNORECASE),
-    'dropseq' : re.compile("Cell 161, 1202-1214|Macosko|dropseq|drop-seq", re.IGNORECASE),
-    'celseq'  : re.compile("CEL-Seq2|Muraro|Cell Syst 3, 385|Celseq2|Celseq1|Celseq|Cel-seq", re.IGNORECASE),
-    'sortseq' : re.compile("Sort-seq|Sortseq|Sort seq", re.IGNORECASE),
-    'seqwell' : re.compile("Seq-Well|seqwell", re.IGNORECASE),
-    'biorad'  : re.compile("Bio-Rad|ddSeq", re.IGNORECASE),
-    'indrops' : re.compile("inDrop|Klein|Zilionis", re.IGNORECASE),
-    'marsseq2': re.compile("MARS-seq|MARSseq|Jaitin et al|jaitin", re.IGNORECASE),
-    'tang'    : re.compile("Tang", re.IGNORECASE),
-    # 'TruSeq':re.compile("TruSeq", re.IGNORECASE),
-    'splitseq': re.compile("SPLiT-seq", re.IGNORECASE),
-    'microwellseq': re.compile("Microwell-seq", re.IGNORECASE)
-}
-
-#deprecated
-keywords = {
-    "is10x": "10x Genomics|chromium|10X protocol|Chrominum|10X 3' gene|10X Single|10x 3'",
-    "v3": "v3 chemistry|v3 reagent|V3 protocol|CG000206|Single Cell 3' Reagent Kit v3|10X V3|1000078",
-    "v2": "v2 chemistry|v2 reagent|V2 protocol|P/N 120230|Single Cell 3' v2|Reagent Kits v2|10X V2",
-    "v1": "Kit v1|PN-120233|10X V1",
-    "ss": "Smart-Seq|SmartSeq|Picelli|SMART Seq",
-    "smarter": "SMARTer",
-    "dropseq": "Cell 161, 1202-1214|Macosko|dropseq|drop-seq",
-    "celseq": "CEL-Seq2|Muraro|Cell Syst 3, 385|Celseq2|Celseq1|Celseq|Cel-seq",
-    "sortseq": "Sort-seq|Sortseq|Sort seq",
-    "seqwell": "Seq-Well|seqwell",
-    "biorad": "Bio-Rad|ddSeq",
-    "indrops": "inDrop|Klein|Zilionis",
-    "marsseq2": "MARS-seq|MARSseq|Jaitin et al|jaitin",
-    "tang": "Tang",
-    # "TruSeq":"TruSeq",
-    "splitseq": "SPLiT-seq",
-    "microwellseq": "Microwell-seq"
-}
-
-
-
-
-
-def get_default_config():
-    cp = ConfigParser()
-    cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
-    return cp
-
-
-def get_configstr(cp):
-    with io.StringIO() as ss:
-        cp.write(ss)
-        ss.seek(0)  # rewind
-        return ss.read()
-
+from scqc.common import *
 
 class RunUnavailableException(Exception):
     """ Thrown when Run in a Runset is unavailable.  """
@@ -248,6 +166,10 @@ class Query(object):
             self.log.debug(f'final samp_rows: {samp_rows}')
             self.log.debug(f'final exp_rows: {exp_rows}')
             self.log.debug(f'final run_rows: {run_rows}')
+            
+            # add data_source column
+            for rlist in [proj_rows, samp_rows, exp_rows, run_rows]:
+                add_rowlist_column(rlist, 'sra')
             
             # make dataframes
             pdf = pd.DataFrame(proj_rows, columns=PROJ_COLUMNS)
@@ -591,7 +513,7 @@ class Impute(object):
             idf = self.impute_tech_from_lcp(edf)    
             
             # gather manually-curated smartseq tech
-            ss_manual = pd.read_csv(f'{self.resourcedir}/smartseq_projs.tsv' , header=None)
+            ss_manual = load_df(f'{self.resourcedir}/smartseq_projs.tsv')
             ss_manual.columns = ['proj_id']
             if proj_id in ss_manual.proj_id.unique() :
                 # read the vdb dump data
@@ -607,7 +529,7 @@ class Impute(object):
                 idf.tech[idf.exp_id.isin(vdf.exp_id)] = 'smartseq'
             
             # gather manually-curated 10x tech            
-            tx_manual = pd.read_csv(f'{self.resourcedir}/tenx_projs.tsv' , header=None)
+            tx_manual = load_df(f'{self.resourcedir}/tenx_projs.tsv')
             tx_manual.columns = ['proj_id']
             if proj_id in tx_manual.proj_id.unique() :
                 vdf = load_df(f'{self.resourcedir}/vdb_dump.tsv')
@@ -646,7 +568,8 @@ class Impute(object):
             outdf = outdf.merge(bdf, on='run_id',how='inner')
             self.log.debug(f'batches inferred: \n{bdf}')
             # save to disk
-            outdf = outdf[['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon','batch']]
+            #outdf = outdf[['run_id' ,'tech_version','read1','read2','exp_id','samp_id','proj_id', 'taxon','batch']]
+            outdf = outdf[IMPUTE_COLUMNS]
             outdf.columns = IMPUTE_COLUMNS  # renames the columns from global 
             
             outdf = self._known_tech(outdf)
@@ -1115,14 +1038,23 @@ def get_runs_for_project(config, proj_id):
     """
     
     """
-    
     metadir = os.path.expanduser(config.get('sra', 'metadir'))
     filepath = f"{metadir}/runs.tsv"
     if os.path.isfile(filepath):
-        pdf = pd.read_csv(filepath, sep='\t', index_col=0)
+        pdf = load_df(filepath)
         return list(pdf[pdf.proj_id == proj_id].run_id)
     else:
         return []
+
+def parse_expidfile(expidfile):
+    pairs =  readlist(expidfile)
+    exps = []
+    projs = set()
+    for t in pairs:
+        (e,p) = t.split()
+        exps.append(e)
+        projs.add(p)
+    return(exps, projs)
 
 
 def query_project_metadata(project_id):
@@ -1159,6 +1091,7 @@ def query_project_metadata(project_id):
     r = requests.put(url, data=payload, headers=headers, stream=True)
     if r.status_code == 200:
         log.info('got good return. reading CSV to dataframe.')
+        #log.debug(r.content)
         with io.BytesIO(r.content) as imf:
             df = pd.read_csv(imf)
         log.debug(f'dataframe read from CSV.: {df}')

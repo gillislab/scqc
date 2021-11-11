@@ -5,6 +5,7 @@
 
 import argparse
 import glob
+import importlib
 import io
 import itertools
 import json
@@ -33,7 +34,8 @@ gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 
 from scqc.utils import *
-from scqc.sra import FasterqDump
+from scqc.common import *
+
 
 # inputs should be runs  identified as 'some10x'
 # .sra files should already downloaded.
@@ -87,22 +89,31 @@ class AlignReads(object):
         self.species = self.config.get('star', 'species')
         self.ncore_align = self.config.get('star', 'ncore_align')
         self.nocleanup = self.config.getboolean('star','nocleanup')
-
+        backstr = [ x.strip() for x in self.config.get('star','backends').split(',') ]    
+        self.backends = {}
+        for be in backstr:
+            self.backends[be] = importlib.import_module(f'scqc.{be}')
+        self.log.debug(f'STAR AlignReads initted. backends = {self.backends}')
+       
 
     def execute(self, proj_id):
         # get relevant metadata
         rdf = self._get_meta_data(proj_id)
         rdf = self._known_tech(rdf)
+        #bestr = rdf
         runlist  = list( rdf[ rdf.proj_id==proj_id ].run_id.unique() )
+        
         self.log.debug(f'initializing STAR alignment for {proj_id} {len(runlist)} inferred runs.')
+        self.log.debug(f'using backend={backend} for project id {proj_id}')
         # should contain proj_id if category applies
         done = None
         part = None
         seen = proj_id
         
         # bring in all fastqs possible to <tempdir>
-        self._stage_in(proj_id, runlist)
-        
+        backstr = 
+        self.log.debug(f'got backend {backstr} for project {proj_id} ')
+        self.backends[backstr].stage_in(proj_id, runlist)
         
         
         # Overall flags. 
@@ -158,6 +169,7 @@ class AlignReads(object):
         
         self.log.debug(f'{proj_id} final: done={done} part={part} seen={seen}')
         return (done, part, seen)
+
 
     def _known_tech(self, df):
         """
@@ -243,7 +255,7 @@ class AlignReads(object):
         '''
         example proj_id="SRP114926"
         '''
-        impute = pd.read_csv(f'{self.metadir}/impute.tsv',sep="\t" ,index_col=0)
+        impute = load_df(f'{self.metadir}/impute.tsv')
         # filter to include only requested project id
         impute = impute.loc[ impute.proj_id==proj_id ,:]
         # filter to include only requested species and only keep run ids

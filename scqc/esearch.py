@@ -29,6 +29,8 @@ from configparser import ConfigParser
 from requests.exceptions import ChunkedEncodingError
 from urllib import parse
 
+from scqc.utils import *
+from scqc.sra import *
 
 class SraSearch(object):
     
@@ -162,6 +164,9 @@ class SraSearch(object):
         return alluids
 
 
+
+
+
 class SearchCLI(object):
 
     def runsearch(self):
@@ -228,6 +233,18 @@ class SearchCLI(object):
                             default="'single cell','brain'",
                             help='comma-separated list of key words'
                             )
+
+        parser_runs = subparsers.add_parser('runs',
+                                                help='search command.')
+    
+        parser_runs.add_argument('-e', '--expid',
+                        metavar='expidfile',
+                        type=str,
+                        dest='expidfile',
+                        required=False,
+                        default=None,
+                        help='Experiment-project tuple file to get runs for. ')     
+
         
         args = parser.parse_args()
 
@@ -255,6 +272,20 @@ class SearchCLI(object):
                         
             s = SraSearch(self.cp, args.outfile, sps, stg, txt)
             s.run()
+
+        if args.subcommand == 'runs':
+            exps, prjs = parse_expidfile(args.expidfile)
+            logging.debug(f'exps len={len(exps)} proj len={len(prjs)}')
+            runset = set()
+            for p in prjs:
+                pdf = query_project_metadata(p)
+                logging.debug(pdf)
+                prs = list(pdf['Run'])
+                for r in prs:
+                    runset.add(r)
+            runlist = list(runset)
+            for run in runlist:
+                print(run)
 
         if args.uidquery is not None:
             qfile = args.uidquery
@@ -347,7 +378,7 @@ def query_project_metadata(project_id):
     if r.status_code == 200:
         log.info('got good return. reading CSV to dataframe.')
         with io.BytesIO(r.content) as imf:
-            df = pd.read_csv(imf)
+            df = load_df(imf)
         return df
 
     else:
