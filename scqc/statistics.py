@@ -208,7 +208,7 @@ class Statistics(object):
 
             print('running metamarkers')
             self.log.debug(f'assigning cell types using metamarkers for {proj_id}')
-            adata = self._run_MetaMarkers(h5file,adata)
+            adata = self._run_MetaMarkers(adata)
             self.log.debug(f'done with metamarkers for {proj_id} - saving to h5file')
     
             adata = self._get_metadata(proj_id, adata)
@@ -686,15 +686,14 @@ if __name__ == "__main__":
     else:
         q = Statistics(cp)
         proj_ids = [os.path.basename(f) for f in glob.glob('/home/johlee/scqc/cache/*RP*') ]
-        donelist = [os.path.basename(f).replace('.h5ad', '') for f in glob.glob('/home/johlee/scqc/output/*RP*.h5ad') ]
 
-        listdiff(proj_ids, donelist)
         for proj_id in np.random.choice(proj_ids,size = len(proj_ids), replace =False):
-            # proj_id = os.path.basename(proj_id).replace('.h5ad','')
 
+            donelist = [os.path.basename(f).replace('.h5ad', '') for f in glob.glob('/home/johlee/scqc/output/*RP*.h5ad') ]
+
+            listdiff(proj_ids, donelist)
             print(proj_id)
 
-            try:
+            if proj_id not in donelist:
                 q.execute(proj_id)
-            except:
-                pass
+            
