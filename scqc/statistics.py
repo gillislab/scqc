@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import scanpy as sc  
 from scipy.io import mmread
-from scipy.sparse import base
+# from scipy.sparse import base
 import matplotlib.pyplot as plt
 
 import seaborn as sns       # inputs as dataframes
@@ -26,12 +26,18 @@ from sklearn.metrics.pairwise import euclidean_distances
 # import matplotlib.cbook as cbook
 
 
+metamarker_path = os.path.expanduser("~/git/pyMetaMarkers")
+sys.path.append(metamarker_path)
+from MetaMarkers.annotation import *
+from MetaMarkers.aurocs import *
 
+
+sc.settings.verbosity = 4
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 from scqc.utils import *
 
-sc.settings.verbosity = 4
+
 
 
 LOGLEVELS = {
@@ -109,18 +115,18 @@ class Statistics(object):
 
         try:
             h5file = f'{self.outputdir}/{proj_id}.h5ad'
-            # solooutdirs = glob.glob(f'{self.cachedir}/{proj_id}/*Solo.out')
-            solooutdirs = glob.glob(f'/data/johlee/scqc/output/*Solo.out')
-            solooutdirs = [solooutdir for solooutdir in solooutdirs if proj_id.lower() in solooutdir.lower()]
+            solooutdirs = glob.glob(f'{self.cachedir}/{proj_id}/*Solo.out')
+            # solooutdirs = glob.glob(f'/data/johlee/scqc/output/*Solo.out')
+            # solooutdirs = [solooutdir for solooutdir in solooutdirs if proj_id.lower() in solooutdir.lower()]
             adatas = []   # loops through all star runs in the project
             for solooutdir in solooutdirs:
                 self.log.debug(f'opening {solooutdir}')
                 # open one soloutdir, store as adata. 
                 try:
                     tmpadata = self._parse_STAR_mtx(solooutdir)
-                    # adatas.append(tmpadata)
-                    print(f'savin {solooutdir} as h5ad')
-                    tmpadata.write_h5ad( f'{self.tempdir}2/{os.path.basename(solooutdir)}.h5ad')
+                    adatas.append(tmpadata)
+                    # print(f'savin {solooutdir} as h5ad')
+                    # tmpadata.write_h5ad( f'{self.tempdir}2/{os.path.basename(solooutdir)}.h5ad')
                 except : 
                     self.log.warn(f'File doesn`t exist : {solooutdir}')
             
@@ -158,22 +164,20 @@ class Statistics(object):
     
             self.log.debug(f'joining adatas for {proj_id}')
             adata = adatas[0].concatenate(adatas[1:], batch_categories = ids.id )
-            adata.write_h5ad(h5file)
+            # adata.write_h5ad(h5file)
             adatas  = None
             adata.obs.columns = ['cell_id','id']
             ind = adata.obs.index
             tmpdf = pd.merge(adata.obs, ids, on= 'id')   # include technology in obs.
             tmpdf.index = list(tmpdf.cell_id)
 
-            
+            # fill in missing run_ids with the cell_id. (typically smart seq experiments)
+            tmpdf.run_id[tmpdf.run_id.isnull()] = tmpdf.cell_id[tmpdf.run_id.isnull()]
 
+            
             adata.obs = tmpdf 
 
-
-            # fill in missing run_ids with the cell_id. (typically smart seq experiments)
-            adata.obs.run_id[adata.obs.run_id.isnull()] = adata.obs.cell_id[adata.obs.run_id.isnull()]
     
-            # get batch information
             # not available for biccn
             if 'u19_' in proj_id.lower():
                 rundf_biccn = load_df(f'{self.metadir}/biccn_runs.tsv')
@@ -185,20 +189,17 @@ class Statistics(object):
                 self.log.debug(f'getting batch info for {proj_id}')
                 impute = load_df(f'{self.metadir}/impute.tsv')
                 impute = impute.loc[impute.proj_id == proj_id,: ]
-                tmpdf =  pd.merge(adata.obs, impute,how ='left' )[['cell_id','run_id','exp_id', 'samp_id','proj_id','tech', 'batch' ]]
+                tmpdf =  pd.merge(adata.obs, impute,how ='left' )[['cell_id','run_id','exp_id', 'samp_id','proj_id','taxon','tech' ]]
+                tmpdf.index = tmpdf.cell_id
 
             
             tmpdf.index= ind
             adata.obs = tmpdf
     
-            adata.uns['tech_count'] = adata.obs.tech.value_counts()
-            adata.uns['tech_count' ]  = adata.uns['tech_count'].to_dict()
-
-            
-            adata.write_h5ad(h5file)
+            adata.uns['header_box'] = dict()
+            adata.uns['header_box']['tech_count'] = adata.obs.tech.value_counts().to_dict()
 
 
-            print('getting stats')
             adata = self._get_stats_scanpy(adata)
     
             adata.var.index.name = None
@@ -264,7 +265,7 @@ class Statistics(object):
         path = f'{solooutdir}/Gene/filtered'
 
         # mtx_files = os.listdir(path)
-        adata = sc.read_mtx(f'{path}/matrix.mtx').T
+        adata = sc.read_mtx(f'{path}/matrix.mtx',dtype='int64').T
 
         
         # geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype=str)
@@ -279,7 +280,7 @@ class Statistics(object):
             # "gene_accession", 'gene_symbol'], indicator=True)
         genenames.index = genenames.gene_accession
         genenames.index.name =None
-        cellids = pd.read_csv(f'{path}/barcodes.tsv', sep="\t", header=None)
+        cellids = pd.read_csv(f'{path}/barcodes.tsv', sep="\t", header=None,dtype=str)
         cellids.columns = ["cell_id"]
 
         cellids.index = cellids.cell_id
@@ -318,20 +319,17 @@ class Statistics(object):
 
         # consider different gene sets - ERCC  corresponds to spike ins
         adata.var['mt'] = adata.var.gene_symbol.str.startswith('mt-')   # 37 genes
-        # adata.var['ERCC'] = adata.var.gene_symbol.str.startswith('ERCC')
+
         geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype='str')
         geneinfo.columns = ['gene_accession', 'gene_symb','type_']
         tmpdf = pd.merge(adata.var, geneinfo, on = 'gene_accession',how = 'left')        
         tmpdf = tmpdf.fillna( 'None')
 
-        adata.var['type_'] = list(tmpdf['type_'])
+        adata.var['type_'] = tmpdf['type_'].values
         adata.var['ribo'] = (tmpdf['type_'] == "rRNA").values
         # adata.var['cytoplasm'] = None       # GO Term/kegg?
         # adata.var['metabolism'] = None      # GO Term/kegg?
         # adata.var['membrane'] = None        # GO Term/kegg?
-
-        qcvars = ['mt', 'ribo', 'female', 'male',
-                  'essential', 'cell_cycle','highly_variable','housekeeping']
 
         # get housekeeping genes    # 22 genes
         self.log.debug(f"gathering marker sets:")
@@ -342,12 +340,14 @@ class Statistics(object):
 
         # get gender markers  https://www.nature.com/articles/s41586-020-2536-x
         # just one gene - Xist
+        # include more? Sox3
         female_genes = pd.read_csv(self.female_genes, sep=",",dtype='str')
         self.log.debug(f"female:{female_genes}")
         adata.var['female'] = adata.var.gene_symbol.isin(
             female_genes.gene)
 
         # just one gene - Ddx3y
+        # Eif2s3y 
         male_genes = pd.read_csv(self.male_genes, sep=",",dtype='str')
         self.log.debug(f"male:{male_genes}")
         adata.var['male'] = adata.var.gene_symbol.isin(
@@ -363,29 +363,51 @@ class Statistics(object):
         cc = pd.read_csv(self.cell_cycle_genes, sep=",",dtype='str')
         cc.columns = ['cc_cluster','gene_symbol']
         self.log.debug(f"cc:{cc}")
-
-        # get the type of gene - pseudogene, rRNA, etc
         
         tmpdf = pd.merge(adata.var ,cc, how='left', left_on = 'gene_symbol',right_on = 'gene_symbol' )
         # tmpdf.drop('gene',axis=1)
         tmpdf.index = adata.var.index
         tmpdf.cc_cluster = tmpdf.cc_cluster.fillna('None')
-        adata.var = tmpdf
         
+        adata.var['cell_cycle'] = tmpdf.cc_cluster != 'None'
         
-        adata.var['cell_cycle'] = adata.var.cc_cluster != 'None'
-        for i in cc.cc_cluster.unique():
-            adata.var[f'cc_cluster_{i}'] = adata.var.cc_cluster == i 
-            qcvars.append(f'cc_cluster_{i}')
 
-        self.log.debug('calculating qc metrics')
-        sc.pp.calculate_qc_metrics(
-            adata,
-            expr_type='counts', var_type='genes',
-            percent_top=(50, 100, 200, 500), 
-            log1p = False,
-            inplace=True,
-            qc_vars=qcvars)
+        adata.var['total_counts'] = adata.X.sum(0)
+        adata.var['n_cells_by_counts'] = (adata.X>0).sum(0)
+
+
+
+        qcvars = ['mt', 'ribo', 'female', 'male',
+                  'essential', 'cell_cycle','highly_variable','housekeeping']
+
+        for i in [50,100,200,500]:
+            topind = np.argpartition(adata.var.total_counts, -i)[-i:].values
+            topgenes = adata.var.index[topind]
+            adata.var[f'top_{i}_gene'] =  False
+            adata.var.loc[topgenes,f'top_{i}_gene'] =True
+            qcvars.append(f'top_{i}_gene')
+
+
+        
+        
+        label_matrix = sparse.csc_matrix(adata.var[qcvars])
+        # TODO fix tie correction and set true
+        aurocs = compute_aurocs(adata.X, label_matrix,
+                index =adata.obs.cell_id, columns = qcvars ,
+                compute_tie_correction=False)
+        
+        # adata.var['cell_cycle'] = adata.var.cc_cluster != 'None'
+        # for i in cc.cc_cluster.unique():
+        #     adata.var[f'cc_cluster_{i}'] = adata.var.cc_cluster == i 
+        #     qcvars.append(f'cc_cluster_{i}')
+
+        # self.log.debug('calculating qc metrics')
+        # sc.pp.calculate_qc_metrics(
+        #     adata,
+        #     expr_type='counts', var_type='genes',
+        #     percent_top=(50, 100, 200, 500), 
+        #     log1p = False,
+        #     inplace=True)
 
         self.log.debug('calculating corrtomean') # using log1p counts
         # adata.obs['corr_to_mean'] = sparse_pairwise_corr(sparse.csr_matrix(adata.X.mean(0)) , adata.X).flatten()

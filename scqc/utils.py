@@ -20,6 +20,7 @@ numba_logger = logging.getLogger('numba')
 numba_logger.setLevel(logging.WARNING)
 
 
+
 class NonZeroReturnException(Exception):
     """
     Thrown when a command has non-zero return code. 
@@ -683,8 +684,6 @@ def get_configstr(cp):
         cp.write(ss)
         ss.seek(0)  # rewind
         return ss.read()
-
-
 
 
 def compare_barcode_to_whitelists(barcodes, 
