@@ -66,7 +66,7 @@ class NoTechnologyProjectException(Exception):
     """
 
 
-class AlignReads(object):
+class Analyze(object):
     '''
     Requires:
         - Set Up to be done first.
@@ -98,23 +98,23 @@ class AlignReads(object):
 
     def execute(self, proj_id):
         # get relevant metadata
-        rdf = self._get_meta_data(proj_id)
-        rdf = self._known_tech(rdf)
+        idf = self._get_meta_data(proj_id)
+        self.log.debug(f'got impute for proj:\n{idf}')
+        idf = self._known_tech(idf)
         #bestr = rdf
-        runlist  = list( rdf[ rdf.proj_id==proj_id ].run_id.unique() )
+        runlist  = list( idf[ idf.proj_id==proj_id ].run_id.unique() )
         
         self.log.debug(f'initializing STAR alignment for {proj_id} {len(runlist)} inferred runs.')
-        self.log.debug(f'using backend={backend} for project id {proj_id}')
         # should contain proj_id if category applies
         done = None
         part = None
         seen = proj_id
         
         # bring in all fastqs possible to <tempdir>
-        backstr = 
+        # get first data_source value for project id. (assuming all are same/correct)
+        backstr = idf[ idf.proj_id == proj_id].data_source.values[0]
         self.log.debug(f'got backend {backstr} for project {proj_id} ')
-        self.backends[backstr].stage_in(proj_id, runlist)
-        
+        self.backends[backstr].stage_in(self.cachedir, self.tempdir, runlist)
         
         # Overall flags. 
         somedone = False
@@ -122,7 +122,7 @@ class AlignReads(object):
         somefailed = False
             
         # split by technology and parses independently based on tech
-        for tech, df in rdf.groupby(by = "tech_version") :
+        for tech, df in idf.groupby(by = "tech_version") :
             try:
                 if tech =="smartseq":
                     # somedone, somefailed
@@ -218,6 +218,7 @@ class AlignReads(object):
 
         except Exception as ex:
             self.log.warning(f'smartseq run failed. ')
+            self.log.error(traceback.format_exc(None))
             return (False, False)
 
 
@@ -255,12 +256,13 @@ class AlignReads(object):
         '''
         example proj_id="SRP114926"
         '''
-        impute = load_df(f'{self.metadir}/impute.tsv')
+        idf = load_df(f'{self.metadir}/impute.tsv')
         # filter to include only requested project id
-        impute = impute.loc[ impute.proj_id==proj_id ,:]
+        proj_idf = idf[ idf.proj_id == proj_id]
+        #impute = impute.loc[ impute.proj_id==proj_id ,:]
         # filter to include only requested species and only keep run ids
-        impute = impute.loc[ impute.taxon == int(spec_to_taxon(self.species)) ,:].reset_index(drop=True)
-        return(impute)
+        #impute = impute.loc[ impute.taxon == int(spec_to_taxon(self.species)) ,:].reset_index(drop=True)
+        return(proj_idf)
 
 
     # smart seq scripts
@@ -283,8 +285,15 @@ class AlignReads(object):
         return(manipath, manifest)
 
 
-    def _run_star_smartseq(self, proj_id, manipath,gzipped= False):
-
+    def _run_star_smartseq(self, proj_id, manipath, gzipped= False):
+        
+        df = pd.read_csv(manipath, sep='\t')
+        df.columns = ['read1','read2','run_id']
+        fn = df['read1'][0]
+        if fn.endswith('gz'):
+            gzipped = True
+        self.log.debug(f'auto-detected gzipped files in manifest.')
+        
         ss_params = {"solo_type": "SmartSeq",
                      "soloUMIdedup": "Exact",
                      "soloStrand": "Unstranded"}
@@ -303,7 +312,8 @@ class AlignReads(object):
                '--outSAMtype', 'None']
 
         if gzipped : 
-            cmd +=  ['--readFilesCommand','zcat']
+            #cmd +=  ['--readFilesCommand','zcat']
+            cmd +=  ['--readFilesCommand','gunzip -c']            
             
         run_command(cmd)
         return(outfile_prefix)
