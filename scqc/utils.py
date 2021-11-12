@@ -561,7 +561,7 @@ def pairwise_minmax_corr(X,chunksize = 5000 ):
         A = X[i*chunksize : (i+1)*chunksize,:] 
         for j in range(i,nchunks):
             B = X[j*chunksize : (j+1)*chunksize ,:] 
-            logging.debug(f'working on: {i}/{j} of {nchunks}' )
+            logging.debug(f'working on: {i+1}/{j+1} of {nchunks}/{nchunks}' )
             current_corr = sparse_pairwise_corr(A,B )
 
             if i == j :

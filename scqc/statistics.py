@@ -165,7 +165,7 @@ class Statistics(object):
     
             self.log.debug(f'joining adatas for {proj_id}')
             adata = adatas[0].concatenate(adatas[1:], batch_categories = ids.id )
-            # adata.write_h5ad(h5file)
+            adata.write_h5ad(h5file)
             adatas  = None
             adata.obs.columns = ['cell_id','id']
             ind = adata.obs.index
@@ -198,7 +198,8 @@ class Statistics(object):
             adata.obs = tmpdf
     
             adata = self._get_stats_scanpy(adata)
-    
+            adata = self._get_metadata(proj_id, adata)
+
             adata.var.index.name = None
             self.log.debug(adata.obs)
             self.log.debug(adata.var)
@@ -211,7 +212,6 @@ class Statistics(object):
             adata = self._run_MetaMarkers(adata)
             self.log.debug(f'done with metamarkers for {proj_id} - saving to h5file')
     
-            adata = self._get_metadata(proj_id, adata)
             adata.write_h5ad(h5file)
             self.log.info(f'project {proj_id} done.')
             done = proj_id
@@ -320,7 +320,7 @@ class Statistics(object):
         geneinfo = pd.read_csv(f'{self.resourcedir}/{self.species}/geneInfo.tab', sep="\t",  skiprows=1, header=None, dtype='str')
         geneinfo.columns = ['gene_accession', 'gene_symb','type_']
         tmpdf = pd.merge(adata.var, geneinfo, on = 'gene_accession',how = 'left')        
-        tmpdf = tmpdf.fillna( 'None')
+        # tmpdf = tmpdf.fillna( 'None')
 
         adata.var['type_'] = tmpdf['type_'].values
         adata.var['ribo'] = (tmpdf['type_'] == "rRNA").values
@@ -494,6 +494,7 @@ class Statistics(object):
         subclass_scores_hier, subclass_enr_hier, subclass_assign_hier  =a.execute(
             adata, self.subclass_markerset, class_assign.predicted)
         
+        
         adata.uns['MetaMarkers'] = dict()
         adata.uns['MetaMarkers']['class_scores'] = class_scores
         adata.uns['MetaMarkers']['subclass_scores'] = subclass_scores
@@ -512,7 +513,7 @@ class Statistics(object):
         adata.uns['MetaMarkers']['subclass_PR_hier'] = MetaMarkers_PR(subclass_enr_hier, class_pred = class_assign)
 
 
-        return(adata)
+        return adata 
 
 
     def _get_metadata(self, proj_id, adata):
@@ -541,7 +542,8 @@ class Statistics(object):
         adata.uns['header_box']['n_runs'] = len(set(adata.obs.run_id))
         adata.uns['header_box']['n_exps'] = len(set(adata.obs.exp_id))
         adata.uns['header_box']['n_samp'] = len(set(adata.obs.samp_id))
-        
+        adata.uns['header_box']['publish_date'] = str(pd.to_datetime( rdf.publish_date ).mean())
+
         adata.uns['run_df'] = rdf
         adata.uns['exp_df'] = edf
         adata.uns['samp_df'] = sdf
