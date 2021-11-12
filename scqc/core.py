@@ -24,6 +24,19 @@ def get_default_config():
     cp.read(os.path.expanduser("~/git/scqc/etc/scqc.conf"))
     return cp
 
+def get_backend_for_proj(config, stage, proj_id):
+    """
+    
+    """
+    logging.debug(f'getting backend for stage {stage} for project {proj_id}')
+    metadir = config.get(stage, 'metadir')
+    projfile = f'{metadir}/projects.tsv'
+    pdf = load_df(projfile)
+    pdf = pdf[pdf.proj_id == proj_id]
+    bestr = pdf[ pdf.proj_id == proj_id].data_source.values[0]
+    logging.debug(f'got backend {bestr} for project {proj_id}')
+    return bestr
+
 
 class Stage(object):
     '''
@@ -204,7 +217,7 @@ class Query(Stage):
 
     def __init__(self, config):
         super(Query, self).__init__(config, 'query')
-        self.backend = self.config.get('query', 'backend')
+        self.backends = [ x.strip() for x in self.config.get('impute', 'backends').split(',') ]
         self.log.debug('super() ran. object initialized.')
 
     def execute(self, dolist):
@@ -244,7 +257,7 @@ class Query(Stage):
 
 class Impute(Stage):
     """
-    Stage takes in list of NCBI project ids. 
+    Stage takes in list of project IDs 
     Examines Library Construction Protocol, and where needed downloads first X kilobytes of run files to guess
     library technology. 
     
@@ -253,7 +266,11 @@ class Impute(Stage):
     """
     def __init__(self, config):
         super(Impute, self).__init__(config, 'impute')
-        self.backend = self.config.get('impute', 'backend')
+        backstr = [ x.strip() for x in self.config.get('impute','backends').split(',') ]    
+        self.backends = {}
+        for be in backstr:
+            self.log.debug(f'loading backend {be}...')
+            self.backends[be] = importlib.import_module(f'scqc.{be}')
         self.log.debug('super() ran. object initialized.')
 
     def execute(self, dolist):
@@ -266,13 +283,14 @@ class Impute(Stage):
         partlist = []
         seenlist = []
         
-        self.log.debug(f'importing backend {self.backend}')
-        be = importlib.import_module(f'scqc.{self.backend}')
+        #self.log.debug(f'importing backends {self.backend}')
+        #be = importlib.import_module(f'scqc.{self.backend}')
         
         
         for proj_id in dolist:
             self.log.debug(f'handling id {proj_id}...')
             try:
+                be = self.backends[ get_backend_for_proj(self.config, 'impute', proj_id)]
                 si = be.Impute(self.config)
                 (done, part, seen) = si.execute(proj_id)
                 self.log.debug(f'done with {proj_id}')
@@ -298,7 +316,7 @@ class Download(Stage):
     def __init__(self, config):
         super(Download, self).__init__(config, 'download')
         self.log.debug('super() ran. object initialized.')
-        self.backend = self.config.get('download', 'backend')
+        self.backends = [ x.strip() for x in self.config.get('impute', 'backends').split(',') ]
         self.max_downloads = int(self.config.get('download', 'max_downloads'))
         self.num_streams = int(self.config.get('download', 'num_streams'))
 
@@ -312,17 +330,14 @@ class Download(Stage):
         donelist = []
         partlist = []
         seenlist = []
-        
-        self.log.debug(f'importing backend {self.backend}')
-        be = importlib.import_module(f'scqc.{self.backend}')
-        
-        
-        for projectid in dolist:
-            self.log.debug(f'handling id {projectid}...')
+                
+        for proj_id in dolist:
+            self.log.debug(f'handling id {proj_id}...')
             try:
+                be = self.backends[ get_backend_for_proj(self.config, 'download', proj_id)]
                 sd = be.Download(self.config)
-                (done, part, seen) = sd.execute(projectid)
-                self.log.debug(f'done with {projectid}')
+                (done, part, seen) = sd.execute(proj_id)
+                self.log.debug(f'done with {proj_id}')
                 if done is not None:
                     donelist.append(done)
                 if part is not None:
@@ -330,7 +345,7 @@ class Download(Stage):
                 if seenlist is not None:
                     seenlist.append(seen)
             except Exception as ex:
-                self.log.warning(f"exception raised during project query: {projectid}")
+                self.log.warning(f"exception raised during project query: {proj_id}")
                 self.log.error(traceback.format_exc(None))
         self.log.debug(f"returning donelist len={len(donelist)} seenlist len={len(seenlist)}")
         return (donelist, partlist, seenlist)
@@ -343,7 +358,12 @@ class Analyze(Stage):
 
     def __init__(self, config):
         super(Analyze, self).__init__(config, 'analyze')
-        self.aligner = self.config.get('analyze', 'aligner')
+        backstr = [ x.strip() for x in self.config.get('analyze','backends').split(',') ]    
+        self.backends = {}
+        for be in backstr:
+            self.log.debug(f'loading backend {be}...')
+            self.backends[be] = importlib.import_module(f'scqc.{be}')
+        self.aligner = self.config.get('analyze','aligner')
         self.log.debug('super() ran. object initialized.')
 
     def execute(self, dolist):
@@ -359,12 +379,12 @@ class Analyze(Stage):
         self.log.debug(f'importing backend {self.aligner}')
         algn = importlib.import_module(f'scqc.{self.aligner}')       
         
-        for projectid in dolist:
-            self.log.debug(f'handling id {projectid}...')
+        for proj_id in dolist:
+            self.log.debug(f'handling project id {proj_id}...')
             try:
-                ar = algn.AlignReads(self.config)
-                (done, part, seen) = ar.execute(projectid)
-                self.log.debug(f'done with {projectid}')
+                ar = algn.Analyze(self.config)
+                (done, part, seen) = ar.execute(proj_id)
+                self.log.debug(f'done with {proj_id}')
                 if done is not None:
                     donelist.append(done)
                 if part is not None:
@@ -372,7 +392,7 @@ class Analyze(Stage):
                 if seenlist is not None:
                     seenlist.append(seen)
             except Exception as ex:
-                self.log.warning(f"exception raised during project query: {projectid}")
+                self.log.warning(f"exception raised during project query: {proj_id}")
                 self.log.error(traceback.format_exc(None))
         self.log.debug(f"returning donelist len={len(donelist)} seenlist len={len(seenlist)}")
         return (donelist, partlist, seenlist)

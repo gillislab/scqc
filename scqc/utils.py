@@ -88,7 +88,8 @@ def load_df(filepath):
     """
     Convenience method to load DF consistently accross modules. 
     """
-    df = pd.read_csv(filepath, sep='\t',index_col=0, keep_default_na=False,dtype =str, comment="#")
+    filepath = os.path.expanduser(filepath)
+    df = pd.read_csv(filepath, sep='\t',index_col=0, keep_default_na=False, dtype =str, comment="#")
     df.fillna(value='', inplace=True)
     df = df.astype('str', copy=False)
     return df
@@ -110,6 +111,7 @@ def merge_write_df(newdf, filepath,  mode=0o644):
     """
     log = logging.getLogger('utils')
     log.debug(f'inbound new df:\n{newdf}')
+    filepath = os.path.expanduser(filepath)
     if os.path.isfile(filepath):
         df = load_df(filepath)
         log.debug(f'read df:\n{df}')
@@ -343,12 +345,12 @@ def peek_tarball(tfile, subfile, numlines):
            f'-{numlines}'
            ]
     cmdstr = " ".join(cmd)
-    logging.info(f"command: {cmdstr} running...")
+    #logging.info(f"command: {cmdstr} running...")
     
     try:
         err, out, returncode = run_command_shell(cmd)
         out = out.decode()
-        logging.debug(f"got output:\n{out}")
+        #logging.debug(f"got output:\n{out}")
         return err, out, returncode
         
     except Exception as e:
@@ -411,7 +413,7 @@ def run_command_shell(cmd):
     
     """
     cmdstr = " ".join(cmd)
-    logging.info(f"running command: {cmdstr} ")
+    #logging.info(f"running command: {cmdstr} ")
     start = dt.datetime.now()
     cp = subprocess.run(" ".join(cmd), 
                     shell=True, 
@@ -423,15 +425,16 @@ def run_command_shell(cmd):
     #                stderr=subprocess.STDOUT)
     end = dt.datetime.now()
     elapsed =  end - start
-    logging.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {elapsed.seconds} seconds.")
+    #logging.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {elapsed.seconds} seconds.")
     
     if cp.stderr is not None:
-        logging.debug(f"got stderr: {cp.stderr}")
+        #logging.debug(f"got stderr: {cp.stderr}")
+        pass
     if cp.stdout is not None:
-        logging.debug(f"got stdout: {cp.stdout}")
-    
+        #logging.debug(f"got stdout: {cp.stdout}")
+        pass
     if str(cp.returncode) == '0':
-        logging.info(f'successfully ran {cmdstr}')
+        #logging.info(f'successfully ran {cmdstr}')
         return(cp.stderr, cp.stdout, cp.returncode)
     else:
         logging.error(f'non-zero return code for cmd {cmdstr}')

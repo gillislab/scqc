@@ -165,22 +165,39 @@ class Impute(object):
         +
         BB/<BF<FBFFFFFFFFFFFBFFFFFFFFFFBFFFFFBFFFFFFFFFFFF#
         """
-        self.log.debug(f'handling file_url: {file_url}')
+        #self.log.debug(f'handling file_url: {file_url}')
         o = urlparse(file_url)
         tbase = o.path.split('/')[-1:][0]
         tf = f"{self.cachedir}/nemo/{tbase}"
-        self.log.debug(f"handling tarfile {tf}")
+        #self.log.debug(f"handling tarfile {tf}")
         read1 = ''
         read2 = ''
         tech_version = self.scan_url_tech(o.path)
         to = tarfile.open(tf)
         subfiles = to.getnames()
-        for f in subfiles:
-            self.log.debug(f'handling subfile {f}')
-            (err, out, rc) = peek_tarball(tf, f, 3)
-            sline = out.split('\n')[1]
-            self.log.info(f'got line 2:\n{sline}')        
+        self.log.debug(f'got {len(subfiles)} files in tarfile...')
+        if (tech_version == 'smartseq') and (len(subfiles) == 2):
+            self.log.debug('handling smartseq...')
+            read1 = subfiles[0]
+            read2 = subfiles[1]
+        elif ('10x' in tech_version) and (len(subfiles) < 4):
+            self.log.debug('handling 10x...')
+            for f in subfiles:
+                #self.log.debug(f'handling subfile {f}')
+                (err, out, rc) = peek_tarball(tf, f, 3)
+                sline = out.split('\n')[1]
+                self.log.info(f'got line 2:\n{sline}')
+                if len(line) > 23 and len(line) < 29 :
+                    # technical read -> read2
+                    read2 = f
+                elif len(line) > 30:
+                    # biological read -> read1 
+                    read1 = f
+        else:
+            self.log.warning(f'wrong/no tech or unsupported number of files. ')                
+        self.log.debug(f'tech_version = {tech_version} read1={read1} read2={read2}')
         return read1, read2, tech_version
+
 
     def scan_url_tech(self, path):
         """
@@ -193,10 +210,27 @@ class Impute(object):
         tech = ''
         for k in NEMO_URL_TECH_MAP.keys():
             if k in path:
-                self.log.debug(f"found {k} in {path}, returning tech={NEMO_URL_TECH_MAP[k]}")
+                #self.log.debug(f"found {k} in {path}, returning tech={NEMO_URL_TECH_MAP[k]}")
                 return NEMO_URL_TECH_MAP[k]
         return tech
+
+
+
+
+def stage_in(cachedir, tempdir, runlist):
+    """
     
+    """
+    logging.debug(f'handling runlist w/ {len(runlist)} tarfiles...')
+    for tf in runlist:
+        fpath = f"{cachedir}/nemo/{tf}.fastq.tar"
+        to = tarfile.open(fpath)
+        subfiles = to.getnames()
+        for f in subfiles:
+            logging.debug(f'extracting {f} to {tempdir}')
+            to.extract(f, path=tempdir)
+    logging.debug(f'done extracting files.')
+
 
 def setup(config):
     '''

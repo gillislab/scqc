@@ -12,7 +12,6 @@ from scqc.utils import *
 
 logging.getLogger().setLevel(logging.DEBUG)
 
-
 # Query all 
 q = Query(get_default_config())
 q.tempdir = '/data/johlee/cross_mammal_xci/temp'
