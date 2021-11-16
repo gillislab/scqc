@@ -129,7 +129,7 @@ class Statistics(object):
                     # print(f'savin {solooutdir} as h5ad')
                     # tmpadata.write_h5ad( f'{self.tempdir}2/{os.path.basename(solooutdir)}.h5ad')
                 except : 
-                    self.log.warn(f'File doesn`t exist : {solooutdir}')
+                    self.log.warn(f'Issue with parsing: {solooutdir}')
             
 
     
@@ -181,11 +181,11 @@ class Statistics(object):
     
             # not available for biccn
             if 'u19_' in proj_id.lower():
-                rundf_biccn = load_df(f'{self.metadir}/biccn_runs.tsv')
-                rundf_biccn = rundf_biccn.loc[rundf_biccn.run_id.isin(adata.obs.run_id), ['run_id','exp_id','samp_id'] ].reset_index(drop=True)
+                rundf_biccn = load_df(f'{self.metadir}/runs.tsv')
+                rundf_biccn = rundf_biccn.loc[rundf_biccn.proj_id.str.lower.str.contains(proj_id), ['run_id','exp_id','samp_id'] ].reset_index(drop=True)
 
                 tmpdf =  pd.merge(adata.obs, rundf_biccn ,on='run_id',how ='left')[['cell_id','run_id','exp_id', 'samp_id','proj_id','tech' ]]
-                tmpdf['batch'] = '0'
+                # tmpdf['batch'] = '0'
             else:
                 self.log.debug(f'getting batch info for {proj_id}')
                 impute = load_df(f'{self.metadir}/impute.tsv')
@@ -371,6 +371,8 @@ class Statistics(object):
 
         adata.var['total_counts'] = adata.X.sum(0).flat
         adata.var['n_cells_by_counts'] = (adata.X>0).sum(0).flat
+        adata.obs['total_counts'] = adata.X.sum(1).flat
+        adata.obs['n_genes_by_counts'] = (adata.X>0).sum(1).flat
 
 
 
@@ -698,4 +700,6 @@ if __name__ == "__main__":
 
             if proj_id not in donelist:
                 q.execute(proj_id)
-            
+
+# issues with...            
+# SRP187985 ; SRP293579
