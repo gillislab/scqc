@@ -89,6 +89,7 @@ class Analyze(object):
         self.species = self.config.get('star', 'species')
         self.ncore_align = self.config.get('star', 'ncore_align')
         self.nocleanup = self.config.getboolean('star','nocleanup')
+        self.force = self.config.getboolean('star','force')
         backstr = [ x.strip() for x in self.config.get('star','backends').split(',') ]    
         self.backends = {}
         for be in backstr:
@@ -524,8 +525,8 @@ def setup(config, overwrite=False):
             pass
 
     get_whitelists(config, overwrite)
-    get_genome_data(config, overwrite)
-    build_genome_indices(config, overwrite)
+    #get_genome_data(config, overwrite)
+    #build_genome_indices(config, overwrite)
 
 
 def get_whitelists(config,force=False):

@@ -398,7 +398,8 @@ class Analyze(Stage):
         return (donelist, partlist, seenlist)
 
     def setup(self):
-        star.setup(self.config)
+        algn = importlib.import_module(f'scqc.{self.aligner}')
+        algn.setup(self.config)
 
 
 class Statistics(Stage):
