@@ -449,7 +449,7 @@ def string_modulo(instring, divisor):
     """
     encoded = instring.encode('utf-8')
     hstring = encoded.hex()
-    intval = int(hstring)
+    intval = int(hstring, 16)
     return intval % divisor
 
 def modulo_filter(inlist, divisor, remainder):
