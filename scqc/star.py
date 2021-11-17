@@ -230,6 +230,7 @@ class Analyze(object):
         somedone = False
         somefailed = False
         df.reset_index()
+        self.log.debug(f'df=\n{df} shape={df.shape}')
         for row in range(df.shape[0]):
             try:
                 run_id = df.run_id[row]
