@@ -237,7 +237,11 @@ class Analyze(object):
                 read1 = f'{self.tempdir}/{df.read1[row]}' # biological cDNA
                 read2 = f'{self.tempdir}/{df.read2[row]}' # technical CBarcode + UMI
                 # saves to disk
-                outfile_prefix = self._run_star_10x(run_id, tech, read1, read2)
+                gzipped = False
+                if read1.endswith('.gz'):
+                    gzipped = True 
+                    
+                outfile_prefix = self._run_star_10x(run_id, tech, read1, read2, gzipped)
                 self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id} and {run_id}')
                 self._stage_out(proj_id, outfile_prefix)
                 somedone = True
