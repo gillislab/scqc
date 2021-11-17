@@ -1,5 +1,3 @@
-
-
 # install conda
 wget https://repo.anaconda.com/miniconda/Miniconda3-py39_4.9.2-Linux-x86_64.sh
 bash Miniconda3-py39_4.9.2-Linux-x86_64.sh
@@ -10,7 +8,6 @@ bash Miniconda3-py39_4.9.2-Linux-x86_64.sh
 # to create conda from yml file. Otherwise, skip and install manually
 # conda env create --file scqc.yml
 
-
 conda create -n scqc python=3.8
 conda activate scqc
 
@@ -20,14 +17,28 @@ conda config --add channels conda-forge
 # update conda if necessary
 conda update -n base -c defaults conda
 
-conda install pandas ipython  
-conda install  requests scipy wget 
-conda install bottleneck tbb
+conda install pandas ipython requests scipy wget bottleneck tbb
 conda install -c bioconda star
-conda install -c conda-forge leidenalg
-conda install -c conda-forge scanpy
-conda install -c conda-forge scikit-misc
+conda install -c conda-forge leidenalg scanpy scikit-misc
 
+#download sratoolkit, link binaries within conda environment
+cd  $CONDA_PREFIX
+
+# linux/centos
+wget https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/2.11.0/sratoolkit.2.11.0-centos_linux64.tar.gz
+tar -xvzf sratoolkit.2.11.0-centos_linux64.tar.gz
+cd bin ; ln -s ../sratoolkit.2.11.0-centos_linux64/bin/* ./
+
+# macos
+# wget https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/2.11.0/sratoolkit.2.11.0-mac64.tar.gz
+# tar -xvzf sratoolkit.2.11.0-mac64.tar.gz
+# cd bin
+#ln -s ../sratoolkit.2.11.0-mac64/bin/* ./
+
+
+
+#  R no longer needed....
+#
 # install R and dependencies on conda
 #conda config --set channel_priority strict
 # required for R 4.0
@@ -49,20 +60,7 @@ conda install -c conda-forge scikit-misc
 #R -e "devtools::install_github('gillislab/MetaMarkers')"
 
 
-#download sratoolkit, link binaries within conda environment
-cd  $CONDA_PREFIX
 
-# linux/centos
-wget https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/2.11.0/sratoolkit.2.11.0-centos_linux64.tar.gz
-tar -xvzf sratoolkit.2.11.0-centos_linux64.tar.gz
-cd bin
-ln -s ../sratoolkit.2.11.0-centos_linux64/bin/* ./
-
-# macos
-# wget https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/2.11.0/sratoolkit.2.11.0-mac64.tar.gz
-# tar -xvzf sratoolkit.2.11.0-mac64.tar.gz
-# cd bin
-#ln -s ../sratoolkit.2.11.0-mac64/bin/* ./
 
 
 

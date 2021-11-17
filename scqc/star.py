@@ -525,8 +525,8 @@ def setup(config, overwrite=False):
             pass
 
     get_whitelists(config, overwrite)
-    #get_genome_data(config, overwrite)
-    #build_genome_indices(config, overwrite)
+    get_genome_data(config, overwrite)
+    build_genome_indices(config, overwrite)
 
 
 def get_whitelists(config,force=False):

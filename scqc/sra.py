@@ -78,6 +78,23 @@ def setup(config):
             pass
 
 
+def stage_in(cachedir, tempdir, runlist):
+    """
+    
+    """
+    logging.debug(f'handling runlist w/ {len(runlist)} tarfiles...')
+    for tf in runlist:
+        fpath = f"{cachedir}/sra/{tf}.fastq.tar"
+        to = tarfile.open(fpath)
+        subfiles = to.getnames()
+        for f in subfiles:
+            logging.debug(f'extracting {f} to {tempdir}')
+            to.extract(f, path=tempdir)
+    logging.debug(f'done extracting files.')
+
+
+
+
 # To do: batch for large queries.
 # Ideally, we'd query once for all current data, (one large query)
 # then periodically query every few days (many smaller queries)
