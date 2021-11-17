@@ -320,8 +320,8 @@ class Analyze(object):
                '--outSAMtype', 'None']
 
         if gzipped : 
-            #cmd +=  ['--readFilesCommand','zcat']
-            cmd +=  ['--readFilesCommand','gunzip -c']            
+            cmd +=  ['--readFilesCommand','zcat']
+            #cmd +=  ['--readFilesCommand','gunzip -c']            
             
         run_command(cmd)
         return(outfile_prefix)
