@@ -11,7 +11,6 @@ sys.path.append(gitpath)
 from scqc.utils import *
 from scqc.nemo import *
 
-
 def make_dfs(manifest, metadata, prefix):
     
     rdf, edf, sdf, pdf =  parse_files(manifest=args.manifest, 

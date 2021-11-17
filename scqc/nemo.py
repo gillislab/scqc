@@ -60,7 +60,7 @@ class Impute(object):
             idf['read1'] = ''
             idf['read2'] = ''
             idf['batch'] = '' 
-            idf['data_source'] = 'nemo'
+            #idf['data_source'] = 'nemo'
                                  
             # impute 10x version
             idf = idf[IMPUTE_COLUMNS]
@@ -188,10 +188,10 @@ class Impute(object):
                 (err, out, rc) = peek_tarball(tf, f, 3)
                 sline = out.split('\n')[1]
                 self.log.info(f'got line 2:\n{sline}')
-                if len(line) > 23 and len(line) < 29 :
+                if len(sline) > 23 and len(sline) < 29 :
                     # technical read -> read2
                     read2 = f
-                elif len(line) > 30:
+                elif len(sline) > 30:
                     # biological read -> read1 
                     read1 = f
         else:
