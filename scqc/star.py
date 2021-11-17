@@ -115,7 +115,7 @@ class Analyze(object):
         # get first data_source value for project id. (assuming all are same/correct)
         backstr = idf[ idf.proj_id == proj_id].data_source.values[0]
         self.log.debug(f'got backend {backstr} for project {proj_id} ')
-        self.backends[backstr].stage_in(self.cachedir, self.tempdir, runlist)
+        self.backends[backstr].stage_in(self.cachedir, self.tempdir, runlist, self.force)
         
         # Overall flags. 
         somedone = False
@@ -229,8 +229,8 @@ class Analyze(object):
         partial = False
         somedone = False
         somefailed = False
-        df.reset_index()
-        self.log.debug(f'df=\n{df} shape={df.shape}')
+        df.reset_index(inplace=True)
+        self.log.debug(f'df=\n{df}\nshape={df.shape}')
         for row in range(df.shape[0]):
             try:
                 run_id = df.run_id[row]
