@@ -60,6 +60,7 @@ class Impute(object):
             idf['read1'] = ''
             idf['read2'] = ''
             idf['batch'] = '' 
+            idf['data_source'] = 'nemo'
                                  
             # impute 10x version
             idf = idf[IMPUTE_COLUMNS]
@@ -213,9 +214,6 @@ class Impute(object):
                 #self.log.debug(f"found {k} in {path}, returning tech={NEMO_URL_TECH_MAP[k]}")
                 return NEMO_URL_TECH_MAP[k]
         return tech
-
-
-
 
 def stage_in(cachedir, tempdir, runlist):
     """
