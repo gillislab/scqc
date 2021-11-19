@@ -113,8 +113,7 @@ class AlignBICCN(object) :
                                 bio_readpath = cDNAs, tech_readpath=barcodes , gzipped=True)
                         except:
                             self.log.warning(f'UNABLE TO RUN STAR FOR {run_id}')
-
-                        
+                
                         # if not self.nocleanup : 
                         #     for fq in ulfastqs: 
                         #         os.remove(fq) 
@@ -227,11 +226,9 @@ class AlignBICCN(object) :
     def get_read_length(self, gzpath):
         if os.path.isfile(gzpath):
             z_head = subprocess.Popen( f'zcat {gzpath} | head',
-                stdout=subprocess.PIPE, shell=True ).communicate()
-            
+                stdout=subprocess.PIPE, shell=True ).communicate()           
             stdout = z_head[0].decode().split('\n')
             l = len(stdout[1])
-
             return(l)
 
 

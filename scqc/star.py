@@ -90,6 +90,7 @@ class Analyze(object):
         self.ncore_align = self.config.get('star', 'ncore_align')
         self.nocleanup = self.config.getboolean('star','nocleanup')
         self.force = self.config.getboolean('star','force')
+        self.unzip = self.config.get('star','unzip')
         backstr = [ x.strip() for x in self.config.get('star','backends').split(',') ]    
         self.backends = {}
         for be in backstr:
@@ -99,13 +100,11 @@ class Analyze(object):
 
     def execute(self, proj_id):
         # get relevant metadata
-        idf = self._get_meta_data(proj_id)
+        proj_idf = self._get_meta_data(proj_id)
         self.log.debug(f'got impute for proj:\n{idf}')
-        idf = self._known_tech(idf)
-        #bestr = rdf
-        runlist  = list( idf[ idf.proj_id==proj_id ].run_id.unique() )
-        
-        self.log.debug(f'initializing STAR alignment for {proj_id} {len(runlist)} inferred runs.')
+        proj_idf = self._known_tech(proj_idf)
+        runlist  = list( proj_idf[ proj_idf.proj_id==proj_id ].run_id.unique() )
+        self.log.debug(f'initializing STAR alignment for {proj_id} {len(runlist)} runs with known tech.')
         # should contain proj_id if category applies
         done = None
         part = None
@@ -122,7 +121,7 @@ class Analyze(object):
         partial = False
         somefailed = False
             
-        # split by technology and parses independently based on tech
+        # split by technology and parse independently based on tech
         
         for tech, df in idf.groupby(by = "tech_version") :
             self.log.debug(f'handling df=\n{df} with tech {tech}')
@@ -185,30 +184,12 @@ class Analyze(object):
         return retdf
 
 
-    def _stage_in(self, proj_id, runlist):
-        """
-        bring in fastq files to <tempdir> for all exp_ids in this project.
-        throws FasterqFailureException if there is a problem. 
-        
-        """
-        runlength = len(runlist)
-        i = 0
-        for run_id in runlist:
-            i += 1
-            fqd = FasterqDump(self.config, run_id)
-            rc = fqd.execute()
-            if str(rc)!= '0':
-                raise FasterqFailureException(f'runid {run_id}')
-            else:
-                self.log.info(f'runid {run_id}  [{i}/{runlength}] handled successfully.')
-        self.log.info(f'successfully extracted fastqs for all {runlength} runs in project {proj_id}.') 
-        return runlist
         
 
 
     def _handle_smartseq(self, proj_id, df):
         # build the manifest
-        df = df.reset_index()
+        df.reset_index(inplace=True, drop=True)
         (manipath, manifest) = self._make_manifest(proj_id, df) 
         # run star
         self.log.debug(f'Starting smartseq alignment for {proj_id}')
@@ -226,31 +207,51 @@ class Analyze(object):
 
 
     def _handle_10x(self, proj_id, tech, df):
+        """
+        For 10x, detect lanes. check read lengths, and trigger star run...
+        Each invocation has unique tech (10xv2 or 10xv3)
+        #for row in range(df.shape[0]):
+        """
         partial = False
         somedone = False
         somefailed = False
-        df.reset_index(inplace=True)
+        
+        df.reset_index(inplace=True, drop=True)
         self.log.debug(f'df=\n{df}\nshape={df.shape}')
-        for row in range(df.shape[0]):
+        
+        df['prefix'] = df.apply(apply_striplane, axis=1)             
+        for prefix, df in idf.groupby(by = "prefix") :
+            self.log.debug(f'starting {tech} processing for {prefix}')                
             try:
-                run_id = df.run_id[row]
-                read1 = f'{self.tempdir}/{df.read1[row]}' # biological cDNA
-                read2 = f'{self.tempdir}/{df.read2[row]}' # technical CBarcode + UMI
-                # saves to disk
+                barcodes = []
+                cdnas = []
                 gzipped = False
-                if read1.endswith('.gz'):
-                    gzipped = True 
-                    
-                outfile_prefix = self._run_star_10x(run_id, tech, read1, read2, gzipped)
-                self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id} and {run_id}')
-                self._stage_out(proj_id, outfile_prefix)
-                somedone = True
+                if len(df) > 1:
+                    self.log.info(f'handling multiple lanes for prefix={prefix}')
+                for row in df.iterrows():
+                    read1 = f'{self.tempdir}/{row.read1}' # biological cDNA
+                    read2 = f'{self.tempdir}/{row.read2}' # technical CBarcode + UMI
+                    if read1.endswith('.gz'):
+                        gzipped = True 
+                if len(cDNAs)  == len(barcodes):
+                    barcodes = ','.join(barcodes)
+                    cdnas = ','.join(cdnas)                        
+                    outfile_prefix = self._run_star_10x(prefix, tech, read1, read2, gzipped)
+                    self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id} and {prefix}')
+                    self._stage_out(proj_id, outfile_prefix)
+                    somedone = True
             
             except Exception as ex:
-                self.log.warning(f'Problem with run_id {run_id}.')
+                self.log.warning(f'Problem with run_id {prefix}.')
                 somefailed = True
-        
+        self.log.info(f'completed handling for project {proj_id} tech={tech}')
         return( somedone, somefailed )
+
+
+def apply_striplane(row):
+    """ 
+    """
+    return re.sub('_L00[0-9]','',row['run_id'])
 
     # run|tech|read1|read2|exp|samp|proj|taxon|batch  dataframe in impute. 
     #       taxon to filter
@@ -381,7 +382,7 @@ class Analyze(object):
                 '--readFilesIn', bio_readpath, tech_readpath,
                 '--outSAMtype', 'None']
         if gzipped :
-            cmd += ['--readFilesCommand','zcat']
+            cmd += ['--readFilesCommand',f'{self.unzip}']
         run_command(cmd)
         return(outfile_prefix)
 
