@@ -84,7 +84,7 @@ def setup(config):
             pass
 
 
-def stage_in(cachedir, tempdir, runlist, force=True):
+def stage_in(config, cachedir, tempdir, runlist, force=True):
     """
     bring in fastq files to <tempdir> for all run_ids in this project.
     
@@ -94,7 +94,7 @@ def stage_in(cachedir, tempdir, runlist, force=True):
     runlen = len(runlist)
     logging.debug(f'handling runlist w/ {runlen} runs...')
     for i, run_id in enumerate(runlist):
-        fqd = FasterqDump(self.config, run_id)
+        fqd = FasterqDump(config, run_id)
         rc = fqd.execute()
         if str(rc)!= '0':
             raise FasterqFailureException(f'runid {run_id}')

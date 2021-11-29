@@ -110,7 +110,7 @@ class Analyze(object):
         # get first data_source value for project id. (assuming all are same/correct)
         backstr = proj_idf[ proj_idf.proj_id == proj_id].data_source.values[0]
         self.log.debug(f'got backend {backstr} for project {proj_id} ')
-        self.backends[backstr].stage_in(self.cachedir, self.tempdir, runlist, self.force)
+        self.backends[backstr].stage_in(self.config, self.cachedir, self.tempdir, runlist, self.force)
         
         # Overall flags. 
         somedone = False

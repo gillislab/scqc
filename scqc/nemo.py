@@ -215,7 +215,7 @@ class Impute(object):
                 return NEMO_URL_TECH_MAP[k]
         return tech
 
-def stage_in(cachedir, tempdir, runlist, force=True):
+def stage_in(config, cachedir, tempdir, runlist, force=True):
     """
     
     """
