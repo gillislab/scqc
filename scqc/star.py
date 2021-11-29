@@ -101,7 +101,7 @@ class Analyze(object):
     def execute(self, proj_id):
         # get relevant metadata
         proj_idf = self._get_meta_data(proj_id)
-        self.log.debug(f'got impute for proj:\n{idf}')
+        self.log.debug(f'got impute for proj:\n{proj_idf}')
         proj_idf = self._known_tech(proj_idf)
         runlist  = list( proj_idf[ proj_idf.proj_id==proj_id ].run_id.unique() )
         self.log.debug(f'initializing STAR alignment for {proj_id} {len(runlist)} runs with known tech.')
