@@ -221,7 +221,7 @@ class Analyze(object):
                 gzipped = False
                 for row in tdf.iterrows():
                     self.log.debug(f'row is {row}')
-                    read1 = f"{self.tempdir}/{row['read'1]}" # biological cDNA
+                    read1 = f"{self.tempdir}/{row['read1']}" # biological cDNA
                     read2 = f"{self.tempdir}/{row['read2']}" # technical CBarcode + UMI
                     cdnas.append(read1)
                     barcodes.append(read2)
