@@ -183,8 +183,7 @@ class Analyze(object):
         self.log.debug(f'filter by known tech. outlength={len(retdf)}')        
         return retdf
 
-
-        
+      
 
 
     def _handle_smartseq(self, proj_id, df):
@@ -248,10 +247,6 @@ class Analyze(object):
         return( somedone, somefailed )
 
 
-def apply_striplane(row):
-    """ 
-    """
-    return re.sub('_L00[0-9]','',row['run_id'])
 
     # run|tech|read1|read2|exp|samp|proj|taxon|batch  dataframe in impute. 
     #       taxon to filter
@@ -509,6 +504,11 @@ def apply_striplane(row):
             for fqfile in glob.glob(f'{self.tempdir}/{run_id}*.fastq'):
                 os.remove(fqfile)
                 self.log.debug(f'removed tempfile: {fqfile}')
+
+def apply_striplane(row):
+    """ 
+    """
+    return re.sub('_L00[0-9]','',row['run_id'])
         
 
 ### setup scripts
