@@ -219,16 +219,18 @@ def stage_in(cachedir, tempdir, runlist, force=True):
     """
     
     """
-    logging.debug(f'handling runlist w/ {len(runlist)} tarfiles...')
-    for tf in runlist:
+    runlen = len(runlist)
+    logging.debug(f'handling runlist w/ {runlen} tarfiles...')
+
+    for i, tf in runlist.enumerate():
         fpath = f"{cachedir}/nemo/{tf}.fastq.tar"
         to = tarfile.open(fpath)
         subfiles = to.getnames()
         for f in subfiles:
             if os.path.exists(f'{tempdir}/{f}') and not force:
-                logging.debug(f'path {tempdir}/{f} exists and force is not set. Skipping.')
+                logging.debug(f'[{i}/{runlen}] path {tempdir}/{f} exists and force is not set. Skipping.')
             else:
-                logging.debug(f'extracting {f} to {tempdir}')
+                logging.debug(f'[{i}/{runlen}] extracting {f} to {tempdir}')
                 to.extract(f, path=tempdir)
     logging.debug(f'done extracting files.')
 

@@ -49,10 +49,6 @@ class UnsupportedTechnologyException(Exception):
     """
     Thrown when run technology is neither 10x nor SmartSeq
     """
-class FasterqFailureException(Exception):
-    """
-    Thrown when run technology is neither 10x nor SmartSeq
-    """
 
 class NonZeroReturnException(Exception):
     """

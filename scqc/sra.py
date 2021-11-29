@@ -35,6 +35,9 @@ gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 from scqc.utils import *
 from scqc.common import *
+from scqc.sra import FasterqDump
+
+
 
 class RunUnavailableException(Exception):
     """ Thrown when Run in a Runset is unavailable.  """
@@ -45,6 +48,12 @@ class SampleUnavailableException(Exception):
 
 class MissingReadsException(Exception):
     """ Thrown when Run is lacking one or more reads.  """
+
+class FasterqFailureException(Exception):
+    """
+    Thrown when run technology is neither 10x nor SmartSeq
+    """
+
 
 
 def setup(config):
@@ -78,20 +87,43 @@ def setup(config):
             pass
 
 
-def stage_in(cachedir, tempdir, runlist):
+def stage_in(cachedir, tempdir, runlist, force=True):
     """
+    bring in fastq files to <tempdir> for all run_ids in this project.
+    
+    throws FasterqFailureException if there is a problem. 
     
     """
-    logging.debug(f'handling runlist w/ {len(runlist)} tarfiles...')
-    for tf in runlist:
-        fpath = f"{cachedir}/sra/{tf}.fastq.tar"
-        to = tarfile.open(fpath)
-        subfiles = to.getnames()
-        for f in subfiles:
-            logging.debug(f'extracting {f} to {tempdir}')
-            to.extract(f, path=tempdir)
+    runlen = len(runlist)
+    logging.debug(f'handling runlist w/ {runlen} runs...')
+    for i, run_id in runlist.enumerate():
+        fqd = FasterqDump(self.config, run_id)
+        rc = fqd.execute()
+        if str(rc)!= '0':
+            raise FasterqFailureException(f'runid {run_id}')
+        else:
+            self.log.info(f'[{i}/{runlen}] runid {run_id} handled successfully.')
     logging.debug(f'done extracting files.')
 
+def old_stage_in(self, proj_id, runlist):
+    """
+    bring in fastq files to <tempdir> for all run_ids in this project.
+    
+    throws FasterqFailureException if there is a problem. 
+    
+    """
+    runlength = len(runlist)
+    i = 0
+    for run_id in runlist:
+        i += 1
+        fqd = FasterqDump(self.config, run_id)
+        rc = fqd.execute()
+        if str(rc)!= '0':
+            raise FasterqFailureException(f'runid {run_id}')
+        else:
+            self.log.info(f'runid {run_id}  [{i}/{runlength}] handled successfully.')
+    self.log.info(f'successfully extracted fastqs for all {runlength} runs in project {proj_id}.')
+    return runlist
 
 
 
