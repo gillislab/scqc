@@ -119,7 +119,7 @@ class Analyze(object):
             
         # split by technology and parse independently based on tech
         
-        for tech, df in idf.groupby(by = "tech_version") :
+        for tech, df in proj_idf.groupby(by = "tech_version") :
             self.log.debug(f'handling df=\n{df} with tech {tech}')
             try:
                 if tech =="smartseq":
