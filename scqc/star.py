@@ -179,8 +179,6 @@ class Analyze(object):
         self.log.debug(f'filter by known tech. outlength={len(retdf)}')        
         return retdf
 
-      
-
 
     def _handle_smartseq(self, proj_id, df):
         # build the manifest
@@ -247,7 +245,9 @@ class Analyze(object):
             
             except Exception as ex:
                 self.log.warning(f'Problem with run_id {prefix}.')
+                self.log.error(traceback.format_exc(None))
                 somefailed = True
+        
         self.log.info(f'completed handling for project {proj_id} tech={tech}')
         return( somedone, somefailed )
 
