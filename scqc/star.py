@@ -215,15 +215,15 @@ class Analyze(object):
         self.log.debug(f'df=\n{df}\nshape={df.shape}')
         
         df['prefix'] = df.apply(apply_striplane, axis=1)             
-        for prefix, df in idf.groupby(by = "prefix") :
+        for prefix, tdf in df.groupby(by = "prefix") :
             self.log.debug(f'starting {tech} processing for {prefix}')                
             try:
                 barcodes = []
                 cdnas = []
                 gzipped = False
-                if len(df) > 1:
+                if len(tdf) > 1:
                     self.log.info(f'handling multiple lanes for prefix={prefix}')
-                for row in df.iterrows():
+                for row in tdf.iterrows():
                     read1 = f'{self.tempdir}/{row.read1}' # biological cDNA
                     read2 = f'{self.tempdir}/{row.read2}' # technical CBarcode + UMI
                     if read1.endswith('.gz'):
