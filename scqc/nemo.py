@@ -222,7 +222,7 @@ def stage_in(cachedir, tempdir, runlist, force=True):
     runlen = len(runlist)
     logging.debug(f'handling runlist w/ {runlen} tarfiles...')
 
-    for i, tf in runlist.enumerate():
+    for i, tf in enumerate(runlist):
         fpath = f"{cachedir}/nemo/{tf}.fastq.tar"
         to = tarfile.open(fpath)
         subfiles = to.getnames()

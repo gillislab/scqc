@@ -93,7 +93,7 @@ def stage_in(cachedir, tempdir, runlist, force=True):
     """
     runlen = len(runlist)
     logging.debug(f'handling runlist w/ {runlen} runs...')
-    for i, run_id in runlist.enumerate():
+    for i, run_id in enumerate(runlist):
         fqd = FasterqDump(self.config, run_id)
         rc = fqd.execute()
         if str(rc)!= '0':
