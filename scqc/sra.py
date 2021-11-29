@@ -35,9 +35,6 @@ gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 from scqc.utils import *
 from scqc.common import *
-from scqc.sra import FasterqDump
-
-
 
 class RunUnavailableException(Exception):
     """ Thrown when Run in a Runset is unavailable.  """
