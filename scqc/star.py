@@ -218,23 +218,32 @@ class Analyze(object):
         for prefix, tdf in df.groupby(by = "prefix") :
             self.log.debug(f'starting {tech} processing for {prefix}')                
             try:
-                barcodes = []
                 cdnas = []
+                barcodes = []
                 gzipped = False
-                if len(tdf) > 1:
-                    self.log.info(f'handling multiple lanes for prefix={prefix}')
                 for row in tdf.iterrows():
                     read1 = f'{self.tempdir}/{row.read1}' # biological cDNA
                     read2 = f'{self.tempdir}/{row.read2}' # technical CBarcode + UMI
+                    cdnas.append(read1)
+                    barcodes.append(read2)
                     if read1.endswith('.gz'):
-                        gzipped = True 
-                if len(cDNAs)  == len(barcodes):
-                    barcodes = ','.join(barcodes)
-                    cdnas = ','.join(cdnas)                        
-                    outfile_prefix = self._run_star_10x(prefix, tech, read1, read2, gzipped)
+                        gzipped = True
+                if len(tdf) > 1:
+                    self.log.info(f'handling multiple lanes for prefix={prefix}')
+                    cdnasarg = ','.join(cdnas)
+                    barcodesarg = ','.join(barcodes)
+                else:
+                    self.log.info(f'handling single lane')
+                    cdnasarg = cdnas.pop() 
+                    barcodesarg = barcodes.pop()
+                                
+                if len(cdnas)  == len(barcodes):
+                    outfile_prefix = self._run_star_10x(prefix, tech, cdnasarg, barcodesarg, gzipped)
                     self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id} and {prefix}')
                     self._stage_out(proj_id, outfile_prefix)
                     somedone = True
+                else:
+                    self.log.warning(f'mismatched cdnas/barcodes: {cdnas} <-> {barcodes} ')
             
             except Exception as ex:
                 self.log.warning(f'Problem with run_id {prefix}.')
