@@ -47,24 +47,3 @@ cd bin ; ln -s ../sratoolkit.2.11.0-centos_linux64/bin/* ./
 #ln -s ../sratoolkit.2.11.0-mac64/bin/* ./
 
 #  R no longer needed....
-#
-# install R and dependencies on conda
-#conda config --set channel_priority strict
-# required for R 4.0
-#conda install -c conda-forge r-base 
-#conda install -c conda-forge r-essentials
-#conda install -c conda-forge r-cairo 
-#conda install -c conda-forge r-ragg
-
-
-# R pacakges to install
-#####  R no longer needed with Python metamarkers...
-#R -e "install.packages('devtools',repos='http://cran.us.r-project.org')"
-#R -e "install.packages('BiocManager',repos='http://cran.us.r-project.org')"
-#R -e "install.packages('optparse',repos='http://cran.us.r-project.org')"
-#R -e "install.packages('Matrix',repos='http://cran.us.r-project.org')"
-#R -e "remove.packages('textshaping')"
-#R -e "BiocManager::install('scRNAseq')"
-#R -e "BiocManager::install('rhdf5')"
-#R -e "devtools::install_github('gillislab/MetaMarkers')"
-
