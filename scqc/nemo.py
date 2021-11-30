@@ -60,7 +60,7 @@ class Download(object):
                     (scheme, host, fullpath, p, q, f) = urllib.parse.urlparse(srcurl)
                     filename = os.path.basename(fullpath)
                     dirname = os.path.dirname(fullpath)                   
-                    destpath = f'{self.cachedir}/sra/{filename}'
+                    destpath = f'{self.cachedir}/nemo/{filename}'
                     rc = download_wget(srcurl, destpath, 
                                        finalname=None, overwrite=self.force, decompress=False, 
                                        rate=f'{self.max_rate}')
