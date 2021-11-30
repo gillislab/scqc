@@ -316,7 +316,11 @@ class Download(Stage):
     def __init__(self, config):
         super(Download, self).__init__(config, 'download')
         self.log.debug('super() ran. object initialized.')
-        self.backends = [ x.strip() for x in self.config.get('impute', 'backends').split(',') ]
+        backstr = [ x.strip() for x in self.config.get('analyze','backends').split(',') ]    
+        self.backends = {}
+        for be in backstr:
+            self.log.debug(f'loading backend {be}...')
+            self.backends[be] = importlib.import_module(f'scqc.{be}')
         self.max_downloads = int(self.config.get('download', 'max_downloads'))
         self.num_streams = int(self.config.get('download', 'num_streams'))
 
@@ -333,7 +337,7 @@ class Download(Stage):
                 
         for proj_id in dolist:
             self.log.debug(f'handling id {proj_id}...')
-            try:
+            try:                
                 be = self.backends[ get_backend_for_proj(self.config, 'download', proj_id)]
                 sd = be.Download(self.config)
                 (done, part, seen) = sd.execute(proj_id)
