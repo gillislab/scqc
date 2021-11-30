@@ -170,7 +170,7 @@ class Impute(object):
         o = urlparse(file_url)
         tbase = o.path.split('/')[-1:][0]
         tf = f"{self.cachedir}/nemo/{tbase}"
-        #self.log.debug(f"handling tarfile {tf}")
+        self.log.debug(f"handling tarfile {tbase}")
         read1 = ''
         read2 = ''
         tech_version = self.scan_url_tech(o.path)
