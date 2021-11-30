@@ -1,4 +1,4 @@
-#!/usr/bin/env bash -l
+#!/usr/bin/env -S bash -l
 set -e
 # install conda
 if ! command -v conda&> /dev/null; then
