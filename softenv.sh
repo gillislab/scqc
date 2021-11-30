@@ -1,6 +1,17 @@
+#!/usr/bin/env bash
+set -e
 # install conda
-wget https://repo.anaconda.com/miniconda/Miniconda3-py39_4.9.2-Linux-x86_64.sh
-bash Miniconda3-py39_4.9.2-Linux-x86_64.sh
+if ! command -v conda&> /dev/null; then
+	echo "installing miniconda..."
+	wget https://repo.anaconda.com/miniconda/Miniconda3-py39_4.9.2-Linux-x86_64.sh
+	bash Miniconda3-py39_4.9.2-Linux-x86_64.sh -b
+	rm -f Miniconda3-py39_4.9.2-Linux-x86_64.sh
+	conda init 
+	echo "miniconda installed. restart terminal."
+	exit 0
+else
+	echo "miniconda installed already."
+fi
 # be sure to restart terminal to allow conda to start
 
 # to export environment to yml
@@ -8,18 +19,18 @@ bash Miniconda3-py39_4.9.2-Linux-x86_64.sh
 # to create conda from yml file. Otherwise, skip and install manually
 # conda env create --file scqc.yml
 
-conda create -n scqc python=3.8
+conda create -y -n scqc python=3.8
 conda activate scqc
 
 # make sure we have conda-forge
 conda config --add channels conda-forge
 
 # update conda if necessary
-conda update -n base -c defaults conda
+conda update -y -n base -c defaults conda
 
-conda install pandas ipython requests scipy wget bottleneck tbb
-conda install -c bioconda star
-conda install -c conda-forge leidenalg scanpy scikit-misc
+conda install -y  pandas ipython requests scipy wget bottleneck tbb
+conda install -y -c bioconda star
+conda install -y -c conda-forge leidenalg scanpy scikit-misc
 
 #download sratoolkit, link binaries within conda environment
 cd  $CONDA_PREFIX
@@ -34,8 +45,6 @@ cd bin ; ln -s ../sratoolkit.2.11.0-centos_linux64/bin/* ./
 # tar -xvzf sratoolkit.2.11.0-mac64.tar.gz
 # cd bin
 #ln -s ../sratoolkit.2.11.0-mac64/bin/* ./
-
-
 
 #  R no longer needed....
 #
@@ -58,11 +67,4 @@ cd bin ; ln -s ../sratoolkit.2.11.0-centos_linux64/bin/* ./
 #R -e "BiocManager::install('scRNAseq')"
 #R -e "BiocManager::install('rhdf5')"
 #R -e "devtools::install_github('gillislab/MetaMarkers')"
-
-
-
-
-
-
-
 

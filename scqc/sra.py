@@ -979,6 +979,7 @@ class FasterqDump(object):
         self.threads = self.config.get('sra', 'fq_nthreads')
         self.force = self.config.getboolean('download','force')
         self.nocleanup = self.config.getboolean('download','nocleanup')
+        self.log.debug(f'FasterqDump initted.')
 
 
     def execute(self):
