@@ -6,7 +6,7 @@ if ! command -v conda&> /dev/null; then
 	wget https://repo.anaconda.com/miniconda/Miniconda3-py39_4.9.2-Linux-x86_64.sh
 	bash Miniconda3-py39_4.9.2-Linux-x86_64.sh -b
 	rm -f Miniconda3-py39_4.9.2-Linux-x86_64.sh
-	~/miniconda3/bin/condaconda init 
+	~/miniconda3/bin/conda init 
 	echo "miniconda installed. restart terminal."
 	exit 0
 else
