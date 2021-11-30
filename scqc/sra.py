@@ -885,7 +885,7 @@ class Download(object):
         rundict = dict(zip(ddf.run_id, ddf.file_url))
         runlist = list(ddf.run_id)
         self.log.debug(f'{len(runlist)} runs in project {proj_id}')
-        totaldiskspace = ddf.file_size.sum() * 1e-9
+        totaldiskspace = ddf.file_size.astype(int).sum() * 1e-9
         self.log.debug(f'Expected disk space for SRA files for {proj_id} is {totaldiskspace} GB')
         donelist = []        
         triedlist = []
