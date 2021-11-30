@@ -20,6 +20,7 @@ fi
 # conda env create --file scqc.yml
 
 conda create -y -n scqc python=3.8
+sleep 5
 conda activate scqc
 
 # make sure we have conda-forge
