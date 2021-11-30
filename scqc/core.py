@@ -316,7 +316,7 @@ class Download(Stage):
     def __init__(self, config):
         super(Download, self).__init__(config, 'download')
         self.log.debug('super() ran. object initialized.')
-        backstr = [ x.strip() for x in self.config.get('analyze','backends').split(',') ]    
+        backstr = [ x.strip() for x in self.config.get('download','backends').split(',') ]    
         self.backends = {}
         for be in backstr:
             self.log.debug(f'loading backend {be}...')
