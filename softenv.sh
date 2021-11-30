@@ -47,4 +47,7 @@ cd bin ; ln -s ../sratoolkit.2.11.0-centos_linux64/bin/* ./
 # cd bin
 #ln -s ../sratoolkit.2.11.0-mac64/bin/* ./
 
+echo "done. scqc env installed. 'conda activate scqc' to enable..."
+
+
 #  R no longer needed....
