@@ -181,9 +181,6 @@ def chmod_recurse(path, perms=0o755):
 
 def download_wget(srcurl, destpath, finalname=None, overwrite=True, decompress=True, rate='1M'):
     """
-    
-    
-    
     GNU Wget 1.20.1, a non-interactive network retriever.
     Usage: wget [OPTION]... [URL]...
     
