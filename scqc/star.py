@@ -49,10 +49,6 @@ class UnsupportedTechnologyException(Exception):
     """
     Thrown when run technology is neither 10x nor SmartSeq
     """
-class FasterqFailureException(Exception):
-    """
-    Thrown when run technology is neither 10x nor SmartSeq
-    """
 
 class NonZeroReturnException(Exception):
     """
@@ -101,7 +97,7 @@ class Analyze(object):
     def execute(self, proj_id):
         # get relevant metadata
         proj_idf = self._get_meta_data(proj_id)
-        self.log.debug(f'got impute for proj:\n{idf}')
+        self.log.debug(f'got impute for proj:\n{proj_idf}')
         proj_idf = self._known_tech(proj_idf)
         runlist  = list( proj_idf[ proj_idf.proj_id==proj_id ].run_id.unique() )
         self.log.debug(f'initializing STAR alignment for {proj_id} {len(runlist)} runs with known tech.')
@@ -112,9 +108,9 @@ class Analyze(object):
         
         # bring in all fastqs possible to <tempdir>
         # get first data_source value for project id. (assuming all are same/correct)
-        backstr = idf[ idf.proj_id == proj_id].data_source.values[0]
+        backstr = proj_idf[ proj_idf.proj_id == proj_id].data_source.values[0]
         self.log.debug(f'got backend {backstr} for project {proj_id} ')
-        self.backends[backstr].stage_in(self.cachedir, self.tempdir, runlist, self.force)
+        self.backends[backstr].stage_in(self.config, self.cachedir, self.tempdir, runlist, self.force)
         
         # Overall flags. 
         somedone = False
@@ -123,7 +119,7 @@ class Analyze(object):
             
         # split by technology and parse independently based on tech
         
-        for tech, df in idf.groupby(by = "tech_version") :
+        for tech, df in proj_idf.groupby(by = "tech_version") :
             self.log.debug(f'handling df=\n{df} with tech {tech}')
             try:
                 if tech =="smartseq":
@@ -184,9 +180,6 @@ class Analyze(object):
         return retdf
 
 
-        
-
-
     def _handle_smartseq(self, proj_id, df):
         # build the manifest
         df.reset_index(inplace=True, drop=True)
@@ -220,38 +213,46 @@ class Analyze(object):
         self.log.debug(f'df=\n{df}\nshape={df.shape}')
         
         df['prefix'] = df.apply(apply_striplane, axis=1)             
-        for prefix, df in idf.groupby(by = "prefix") :
+        for prefix, tdf in df.groupby(by = "prefix") :
             self.log.debug(f'starting {tech} processing for {prefix}')                
             try:
-                barcodes = []
                 cdnas = []
+                barcodes = []
                 gzipped = False
-                if len(df) > 1:
-                    self.log.info(f'handling multiple lanes for prefix={prefix}')
-                for row in df.iterrows():
-                    read1 = f'{self.tempdir}/{row.read1}' # biological cDNA
-                    read2 = f'{self.tempdir}/{row.read2}' # technical CBarcode + UMI
+                for row in tdf.iterrows():
+                    self.log.debug(f'row is {row}')
+                    read1 = f"{self.tempdir}/{row[1]['read1']}" # biological cDNA
+                    read2 = f"{self.tempdir}/{row[1]['read2']}" # technical CBarcode + UMI
+                    cdnas.append(read1)
+                    barcodes.append(read2)
                     if read1.endswith('.gz'):
-                        gzipped = True 
-                if len(cDNAs)  == len(barcodes):
-                    barcodes = ','.join(barcodes)
-                    cdnas = ','.join(cdnas)                        
-                    outfile_prefix = self._run_star_10x(prefix, tech, read1, read2, gzipped)
+                        gzipped = True
+                if len(tdf) > 1:
+                    self.log.info(f'handling multiple lanes for prefix={prefix}')
+                    cdnasarg = ','.join(cdnas)
+                    barcodesarg = ','.join(barcodes)
+                else:
+                    self.log.info(f'handling single lane')
+                    cdnasarg = cdnas.pop() 
+                    barcodesarg = barcodes.pop()
+                                
+                if len(cdnas)  == len(barcodes):
+                    outfile_prefix = self._run_star_10x(prefix, tech, cdnasarg, barcodesarg, gzipped)
                     self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id} and {prefix}')
                     self._stage_out(proj_id, outfile_prefix)
                     somedone = True
+                else:
+                    self.log.warning(f'mismatched cdnas/barcodes: {cdnas} <-> {barcodes} ')
             
             except Exception as ex:
                 self.log.warning(f'Problem with run_id {prefix}.')
+                self.log.error(traceback.format_exc(None))
                 somefailed = True
+        
         self.log.info(f'completed handling for project {proj_id} tech={tech}')
         return( somedone, somefailed )
 
 
-def apply_striplane(row):
-    """ 
-    """
-    return re.sub('_L00[0-9]','',row['run_id'])
 
     # run|tech|read1|read2|exp|samp|proj|taxon|batch  dataframe in impute. 
     #       taxon to filter
@@ -509,6 +510,11 @@ def apply_striplane(row):
             for fqfile in glob.glob(f'{self.tempdir}/{run_id}*.fastq'):
                 os.remove(fqfile)
                 self.log.debug(f'removed tempfile: {fqfile}')
+
+def apply_striplane(row):
+    """ 
+    """
+    return re.sub('_L00[0-9]','',row['run_id'])
         
 
 ### setup scripts

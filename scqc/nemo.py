@@ -16,6 +16,79 @@ sys.path.append(gitpath)
 from scqc.utils import *
 from scqc.common import *
 
+
+class Download(object):
+    """
+    Handles all runid SRA file downloads for a project. 
+    For the SRA case, that means getting SRR id for each project, and downloading them. 
+
+    """
+
+    def __init__(self, config): #, outlist
+        self.log = logging.getLogger('nemo')
+        self.config = config
+        self.metadir = os.path.expanduser(self.config.get('nemo', 'metadir'))
+        self.cachedir = os.path.expanduser(self.config.get('nemo', 'cachedir'))
+        self.dltool = os.path.expanduser(self.config.get('nemo', 'dltool'))
+        self.max_rate = os.path.expanduser(self.config.get('download', 'max_rate'))
+        self.force = self.config.getboolean('download','force')
+        rdf_file = f'{self.metadir}/runs.tsv'
+        self.rdf = load_df(rdf_file)        
+        self.log.info(f'Download initialized. ')
+
+
+    def execute(self, proj_id):
+        ddf = self.rdf[self.rdf.proj_id == proj_id ]
+        rundict = dict(zip(ddf.run_id, ddf.file_url))
+        runlist = list(ddf.run_id)
+        self.log.debug(f'{len(runlist)} runs in project {proj_id}')
+        totaldiskspace = ddf.file_size.astype(int).sum() * 1e-9
+        self.log.debug(f'Expected disk space for {proj_id} files is {totaldiskspace} GB')
+        donelist = []        
+        triedlist = []
+        runlength = len(runlist)
+       
+        if not os.path.isdir(f'{self.cachedir}/nemo'):
+            self.log.debug(f'making nemo cache subdir...')
+            os.mkdir(f'{self.cachedir}/nemo')
+        
+        try:    
+            for i, (runid, srcurl) in enumerate(rundict.items()):  
+                if self.dltool == 'wget':
+                    self.log.info(f'tool is wget. handling file_urls')
+                    self.log.debug(f'handling runid {runid} srcurl {srcurl}')
+                    (scheme, host, fullpath, p, q, f) = urllib.parse.urlparse(srcurl)
+                    filename = os.path.basename(fullpath)
+                    dirname = os.path.dirname(fullpath)                   
+                    destpath = f'{self.cachedir}/nemo/{filename}'
+                    rc = download_wget(srcurl, destpath, 
+                                       finalname=None, overwrite=self.force, decompress=False, 
+                                       rate=f'{self.max_rate}')
+                    if str(rc) == '0' :
+                        self.log.debug(f'runid {runid} [{i+1}/{runlength}] handled successfully.')
+                        donelist.append(runid)
+                    else:
+                        self.log.debug(f'runid {runid} failed. rc={rc}')
+                    triedlist.append(runid)
+                    
+            # determine if we succesfully completed all runs for project.
+            diffset = set(donelist).difference(set(runlist))
+            self.log.debug(f'diffset is {diffset}')
+            if len(diffset) > 0:
+                self.log.error(f'{len(donelist)} of {len(runlist)} downloaded for proj_id {proj_id} ')
+                return (None, None, proj_id)
+            else:
+                self.log.info(f'download successful for proj_id {proj_id}')
+                return (proj_id, proj_id, proj_id)    
+        
+        except Exception as ex:
+            self.log.error(f'problem with NCBI proj_id {proj_id}')
+            self.log.error(traceback.format_exc(None))
+            return (None, None, proj_id)
+
+
+
+
 class Impute(object):
     """
     Imputes sequencing technology for all runs under a project. 
@@ -170,7 +243,7 @@ class Impute(object):
         o = urlparse(file_url)
         tbase = o.path.split('/')[-1:][0]
         tf = f"{self.cachedir}/nemo/{tbase}"
-        #self.log.debug(f"handling tarfile {tf}")
+        self.log.debug(f"handling tarfile {tbase}")
         read1 = ''
         read2 = ''
         tech_version = self.scan_url_tech(o.path)
@@ -215,20 +288,22 @@ class Impute(object):
                 return NEMO_URL_TECH_MAP[k]
         return tech
 
-def stage_in(cachedir, tempdir, runlist, force=True):
+def stage_in(config, cachedir, tempdir, runlist, force=True):
     """
     
     """
-    logging.debug(f'handling runlist w/ {len(runlist)} tarfiles...')
-    for tf in runlist:
+    runlen = len(runlist)
+    logging.debug(f'handling runlist w/ {runlen} tarfiles...')
+
+    for i, tf in enumerate(runlist):
         fpath = f"{cachedir}/nemo/{tf}.fastq.tar"
         to = tarfile.open(fpath)
         subfiles = to.getnames()
         for f in subfiles:
             if os.path.exists(f'{tempdir}/{f}') and not force:
-                logging.debug(f'path {tempdir}/{f} exists and force is not set. Skipping.')
+                logging.debug(f'[{i}/{runlen}] path {tempdir}/{f} exists and force is not set. Skipping.')
             else:
-                logging.debug(f'extracting {f} to {tempdir}')
+                logging.debug(f'[{i}/{runlen}] extracting {f} to {tempdir}')
                 to.extract(f, path=tempdir)
     logging.debug(f'done extracting files.')
 
