@@ -751,7 +751,7 @@ def MetaMarkers_PR(enrichment, class_pred = None):
     enr = enr.astype(float)
     pr = enr.T.melt().sort_values('value',ascending=False)
     pr = pr.reset_index(drop=True)
-    pr['first_occurence'] = ~ pr.index.duplicated()
+    pr['first_occurence'] = ~ pr.variable.duplicated()
     pr['TP'] = np.cumsum(pr['first_occurence'])
     pr['P'] = pr.index +1
     pr['Recall'] = pr.TP / enr.shape[0]
