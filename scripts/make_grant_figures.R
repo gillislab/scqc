@@ -139,15 +139,15 @@ gini <- function(x ){
 
     return(g)
 }
-
-h5paths =dir('/data/hover/scqc/output',pattern = 'h5ad',full.names=TRUE)
+# data/hover/scqc/backup/20211026.1425.prebiccn/output
+h5paths =dir('/data/hover/scqc/backup/20211026.1425.prebiccn/output',pattern = 'h5ad',full.names=TRUE)
 i=1
 
 for (h5path in h5paths){
 
     proj_id = sub('.h5ad','',basename(h5path))
     print(proj_id)
-    adata = read_h5ad(h5path,c('uns','obs','obsm'))
+    adata = read_h5ad(h5path,c('uns','obs'))
 
     # a= adata$obs[c('X_index', 'cell_id','class_label','subclass_label' ,'gini','total_counts')]
     g = gini(adata$obs$total_counts)    # dataset specific
@@ -199,6 +199,14 @@ for (h5path in h5paths){
 
     i  = i + 1
 }
+
+aucs = data.frame(class_auc = as.numeric(auc_class$AUC) , subclass_auc = as.numeric(auc_subclass$AUC),subclass_auc_h = as.numeric(auc_subclass_heir$AUC))
+auc2 = as.data.frame(data.table::melt (aucs))
+
+ggplot(aucs,aes (x=class_auc,y = subclass_auc_h) )+ geom_point() + theme_classic() +xlab('Class AUPRC') + ylab('Subclass AUPRC')
+ggsave('~/test.png',width =4,height=4)
+
+ggplot(auc2,aes(x = value,fill= variable)) + geom_histogram() + theme_classic()
 
 
 
