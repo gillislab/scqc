@@ -107,6 +107,14 @@ class Statistics(object):
         part = None
         seen = proj_id
 
+        self.cachedir = '/data/hover/scqc/cache/'
+        self.metadir  = '/data/hover/scqc/metadata/'
+
+        self.outputdir = '/home/johlee/scqc/output_20211203/'
+        try: 
+            os.makedirs(self.outputdir)
+        except FileExistsError:
+            pass
 
         try:
             h5file = f'{self.outputdir}/{proj_id}.h5ad'
@@ -487,7 +495,7 @@ class Statistics(object):
         subclass_scores, subclass_enr, subclass_assign = a.execute(
                 adata, self.subclass_markerset)
         subclass_scores_hier, subclass_enr_hier, subclass_assign_hier  =a.execute(
-            adata, self.subclass_markerset, class_assign.predicted)
+            adata, self.subclass_markerset, group_assignment = class_assign.predicted)
         
         
         adata.uns['MetaMarkers'] = dict()
@@ -686,7 +694,7 @@ if __name__ == "__main__":
 
         for proj_id in np.random.choice(proj_ids,size = len(proj_ids), replace =False):
 
-            donelist = [os.path.basename(f).replace('.h5ad', '') for f in glob.glob('/home/johlee/scqc/output/*RP*.h5ad') ]
+            donelist = [os.path.basename(f).replace('.h5ad', '') for f in glob.glob('/home/johlee/scqc/output_20211203/*RP*.h5ad') ]
 
             listdiff(proj_ids, donelist)
             print(proj_id)
