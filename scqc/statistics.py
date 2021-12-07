@@ -690,7 +690,8 @@ if __name__ == "__main__":
             q.execute(pid)
     else:
         q = Statistics(cp)
-        proj_ids = [os.path.basename(f) for f in glob.glob('/home/johlee/scqc/cache/*RP*') ]
+        proj_ids = [os.path.basename(f) for f in glob.glob('/data/hover/scqc/cache/*RP*') ]
+        proj_ids = [os.path.basename(f) for f in glob.glob('/data/hover/scqc/cache/U19_*') ]
 
         for proj_id in np.random.choice(proj_ids,size = len(proj_ids), replace =False):
 
