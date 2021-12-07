@@ -9,6 +9,8 @@ from scipy import sparse
 plt.style.use('seaborn-deep')
 
 # dropped datasets: meninges, immune and vascular
+# TODO fix NEMO header box field. 
+
 
 DATADIR = '/home/ftp/data/MetaQC/'
 # for_product_chart = pd.merge(ranked_result, pdf , left_index= True, right_on='proj_id', how ='left').reset_index(drop=True)
@@ -32,7 +34,6 @@ CTS_LABS =[
     "n_genes_by_counts",
     "corr_to_mean",
     "gini",
-    "max_corr_with_others",
     "ribo",
     "mt",
     "essential",
@@ -47,6 +48,57 @@ CTS_LABS =[
     "top_500_gene" 
 ]
 
+# do we drop meninges? 
+
+datasets2drop = [
+    'SRP278583', # multi tissue T cells
+    'SRP066963', # too few cells
+    'SRP308387',# too few cells
+    'SRP239491',# too few cells
+    'SRP150863',# too few cells
+    'SRP142629',# too few cells
+    'SRP150630',# too few cells
+    'SRP071876',# too few cells
+    'SRP308826',# too few cells
+    'SRP066314',# too few cells
+    'SRP228572',# too few cells
+    'SRP108034',# too few cells
+    'SRP303200',# too few cells
+    
+    
+    ]
+
+def main(outdir = '/home/ftp/data/MetaQC',datasets2drop = []):
+    global_dist, all_prs = get_global_distributions(datasets2drop = datasets2drop)
+    global_bin_heights ,global_breaks ,proj_hist = get_global_hist_data(global_dist)
+    proj_bin_heights = proj_hist.loc[0,:].set_index('proj_id')
+    auc , ranked_auc = get_aurocs_with_global(global_bin_heights,proj_bin_heights)
+    auc.to_csv(f'{outdir}/auc_wrt_global.tsv',sep="\t")
+    ranked_auc.to_csv(f'{outdir}/ranked_auc_wrt_global.tsv',sep="\t")
+    
+
+
+    # save in h5file
+    for stat_opt in proj_bin_heights.columns:
+        
+        df = pd.DataFrame()
+        for pid in proj_bin_heights.index:
+            df_col = pd.DataFrame(proj_bin_heights.loc[pid,stat_opt])
+            df = pd.concat([df,df_col],axis=1)
+        df.columns = proj_bin_heights.index
+
+        with h5py.File(f'{outdir}/proj_bin_heights.hdf5','a') as f : 
+            f.create_dataset(stat_opt, data =df)
+            
+    with h5py.File(f'{outdir}/proj_bin_heights.hdf5','a') as f : 
+        f.create_dataset('projid_order', data =list(df.columns))
+        f.create_dataset('global_bin_heights', data =global_bin_heights)
+        f.create_dataset('breaks', data =global_breaks)
+        f.create_dataset('stat_order', data =list(global_bin_heights.columns))
+
+
+    # save the auroc between the project and global
+    pass
 
 def gini_coefficient_fast(X):
     """ 
@@ -185,13 +237,13 @@ def get_aurocs_with_global(bin_heights,hist_df,saveit=False):
     
     global_cs = np.cumsum(bin_heights, axis =0 )
     result = pd.DataFrame()
-    all_heights = hist_df.loc[0,:]
-    for pid in all_heights.proj_id:
-        pid_heights = all_heights.loc[all_heights.proj_id==pid,:]
+    all_heights = hist_df.copy()
+    for pid in all_heights.index:
+        pid_heights = all_heights.loc[all_heights.index==pid,:]
 
         pid_df = pd.DataFrame()
-        for obsname in pid_heights.columns[:-1]: 
-            pid_df[obsname] = pid_heights.loc[0,obsname]
+        for obsname in pid_heights.columns: 
+            pid_df[obsname] = pid_heights.loc[pid,obsname]
         pid_cs = np.cumsum(pid_df,axis=0)
 
         ranks = global_cs.append(pid_cs).apply(lambda x : x.rank(),axis =0 ).reset_index(drop=True)
@@ -203,7 +255,7 @@ def get_aurocs_with_global(bin_heights,hist_df,saveit=False):
 
         sum_pos = ranks.T @ label_matrix
 
-        result[pid]=  ((sum_pos /npos - (npos+1)/2) /nneg).project
+        result[pid]=  1- ((sum_pos /npos - (npos+1)/2) /nneg).project
          
     ranked_result = result.rank(1) / result.shape[1]
 
