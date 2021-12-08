@@ -1,0 +1,42 @@
+Exporting data to ProductChart. 
+https://www.productchart.com/
+
+gini_y is dataset-specific coef
+
+METADATA
+'proj_id', 
+'ext_ids',      
+'title', 
+'submission_id', 
+'data_source',
+'date'
+
+DATASET STATS PROPERTIES
+'n_techs',  smartseq vs. 10x
+'n_cells',    integer
+'gini_y',   Within dataset on total (dataset) counts. 
+'corr_to_mean',   PCC within the dataset.
+XX  'max_corr_with_others', 
+
+'class_pr',   AUPRC
+XX 'subclass_pr',  AUPRC
+'subclass_pr_hier',  AUPRC
+
+
+GLOBAL STATS PROPERTIES (all reals)
+AUROC relative global
+'total_counts', 
+'n_genes_by_counts',
+'ribo', 
+'mt', 
+'essential', 
+'cell_cycle',
+'housekeeping', 
+'female', 
+'male', 
+'gini_x',   individual cell gini coeff
+'highly_variable', 
+'top_50_gene',
+'top_100_gene', 
+'top_200_gene', 
+'top_500_gene', 

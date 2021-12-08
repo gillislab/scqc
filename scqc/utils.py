@@ -400,7 +400,7 @@ def run_command(cmd):
         return(cp.stderr, cp.stdout, cp.returncode)
     else:
         logging.warn(f'non-zero return code for cmd {cmdstr}')
-        # raise NonZeroReturnException()
+        raise NonZeroReturnException()
 
 
 def run_command_shell(cmd):

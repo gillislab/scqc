@@ -29,7 +29,7 @@ conda config --add channels conda-forge
 # update conda if necessary
 conda update -y -n base -c defaults conda
 
-conda install -y  pandas ipython requests scipy wget bottleneck tbb
+conda install -y  pandas ipython requests scipy wget bottleneck tbb sqlite
 conda install -y -c bioconda star
 conda install -y -c conda-forge leidenalg scanpy scikit-misc
 

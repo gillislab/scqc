@@ -248,7 +248,12 @@ class Analyze(object):
                 self.log.warning(f'Problem with run_id {prefix}.')
                 self.log.error(traceback.format_exc(None))
                 somefailed = True
-        
+            
+            finally:
+                if not self.nocleanup:
+                    self._cleanrun(prefix)
+                
+                        
         self.log.info(f'completed handling for project {proj_id} tech={tech}')
         return( somedone, somefailed )
 
@@ -384,35 +389,17 @@ class Analyze(object):
                 '--outSAMtype', 'None']
         if gzipped :
             cmd += ['--readFilesCommand',f'{self.unzip}']
-        run_command(cmd)
+        try:
+            run_command(cmd)
+        except NonZeroReturnException as nzre:
+            self.log.error(traceback.format_exc(None))
+        
+        finally:
+            if not self.nocleanup:              
+                self._cleanrun(run_id)
+        
         return(outfile_prefix)
 
-
-    def _run_command(self, cmd):
-        cmdstr = " ".join(cmd)
-        self.log.info(f"command: {cmdstr} running...")
-        start = dt.datetime.now()
-        cp = subprocess.run(cmd, 
-                        text=True, 
-                        stdout=subprocess.PIPE, 
-                        stderr=subprocess.STDOUT)
-        end = dt.datetime.now()
-        elapsed =  end - start
-        self.log.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {elapsed.seconds} seconds.")
-        
-        if cp.stderr is not None:
-            self.log.debug(f"got stderr: {cp.stderr}")
-        if cp.stdout is not None:
-            self.log.debug(f"got stdout: {cp.stdout}")
-        
-        if str(cp.returncode) == '0':
-            self.log.info(f'successfully ran {cmdstr}')
-        else:
-            self.log.error(f'non-zero return code for cmd {cmdstr}')
-            raise NonZeroReturnException()
-
-            
-        
 
     def _stage_out(self, proj_id, outfile_prefix):
         """
@@ -489,15 +476,30 @@ class Analyze(object):
         else:
             self.log.info(f'nocleanup true. leaving files.')
 
+    def _cleanrun(self, run_id):
+        """
+        Temp cleanup for each individual run of STAR. Mostly important when returns non-zero 
+        due to error. 
+        E.g.
+        <run_id>_10xv3__STARtmp
+        <run_id>_L001
+        <run_id>_L002
+        
+        """
+        self.log.debug(f'beginning run cleanup for runid/prefix: {run_id}')
+        filedirlist =  glob.glob(f'{self.tempdir}/{run_id}_*10xv*')
+        self.log.debug(f'files/dirs to delete: {filedirlist}')
+        remove_pathlist(filedirlist)
+
     
     def _cleantemp(self, proj_id, runlist):
         """
-        
+        Belt-and-suspenders cleanup after whole project run. 
         """
         filedirlist =  glob.glob(f'{self.tempdir}/{proj_id}_smartseq_*')
         remove_pathlist(filedirlist)
         for rid in runlist:
-            filelist = glob.glob(f'{self.tempdir}/{proj_id}_10xv*')
+            filelist = glob.glob(f'{self.tempdir}/{rid}_*10xv*')
             remove_pathlist(filelist)
         
 

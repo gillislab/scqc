@@ -201,9 +201,7 @@ Objectives for paper
 
 
 DOWNLOAD RATE/THROTTLING
-trickle works on CentOS 7 (tyrone) but not Centos 8. 
-
-https://unix.stackexchange.com/questions/39218/throttle-the-download-speed-of-wget-or-curl-while-downloading
+wget has --max-rate setting. simple and easy. 
 
 
 

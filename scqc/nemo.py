@@ -252,6 +252,7 @@ class Impute(object):
         self.log.debug(f'got {len(subfiles)} files in tarfile...')
         if (tech_version == 'smartseq') and (len(subfiles) == 2):
             self.log.debug('handling smartseq...')
+            # order doesn't matter
             read1 = subfiles[0]
             read2 = subfiles[1]
         elif ('10x' in tech_version) and (len(subfiles) < 4):
