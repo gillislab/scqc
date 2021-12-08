@@ -30,24 +30,17 @@ from sklearn.metrics.pairwise import euclidean_distances
 metamarker_path = os.path.expanduser("~/git/pyMetaMarkers")
 sys.path.append(metamarker_path)
 from MetaMarkers.annotation import *
-from MetaMarkers.aurocs import *
+import MetaMarkers.aurocs as roc 
 
 
 sc.settings.verbosity = 4
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 from scqc.utils import *
+from scqc.common import *
 
 
 
-
-LOGLEVELS = {
-    10: 'debug',
-    20: 'info',
-    30: 'warn',
-    40: 'err',
-    50: 'fatal',
-}
 
 class Statistics(object):
 
@@ -65,6 +58,7 @@ class Statistics(object):
             self.config.get('statistics', 'tempdir'))
         self.cachedir = os.path.expanduser(
             self.config.get('statistics', 'cachedir'))
+        self.cachedir = '/data/hover/scqc/cache'
         self.nocleanup = self.config.getboolean('statistics','nocleanup')
         
         # gene sets
@@ -113,24 +107,35 @@ class Statistics(object):
         part = None
         seen = proj_id
 
+        self.cachedir = '/data/hover/scqc/cache/'
+        self.metadir  = '/data/hover/scqc/metadata/'
+
+        self.outputdir = '/home/johlee/scqc/output_20211203/'
+        try: 
+            os.makedirs(self.outputdir)
+        except FileExistsError:
+            pass
 
         try:
             h5file = f'{self.outputdir}/{proj_id}.h5ad'
+            
             solooutdirs = glob.glob(f'{self.cachedir}/{proj_id}/*Solo.out')
             # solooutdirs = glob.glob(f'/data/johlee/scqc/output/*Solo.out')
             # solooutdirs = [solooutdir for solooutdir in solooutdirs if proj_id.lower() in solooutdir.lower()]
             adatas = []   # loops through all star runs in the project
+            updated_solooutdirs =[]
             for solooutdir in solooutdirs:
                 self.log.debug(f'opening {solooutdir}')
                 # open one soloutdir, store as adata. 
                 try:
                     tmpadata = self._parse_STAR_mtx(solooutdir)
                     adatas.append(tmpadata)
+                    updated_solooutdirs.append(solooutdir)
                     # print(f'savin {solooutdir} as h5ad')
                     # tmpadata.write_h5ad( f'{self.tempdir}2/{os.path.basename(solooutdir)}.h5ad')
-                except : 
-                    self.log.warn(f'Issue with parsing: {solooutdir}')
-            
+                except FileNotFoundError: 
+                    self.log.warning(f'Issue with parsing: {solooutdir}')
+            solooutdirs = updated_solooutdirs
 
     
             # merge all of the datasets 
@@ -148,7 +153,7 @@ class Statistics(object):
 
                 ids = pd.DataFrame( {'id': runids,'tech':tech } )
                 ids['run_id'] = ids.id
-                ids['proj_id'] = [ bn.split('-',1)[0] for bn in batchnames ]
+                ids['proj_id'] = proj_id # [ bn.split('-',1)[0] for bn in batchnames ]
 
             else:   # SRA
 
@@ -169,29 +174,25 @@ class Statistics(object):
             adatas  = None
             adata.obs.columns = ['cell_id','id']
             ind = adata.obs.index
-            tmpdf = pd.merge(adata.obs, ids, on= 'id')   # include technology in obs.
-            tmpdf.index = list(tmpdf.cell_id)
+            tmpdf = pd.merge(adata.obs, ids, on= 'id',how ='left')   # include technology in obs.
+            tmpdf.index = list(adata.obs.index)
 
             # fill in missing run_ids with the cell_id. (typically smart seq experiments)
-            tmpdf.run_id[tmpdf.run_id.isnull()] = tmpdf.cell_id[tmpdf.run_id.isnull()]
+            tmpdf.loc[tmpdf.run_id.isnull(),"run_id"] = tmpdf.loc[tmpdf.run_id.isnull(),"cell_id"]
 
             
             adata.obs = tmpdf 
 
     
-            # not available for biccn
-            if 'u19_' in proj_id.lower():
-                rundf_biccn = load_df(f'{self.metadir}/runs.tsv')
-                rundf_biccn = rundf_biccn.loc[rundf_biccn.proj_id.str.lower.str.contains(proj_id), ['run_id','exp_id','samp_id'] ].reset_index(drop=True)
-
-                tmpdf =  pd.merge(adata.obs, rundf_biccn ,on='run_id',how ='left')[['cell_id','run_id','exp_id', 'samp_id','proj_id','tech' ]]
-                # tmpdf['batch'] = '0'
-            else:
-                self.log.debug(f'getting batch info for {proj_id}')
-                impute = load_df(f'{self.metadir}/impute.tsv')
-                impute = impute.loc[impute.proj_id == proj_id,: ]
-                tmpdf =  pd.merge(adata.obs, impute,how ='left' )[['cell_id','run_id','exp_id', 'samp_id','proj_id','taxon','tech' ]]
-                tmpdf.index = tmpdf.cell_id
+        
+            self.log.debug(f'getting batch info for {proj_id}')
+            impute = load_df(f'{self.metadir}/impute.tsv')
+        
+            impute = impute.loc[impute.proj_id == proj_id,: ]
+            impute.run_id = impute.apply(apply_striplane, axis= 1 )
+            impute = impute[['run_id','exp_id', 'samp_id','proj_id','taxon' ]].drop_duplicates().reset_index(drop=True)
+            tmpdf =  pd.merge(adata.obs, impute,how ='left' )[['cell_id','run_id','exp_id', 'samp_id','proj_id','taxon','tech' ]]
+            tmpdf.index = adata.obs.index
 
             
             tmpdf.index= ind
@@ -391,7 +392,7 @@ class Statistics(object):
         
         label_matrix = sparse.csc_matrix(adata.var[qcvars])
         # TODO fix tie correction and set true
-        aurocs = compute_aurocs(adata.X, label_matrix,
+        aurocs = roc.compute_aurocs(adata.X, label_matrix,
                 index =adata.obs.index, columns = qcvars ,
                 compute_tie_correction=False)
         adata.obs = pd.merge(adata.obs, aurocs ,left_index=True, right_index=True,how = 'left')
@@ -439,9 +440,9 @@ class Statistics(object):
         # adata.obs.cell_id = adata.obs.index
 
         # trades memory intensity with computational time
-        min_corr, max_corr = pairwise_minmax_corr(adata.X,chunksize=10000)
-        adata.obs['min_corr_with_others'] = min_corr
-        adata.obs['max_corr_with_others'] = max_corr
+        # min_corr, max_corr = pairwise_minmax_corr(adata.X,chunksize=10000)
+        # adata.obs['min_corr_with_others'] = min_corr
+        # adata.obs['max_corr_with_others'] = max_corr
 
 
 
@@ -494,7 +495,7 @@ class Statistics(object):
         subclass_scores, subclass_enr, subclass_assign = a.execute(
                 adata, self.subclass_markerset)
         subclass_scores_hier, subclass_enr_hier, subclass_assign_hier  =a.execute(
-            adata, self.subclass_markerset, class_assign.predicted)
+            adata, self.subclass_markerset, group_assignment = class_assign.predicted)
         
         
         adata.uns['MetaMarkers'] = dict()
@@ -689,11 +690,12 @@ if __name__ == "__main__":
             q.execute(pid)
     else:
         q = Statistics(cp)
-        proj_ids = [os.path.basename(f) for f in glob.glob('/home/johlee/scqc/cache/*RP*') ]
+        proj_ids = [os.path.basename(f) for f in glob.glob('/data/hover/scqc/cache/*RP*') ]
+        proj_ids = [os.path.basename(f) for f in glob.glob('/data/hover/scqc/cache/U19_*') ]
 
         for proj_id in np.random.choice(proj_ids,size = len(proj_ids), replace =False):
 
-            donelist = [os.path.basename(f).replace('.h5ad', '') for f in glob.glob('/home/johlee/scqc/output/*RP*.h5ad') ]
+            donelist = [os.path.basename(f).replace('.h5ad', '') for f in glob.glob('/home/johlee/scqc/output_20211203/*RP*.h5ad') ]
 
             listdiff(proj_ids, donelist)
             print(proj_id)

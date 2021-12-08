@@ -81,5 +81,8 @@ keywords = {
 def get_project_backend(df, proj_id):
     list(df[df.proj_id == proj_id]['data_source'])[0]
     
-
-    
+def apply_striplane(row):
+    """ 
+    """
+    return re.sub('_L00[0-9]','',row['run_id'])
+        

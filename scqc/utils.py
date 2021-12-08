@@ -739,15 +739,19 @@ def MetaMarkers_PR(enrichment, class_pred = None):
     enr = enrichment.copy() 
 
     if class_pred is not None:
-        # groups = class_pred.predicted.unique()
-        for group, df in class_pred.groupby('predicted') :
-            cols = ~ enr.columns.str.contains(group)
-            enr.loc[df.index,cols]  = 0
+        groups = class_pred.predicted.unique()
+        if len(groups) == 1 :
+            cols = ~ enr.columns.str.contains(groups[0])
+            enr.loc[:,cols] = 0
+        else:
+            for group, df in class_pred.groupby('predicted') :
+                cols = ~ enr.columns.str.contains(group)
+                enr.loc[df.index,cols]  = 0
 
     enr = enr.astype(float)
     pr = enr.T.melt().sort_values('value',ascending=False)
     pr = pr.reset_index(drop=True)
-    pr['first_occurence'] = ~ pr.cell_id.duplicated()
+    pr['first_occurence'] = ~ pr.variable.duplicated()
     pr['TP'] = np.cumsum(pr['first_occurence'])
     pr['P'] = pr.index +1
     pr['Recall'] = pr.TP / enr.shape[0]
