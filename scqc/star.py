@@ -105,56 +105,65 @@ class Analyze(object):
         done = None
         part = None
         seen = proj_id
-        
-        # bring in all fastqs possible to <tempdir>
-        # get first data_source value for project id. (assuming all are same/correct)
-        backstr = proj_idf[ proj_idf.proj_id == proj_id].data_source.values[0]
-        self.log.debug(f'got backend {backstr} for project {proj_id} ')
-        self.backends[backstr].stage_in(self.config, self.cachedir, self.tempdir, runlist, self.force)
-        
+
         # Overall flags. 
         somedone = False
         partial = False
-        somefailed = False
+        somefailed = False        
+        # bring in all fastqs possible to <tempdir>
+        # get first data_source value for project id. (assuming all are same/correct)
+    
+        try:
+            backstr = proj_idf[ proj_idf.proj_id == proj_id].data_source.values[0]
+            self.log.debug(f'got backend {backstr} for project {proj_id} ')
+            self.backends[backstr].stage_in(self.config, self.cachedir, self.tempdir, runlist, self.force)
             
-        # split by technology and parse independently based on tech
-        
-        for tech, df in proj_idf.groupby(by = "tech_version") :
-            self.log.debug(f'handling df=\n{df} with tech {tech}')
-            try:
-                if tech =="smartseq":
-                    # somedone, somefailed
-                    (some, part) = self._handle_smartseq(proj_id, df)
-                    if some:
-                        # for smartseq, somedone means successful
-                        somedone = True
-                    else :
-                        somefailed = True
-                    self.log.debug(f'{proj_id} smartseq somedone={somedone} somefailed={somefailed}')
-                        
-                elif tech.startswith('10xv'):  
-                    (some, failed) = self._handle_10x(proj_id, tech, df)
-                    if some:
-                        # for 10x, some means some, possibly all
-                        somedone = True
-                    if failed:
-                        somefailed = True
-                    if some and failed:
-                        partial = True
-                    self.log.debug(f'{proj_id} {tech} somedone={somedone} somefailed={somefailed} partial={partial}')
-
-            except Exception as ex:
-                self.log.error(f'fatal problem with NCBI proj_id {proj_id}')
-                self.log.error(traceback.format_exc(None))
+            # Overall flags. 
+            somedone = False
+            partial = False
+            somefailed = False
                 
-            finally:
-                # finally, clean up fastq files 
-                if not self.nocleanup:
-                    self._cleantemp(proj_id, runlist)
-                    self._remove_fastqs(proj_id, runlist)
-                else:
-                    self.log.info(f'nocleanup is true. leaving temp files.')
-        
+            # split by technology and parse independently based on tech
+            
+            for tech, df in proj_idf.groupby(by = "tech_version") :
+                self.log.debug(f'handling df=\n{df} with tech {tech}')
+                try:
+                    if tech =="smartseq":
+                        # somedone, somefailed
+                        (some, part) = self._handle_smartseq(proj_id, df)
+                        if some:
+                            # for smartseq, somedone means successful
+                            somedone = True
+                        else :
+                            somefailed = True
+                        self.log.debug(f'{proj_id} smartseq somedone={somedone} somefailed={somefailed}')
+                            
+                    elif tech.startswith('10xv'):  
+                        (some, failed) = self._handle_10x(proj_id, tech, df)
+                        if some:
+                            # for 10x, some means some, possibly all
+                            somedone = True
+                        if failed:
+                            somefailed = True
+                        if some and failed:
+                            partial = True
+                        self.log.debug(f'{proj_id} {tech} somedone={somedone} somefailed={somefailed} partial={partial}')
+    
+                except Exception as ex:
+                    self.log.error(f'fatal problem with NCBI proj_id {proj_id}')
+                    self.log.error(traceback.format_exc(None))
+                    
+                finally:
+                    # finally, clean up fastq files 
+                    if not self.nocleanup:
+                        self._cleantemp(proj_id, runlist)
+                        self._remove_fastqs(proj_id, runlist)
+                    else:
+                        self.log.info(f'nocleanup is true. leaving temp files.')
+        except Exception as ex:
+            logging.error(f'something went wrong with {proj_id}')
+            self.log.error(traceback.format_exc(None))
+            
         if somedone and not somefailed:
             done = proj_id
             part = None
