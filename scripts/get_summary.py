@@ -129,56 +129,57 @@ def gini_coefficient_fast(X):
     return g
 
 
-def get_global_distributions(saveit=False):
+def get_global_distributions(datasets2drop=[] , saveit=False):
     global_dist = pd.DataFrame()
     h5paths = glob.glob(f'{DATADIR}*.h5ad')
     all_prs = pd.DataFrame()
     for h5path in h5paths:
         proj_id = os.path.basename(h5path).replace('.h5ad','')
-        with h5py.File(h5path,'r') as f:
-            print(h5path)
-            ds_df = pd.DataFrame()
-            
-            for obsname in CTS_LABS:
-                ds_df[obsname]= f[f'obs/{obsname}'][()]
-                if obsname == 'total_counts' or obsname == 'n_genes_by_counts': 
-                    ds_df[obsname] = np.log(ds_df[obsname])
-            
-            ds_df['pdat'] = f['uns']['header_box']['publish_date'][()]
+        if proj_id not in datasets2drop:
+            with h5py.File(h5path,'r') as f:
+                print(h5path)
+                ds_df = pd.DataFrame()
+                
+                for obsname in CTS_LABS:
+                    ds_df[obsname]= f[f'obs/{obsname}'][()]
+                    if obsname == 'total_counts' or obsname == 'n_genes_by_counts': 
+                        ds_df[obsname] = np.log(ds_df[obsname])
+                
+                ds_df['pdat'] = f['uns']['header_box']['publish_date'][()]
 
-            techs = f['uns']['header_box']['tech_count'].keys()
-            tech_counts ={}
-            for tech in techs:
-                tech_counts[tech] = f['uns']['header_box']['tech_count'][tech][()] 
-            if len(tech_counts) == 1:
-                ds_df['tech'] = list(tech_counts.keys())[0]
-            else : 
-                ds_df['tech'] = 'mixture'
+                techs = f['uns']['header_box']['tech_count'].keys()
+                tech_counts ={}
+                for tech in techs:
+                    tech_counts[tech] = f['uns']['header_box']['tech_count'][tech][()] 
+                if len(tech_counts) == 1:
+                    ds_df['tech'] = list(tech_counts.keys())[0]
+                else : 
+                    ds_df['tech'] = 'mixture'
 
-            prec =  np.append( 1, f['uns']['MetaMarkers']['class_PR']['Precision'][()])
-            prec = np.append(prec, 0 )
+                prec =  np.append( 1, f['uns']['MetaMarkers']['class_PR']['Precision'][()])
+                prec = np.append(prec, 0 )
 
-            recall =  np.append( 0,f['uns']['MetaMarkers']['class_PR']['Recall'][()])
-            recall = np.append(recall, 1 )
-            auprc_class = np.trapz(y=prec, x=recall)
+                recall =  np.append( 0,f['uns']['MetaMarkers']['class_PR']['Recall'][()])
+                recall = np.append(recall, 1 )
+                auprc_class = np.trapz(y=prec, x=recall)
 
-            prec =  np.append( 1,f['uns']['MetaMarkers']['subclass_PR']['Precision'][()])
-            prec = np.append(prec, 0 )
-            recall =  np.append( 0,f['uns']['MetaMarkers']['subclass_PR']['Recall'][()])
-            recall = np.append(recall, 1 )
+                prec =  np.append( 1,f['uns']['MetaMarkers']['subclass_PR']['Precision'][()])
+                prec = np.append(prec, 0 )
+                recall =  np.append( 0,f['uns']['MetaMarkers']['subclass_PR']['Recall'][()])
+                recall = np.append(recall, 1 )
 
-            auprc_subclass = np.trapz(y=prec, x=recall)
+                auprc_subclass = np.trapz(y=prec, x=recall)
 
-            prec =  np.append( 1,f['uns']['MetaMarkers']['subclass_PR_hier']['Precision'][()])
-            prec = np.append(prec, 0 )
-            recall =  np.append( 0,f['uns']['MetaMarkers']['subclass_PR_hier']['Recall'][()])
-            recall = np.append(recall, 1 )
-            
-            auprc_subclass_h = np.trapz(y=prec, x=recall)
+                prec =  np.append( 1,f['uns']['MetaMarkers']['subclass_PR_hier']['Precision'][()])
+                prec = np.append(prec, 0 )
+                recall =  np.append( 0,f['uns']['MetaMarkers']['subclass_PR_hier']['Recall'][()])
+                recall = np.append(recall, 1 )
+                
+                auprc_subclass_h = np.trapz(y=prec, x=recall)
 
-            gini  = gini_coefficient_fast(sparse.csr_matrix( f['obs/total_counts'][()]))
-            prs = pd.DataFrame({'class_pr':auprc_class, 'subclass_pr': auprc_subclass, 'subclass_pr_hier': auprc_subclass_h,'gini':gini },index = [proj_id])
-            
+                gini  = gini_coefficient_fast(sparse.csr_matrix( f['obs/total_counts'][()]))
+                prs = pd.DataFrame({'class_pr':auprc_class, 'subclass_pr': auprc_subclass, 'subclass_pr_hier': auprc_subclass_h,'gini':gini },index = [proj_id])
+                
 
         ds_df['proj_id'] = proj_id
         all_prs =all_prs.append(prs) 
