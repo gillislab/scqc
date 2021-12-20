@@ -1,27 +1,24 @@
 #!/usr/bin/env python
 # from typing import Mapping
-import argparse
-import pandas as pd
-import glob
 import os
 import sys
 gitpath = os.path.expanduser("~/git/scqc")
 sys.path.append(gitpath)
 
+import argparse
+import glob
+import logging
+
+import pandas as pd
+
 from scqc.utils import *
 from scqc.nemo import *
 
 def make_dfs(manifest, metadata, prefix):
-    
+    logging.debug(f'manifest = {manifest} metadata={metadata} prefix={prefix}')
     rdf, edf, sdf, pdf =  parse_files(manifest=args.manifest, 
                                    metadata=args.metadata)
     logging.info(f'got DFs: {pdf}\n{rdf}\n{edf}\n{sdf}')
-    
-    
-    
-    
-    
-    
     write_dfs(rdf, edf, sdf, pdf, prefix)
     
 

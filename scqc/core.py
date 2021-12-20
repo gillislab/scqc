@@ -217,8 +217,12 @@ class Query(Stage):
 
     def __init__(self, config):
         super(Query, self).__init__(config, 'query')
-        self.backends = [ x.strip() for x in self.config.get('impute', 'backends').split(',') ]
         self.log.debug('super() ran. object initialized.')
+        backstr = [ x.strip() for x in self.config.get('impute','backends').split(',') ]    
+        self.backends = {}
+        for be in backstr:
+            self.log.debug(f'loading backend {be}...')
+            self.backends[be] = importlib.import_module(f'scqc.{be}')
 
     def execute(self, dolist):
         '''

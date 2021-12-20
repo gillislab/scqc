@@ -49,11 +49,7 @@ TECH_RES = {
     'microwellseq': re.compile("Microwell-seq", re.IGNORECASE)
 }
 
-NEMO_URL_TECH_MAP = { 'SSv4' : 'smartseq',
-                '10x_v1': '10xv1',
-                '10x_v2': '10xv2',                
-                '10x_v3': '10xv3',
-                }
+
 
 
 #deprecated

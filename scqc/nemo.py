@@ -17,6 +17,15 @@ from scqc.utils import *
 from scqc.common import *
 
 
+NEMO_URL_TECH_MAP = { 'SSv4' : 'smartseq',
+                '10x_v1': '10xv1',
+                '10x_v2': '10xv2',                
+                '10x_v3': '10xv3',
+                '10X_v1': '10xv1',
+                '10X_v2': '10xv2',                
+                '10X_v3': '10xv3',
+                }
+
 class Download(object):
     """
     Handles all runid SRA file downloads for a project. 
@@ -247,6 +256,7 @@ class Impute(object):
         read1 = ''
         read2 = ''
         tech_version = self.scan_url_tech(o.path)
+        self.log.debug(f'got tech_version {tech_version} for path {o.path}')
         to = tarfile.open(tf)
         subfiles = to.getnames()
         self.log.debug(f'got {len(subfiles)} files in tarfile...')
