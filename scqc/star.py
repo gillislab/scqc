@@ -249,6 +249,7 @@ class Analyze(object):
                     outfile_prefix = self._run_star_10x(prefix, tech, cdnasarg, barcodesarg, gzipped)
                     self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id} and {prefix}')
                     self._stage_out(proj_id, outfile_prefix)
+                    self.log.debug(f'Stageout complete for {outfile_prefix}Solo.out')
                     somedone = True
                 else:
                     self.log.warning(f'mismatched cdnas/barcodes: {cdnas} <-> {barcodes} ')
@@ -420,7 +421,6 @@ class Analyze(object):
                   {outfile_prefix}manifest.tsv        
                   {outfile_prefix}Log.progress.out
                   
-        
         for 10x
         f'{self.tempdir}/{run_id}_{tech}_Solo.out' -> SRR10285015_10xv2_Solo.out
             -> <cachedir>/proj_id/{run_id}_{tech}_Solo.out/
@@ -471,9 +471,10 @@ class Analyze(object):
         dirname = os.path.dirname(outdir)
         self.log.debug(f'Got base of {base} dirname {dirname}')
         destdir = f'{projdir}{base}'
-        self.log.debug(f'destination directory name is {destdir}')
+        self.log.debug(f'outdir is {outdir} destdir is {destdir}')
         newdir = shutil.copytree(outdir, destdir, dirs_exist_ok=True)
         # dst, symlinks, ignore, copy_function, ignore_dangling_symlinks, dirs_exist_ok)
+        self.log.debug(f'copy done. changing permissions for {newdir}')
         chmod_recurse('{newdir}')
         self.log.info(f'<tempdir> output copied to {newdir} and permissions adjusted.')
         
@@ -484,6 +485,7 @@ class Analyze(object):
             self.log.info(f'cleared temp dir of {outdir}')
         else:
             self.log.info(f'nocleanup true. leaving files.')
+
 
     def _cleanrun(self, run_id):
         """
