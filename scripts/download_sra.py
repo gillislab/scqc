@@ -14,12 +14,12 @@ logging.getLogger().setLevel(logging.DEBUG)
 
 # Query all 
 q = Query(get_default_config())
-q.tempdir = '/data/johlee/cross_mammal_xci/temp'
+q.tempdir = '/data/johlee/cross_mammal_xci/sra'
 q.cachedir = '/data/johlee/cross_mammal_xci/cache'
 q.metadir = '/data/johlee/cross_mammal_xci/metadata'
 
 rdf = load_df(f'{q.metadir}/runs.tsv')
-species_list = ['Bos taurus','Ovis aries','Rattus norvegicus','Macaca Mulatta','Sus scrofa']
+species_list = ['Bos taurus','Ovis aries','Rattus norvegicus','Macaca mulatta','Sus scrofa']
 for spec in species_list:
     spec2 = spec.replace(' ','_')
     destdir= f'{q.tempdir}/sra/{spec2}'

@@ -236,6 +236,7 @@ class Analyze(object):
                     barcodes.append(read2)
                     if read1.endswith('.gz'):
                         gzipped = True
+                # are there multiple lanes (i.e. multiple rows?)
                 if len(tdf) > 1:
                     self.log.info(f'handling multiple lanes for prefix={prefix}')
                     cdnasarg = ','.join(cdnas)
@@ -244,13 +245,18 @@ class Analyze(object):
                     self.log.info(f'handling single lane')
                     cdnasarg = cdnas.pop() 
                     barcodesarg = barcodes.pop()
-                                
+                
+                # check parity and run STAR
+                # Short circuit if valid output exists.                 
                 if len(cdnas)  == len(barcodes):
-                    outfile_prefix = self._run_star_10x(prefix, tech, cdnasarg, barcodesarg, gzipped)
-                    self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id} and {prefix}')
-                    self._stage_out(proj_id, outfile_prefix)
-                    self.log.debug(f'Stageout complete for {outfile_prefix}Solo.out')
-                    somedone = True
+                    if not self._check_run_done(prefix, tech):
+                        outfile_prefix = self._run_star_10x(prefix, tech, cdnasarg, barcodesarg, gzipped)
+                        self.log.debug(f'Got outfile_prefix={outfile_prefix} for {proj_id} and {prefix}')
+                        self._stage_out(proj_id, outfile_prefix)
+                        self.log.debug(f'Stageout complete for {outfile_prefix}Solo.out')
+                        somedone = True
+                    else:
+                        somedone = True
                 else:
                     self.log.warning(f'mismatched cdnas/barcodes: {cdnas} <-> {barcodes} ')
             
@@ -268,7 +274,10 @@ class Analyze(object):
         return( somedone, somefailed )
 
 
+    def _check_run_done(self):
+        return False
 
+    
     # run|tech|read1|read2|exp|samp|proj|taxon|batch  dataframe in impute. 
     #       taxon to filter
     #       tech for star run

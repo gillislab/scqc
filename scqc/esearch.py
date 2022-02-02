@@ -11,7 +11,8 @@
 #              -r "rna seq" 
 #              -t "single cell"
 #
-#
+#   Source "transcriptomic single cell"
+#  Doesn't seem to be a way to specify sample sex
 
 import argparse
 import logging

@@ -36,6 +36,7 @@ sys.path.append(gitpath)
 from scqc.utils import *
 from scqc.common import *
 
+
 class RunUnavailableException(Exception):
     """ Thrown when Run in a Runset is unavailable.  """
 
