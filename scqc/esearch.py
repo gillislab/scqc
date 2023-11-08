@@ -30,6 +30,8 @@ from configparser import ConfigParser
 from requests.exceptions import ChunkedEncodingError
 from urllib import parse
 
+gitpath = os.path.expanduser("~/git/scqc")
+sys.path.append(gitpath)
 from scqc.utils import *
 from scqc.sra import *
 

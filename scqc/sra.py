@@ -874,7 +874,7 @@ class Download(object):
         self.config = config
         self.metadir = os.path.expanduser(self.config.get('sra', 'metadir'))
         self.cachedir = os.path.expanduser(self.config.get('sra', 'cachedir'))
-        self.dltool = os.path.expanduser(self.config.get('download', 'dltool'))
+        self.dltool = os.path.expanduser(self.config.get('sra', 'dltool'))
         self.max_rate = os.path.expanduser(self.config.get('download', 'max_rate'))
         rdf_file = f'{self.metadir}/runs.tsv'
         self.rdf = load_df(rdf_file).drop_duplicates()        
